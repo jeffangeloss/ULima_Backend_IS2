@@ -1,7 +1,7 @@
 import type { ChatbotIntent } from "./chatbot.types.js";
 
 const KEYWORD_MAP: Record<ChatbotIntent, string[]> = {
-  grades: ["nota", "promedio", "saque", "parcial", "examen", "calificacion", "aprobe", "jale", "notas"],
+  grades: ["nota", "promedio", "saque", "parcial", "examen", "calificacion", "aprobe", "aprobar", "apruebo", "aprobare", "desaprob", "jale", "jalar", "notas"],
   schedule: ["horario", "hora", "entro", "clase", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "manana", "tengo", "cursos"],
   curriculum: ["malla", "creditos", "cursos", "terminar", "ciclo", "llevar", "prerrequisito", "falta", "avance"],
   alerts: ["riesgo", "alerta", "carga", "evaluaciones"],
@@ -46,6 +46,9 @@ export function classifyWithCohere(
     { text: "Que nota saque en el parcial de Algebra", label: "grades" },
     { text: "Cual es mi promedio general", label: "grades" },
     { text: "Como voy en Soft II", label: "grades" },
+    { text: "Cuanto me falta para aprobar Ingenieria de Software", label: "grades" },
+    { text: "Que necesito sacar para aprobar el curso", label: "grades" },
+    { text: "Voy a aprobar Contabilidad", label: "grades" },
     { text: "Que examenes tengo hoy", label: "schedule" },
     { text: "Cuando es mi proximo examen", label: "schedule" },
     { text: "A que hora entro manana", label: "schedule" },

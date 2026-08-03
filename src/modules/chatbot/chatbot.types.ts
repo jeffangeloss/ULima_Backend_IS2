@@ -69,3 +69,27 @@ export interface ClassmateData {
   fullName: string;
   role: string;
 }
+
+/** Fila cruda de notas OFICIALES (student_score) por evaluación del período activo. */
+export interface OfficialGradeRow {
+  course_id: number;
+  course_name: string;
+  section_code: string | null;
+  assessment_id: number | null;
+  assessment_code: string | null;
+  assessment_name: string | null;
+  assessment_weight: string | null;
+  score_value: string | null;
+}
+
+/** Resumen por curso de notas oficiales + cuánto falta para aprobar (mín. 10.5). */
+export interface OfficialCourseGrades {
+  courseName: string;
+  sectionCode: string | null;
+  evaluaciones: Array<{ nombre: string; peso: number; nota: number | null }>;
+  pesoCalificado: number; // % del curso ya calificado
+  promedioActual: number; // promedio ponderado sobre lo calificado (0-20)
+  notaAcumulada: number; // contribución actual a la nota final (Σ nota*peso/100)
+  estado: "aprobado" | "en_curso" | "imposible" | "sin_notas";
+  necesitaEnLoRestante: number | null; // nota promedio requerida en lo que falta (0-20)
+}

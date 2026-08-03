@@ -57,6 +57,7 @@ const fakeRepo = {
   getAlerts: async () => [],
   getAnnouncements: async () => [],
   getClassmates: async () => [],
+  getOfficialGrades: async () => [],
   getActiveSectionDetails: async () => [
     { sectionId: 1, courseName: "INGENIERÍA DE SOFTWARE II", sectionCode: "856" },
   ],

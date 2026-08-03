@@ -1,4 +1,5 @@
-import type { ChatbotIntent, ChatbotMessageRow } from "./chatbot.types.js";
+import type { ChatbotIntent, ChatbotMessageRow, OfficialCourseGrades } from "./chatbot.types.js";
+import { PASSING_GRADE } from "../alerts/alerts.logic.js";
 
 const SYSTEM_PROMPT = `Eres ULimaBot, un asistente academico personal para estudiantes de la
 Universidad de Lima. Tu funcion es ayudar al alumno con informacion
@@ -28,7 +29,18 @@ REGLAS:
 7. NUNCA sugieras modificar datos, eliminar registros ni realizar
    acciones que cambien informacion del sistema. Solo consultas.
 
-8. Usa bullet points o formato breve cuando listes informacion.`;
+8. Usa bullet points o formato breve cuando listes informacion.
+
+9. Tus NOTAS OFICIALES (registradas por el docente) son la UNICA verdad de
+   notas. La "SIMULACION NO OFICIAL" son escenarios hipoteticos que el alumno
+   arma en la calculadora: NO son notas reales, no las confundas ni las
+   reportes como sus notas. Usalas solo si pregunta explicitamente por un
+   "que pasaria si".
+
+10. Si te preguntan cuanto necesitan para aprobar un curso, usa el dato
+    "Para aprobar" que YA viene calculado en el contexto (no lo recalcules).
+    Se claro: cuanto necesita en promedio en lo que falta, o si ya aprobo, o si
+    ya no es posible aprobar.`;
 
 export interface DateContext {
   today: string;
@@ -52,6 +64,7 @@ export function buildContext(params: {
   announcementsData?: unknown;
   classmatesData?: unknown;
   chatSearchResults?: unknown;
+  officialGrades?: OfficialCourseGrades[] | null;
   localGrades?: unknown;
   question: string;
 }): { preamble: string; message: string } {
@@ -110,8 +123,30 @@ export function buildContext(params: {
     blocks.push(JSON.stringify(params.classmatesData, null, 2));
   }
 
+  if (params.intents.includes("grades") && params.officialGrades && params.officialGrades.length > 0) {
+    blocks.push(`\nNOTAS OFICIALES DEL ALUMNO (fuente de la verdad, registradas por el docente):`);
+    for (const c of params.officialGrades) {
+      blocks.push(`\nCurso: ${c.courseName}${c.sectionCode ? ` (seccion ${c.sectionCode})` : ""}`);
+      for (const ev of c.evaluaciones) {
+        const nota = ev.nota === null ? "sin calificar" : `${ev.nota}/20`;
+        blocks.push(`  - ${ev.nombre} (peso ${ev.peso}%): ${nota}`);
+      }
+      blocks.push(`  Promedio actual (sobre lo calificado): ${c.promedioActual}/20`);
+      blocks.push(`  Peso ya calificado: ${c.pesoCalificado}% del curso`);
+      if (c.estado === "sin_notas") {
+        blocks.push(`  Para aprobar (minimo ${PASSING_GRADE}): aun no hay notas registradas en este curso.`);
+      } else if (c.estado === "aprobado") {
+        blocks.push(`  Para aprobar (minimo ${PASSING_GRADE}): YA APROBO el curso pase lo que pase en lo restante.`);
+      } else if (c.estado === "imposible") {
+        blocks.push(`  Para aprobar (minimo ${PASSING_GRADE}): ya NO es matematicamente posible aprobar este curso.`);
+      } else {
+        blocks.push(`  Para aprobar (minimo ${PASSING_GRADE}): necesita en promedio ${c.necesitaEnLoRestante}/20 en las evaluaciones que faltan.`);
+      }
+    }
+  }
+
   if (params.intents.includes("grades") && params.localGrades) {
-    blocks.push(`\nDATOS DE NOTAS PERSONALES:`);
+    blocks.push(`\nSIMULACION NO OFICIAL (escenario que el alumno arma en la calculadora; NO son notas reales; usar solo si pregunta un "que pasaria si"):`);
     blocks.push(JSON.stringify(params.localGrades, null, 2));
   }
 

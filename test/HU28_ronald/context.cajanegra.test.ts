@@ -78,10 +78,36 @@ describe("[CAJA NEGRA] buildContext — bloques por intent + dato (schedule, cur
     expect(message).toContain("academic_risk");
   });
 
-  test("CV5 intent 'grades' + localGrades: se incluye el bloque de notas personales", () => {
+  test("CV5 intent 'grades' + localGrades: la calculadora se rotula como SIMULACION NO OFICIAL", () => {
     const { message } = make({ intents: ["grades"], localGrades: { promedio: 14.2 } });
-    expect(message).toContain("DATOS DE NOTAS PERSONALES");
+    expect(message).toContain("SIMULACION NO OFICIAL");
     expect(message).toContain("14.2");
+  });
+
+  test("CV5b intent 'grades' + officialGrades: bloque de notas oficiales + cuanto falta para aprobar", () => {
+    const { message } = make({
+      intents: ["grades"],
+      officialGrades: [
+        {
+          courseName: "INGENIERIA DE SOFTWARE II",
+          sectionCode: "856",
+          evaluaciones: [
+            { nombre: "EV01 Examen", peso: 30, nota: 8 },
+            { nombre: "EV02 Proyecto", peso: 70, nota: null },
+          ],
+          pesoCalificado: 30,
+          promedioActual: 8,
+          notaAcumulada: 2.4,
+          estado: "en_curso",
+          necesitaEnLoRestante: 11.57,
+        },
+      ],
+    });
+    expect(message).toContain("NOTAS OFICIALES");
+    expect(message).toContain("INGENIERIA DE SOFTWARE II");
+    expect(message).toContain("EV01 Examen");
+    expect(message).toContain("Para aprobar");
+    expect(message).toContain("11.57");
   });
 });
 

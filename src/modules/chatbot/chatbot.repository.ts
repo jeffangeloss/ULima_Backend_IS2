@@ -8,6 +8,7 @@ import type {
   AlertData,
   AnnouncementData,
   ClassmateData,
+  OfficialGradeRow,
 } from "./chatbot.types.js";
 
 export class ChatbotRepository {
@@ -206,6 +207,37 @@ export class ChatbotRepository {
       ORDER BY cc.cycle, cc.display_order
     `) as unknown as CurriculumData[];
     return rows;
+  }
+
+  /**
+   * Notas OFICIALES (student_score) por evaluación, de la matrícula REAL del
+   * período activo. Fuente de la verdad para el chatbot (NO la calculadora del
+   * cliente). Incluye evaluaciones sin nota (value = null) para poder calcular
+   * cuánto falta para aprobar. Mismo filtro de período activo que `alerts`.
+   */
+  async getOfficialGrades(studentId: number): Promise<OfficialGradeRow[]> {
+    return (await this.database.execute(sql`
+      SELECT
+        c.id   as course_id,
+        c.name as course_name,
+        s.code as section_code,
+        a.id   as assessment_id,
+        a.code as assessment_code,
+        a.name as assessment_name,
+        a.weight as assessment_weight,
+        ss.value as score_value
+      FROM enrollment e
+      JOIN section s ON s.id = e.section_id
+      JOIN course_offering co ON co.id = s.course_offering_id
+      JOIN academic_period ap ON ap.id = co.academic_period_id AND ap.is_active = true
+      JOIN course c ON c.id = co.course_id
+      LEFT JOIN syllabus sy ON sy.course_offering_id = co.id
+      LEFT JOIN assessment a ON a.syllabus_id = sy.id
+      LEFT JOIN student_score ss ON ss.assessment_id = a.id AND ss.enrollment_id = e.id
+      WHERE e.student_id = ${studentId}
+        AND e.status = 'active'
+      ORDER BY c.name, a.code
+    `)) as unknown as OfficialGradeRow[];
   }
 
   async getAlerts(studentId: number): Promise<AlertData[]> {

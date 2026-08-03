@@ -5,6 +5,7 @@ import { ChatbotRepository } from "./chatbot.repository.js";
 import { classifyByKeywords, classifyWithCohere } from "./intent-classifier.js";
 import { buildContext, type DateContext } from "./context-builder.js";
 import { searchChatMessages } from "./chat-search.js";
+import { summarizeOfficialGrades } from "./grades-summary.js";
 import type { ChatbotIntent, ChatbotMessageRow, ChatbotSessionRow } from "./chatbot.types.js";
 import type { AskInput } from "./chatbot.schemas.js";
 
@@ -61,6 +62,7 @@ export class ChatbotService {
       announcementsData,
       classmatesData,
       chatSearchResults,
+      officialGradesRows,
     ] = await Promise.all([
       intents.includes("schedule") ? this.getScheduleData(studentId, dateContext) : Promise.resolve(null),
       intents.includes("curriculum") ? this.getCurriculumData(studentId) : Promise.resolve(null),
@@ -68,7 +70,11 @@ export class ChatbotService {
       intents.includes("announcements") ? this.getAnnouncementsData(studentId) : Promise.resolve(null),
       intents.includes("classmates") ? this.getClassmatesData(studentId) : Promise.resolve(null),
       this.getChatResults(studentId, input.question),
+      // Notas OFICIALES (fuente de la verdad): matrícula real del período activo.
+      intents.includes("grades") ? this.repository.getOfficialGrades(studentId) : Promise.resolve(null),
     ]);
+
+    const officialGrades = officialGradesRows ? summarizeOfficialGrades(officialGradesRows) : null;
 
     const { preamble, message: contextMessage } = buildContext({
       studentName: studentInfo?.fullName ?? "Alumno",
@@ -83,6 +89,7 @@ export class ChatbotService {
       announcementsData,
       classmatesData,
       chatSearchResults,
+      officialGrades,
       localGrades: input.localGrades,
       question: input.question,
     });
