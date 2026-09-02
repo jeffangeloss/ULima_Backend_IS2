@@ -195,6 +195,22 @@ describe("parseSyllabusEntry", () => {
       const r = parseSyllabusEntry(makeSilaboCrudo("AB12CD", "2026-2 SIL O\\'BRIEN.pdf"), BASE);
       expect(r?.fileName).toBe("2026-2 SIL O'BRIEN.pdf");
     });
+
+    test("un filename que contiene `')` se lee ENTERO, no se trunca en el cierre falso", () => {
+      // Efecto de borde de admitir apóstrofos: la captura no codiciosa se
+      // detiene en el primer `')`. Sin anclar el nombre a `.pdf`, este caso
+      // devolvía `2026-2 SIL (VER NOTA` y una URL a un adjunto inexistente:
+      // corrupción silenciosa, y con `on conflict do nothing` la fila mala ya
+      // no se corrige re-importando. Truncar mal es peor que no traer sílabo.
+      const nombre = "2026-2 SIL (VER NOTA') PARTE 2.pdf";
+      const r = parseSyllabusEntry(makeSilaboJson("AB12CD", nombre), BASE);
+      expect(r?.fileName).toBe(nombre);
+      expect(r?.url).toContain(encodeURIComponent(nombre));
+    });
+
+    test("un adjunto que no es PDF => null: sin sílabo, nunca un nombre truncado", () => {
+      expect(parseSyllabusEntry(makeSilaboJson("AB12CD", "2026-2 SIL REDES.docx"), BASE)).toBeNull();
+    });
   });
 
   describe("guardas de longitud (drive_file_id varchar(120), title varchar(150), drive_file_url varchar(255))", () => {

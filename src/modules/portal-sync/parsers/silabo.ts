@@ -52,8 +52,18 @@ const sanitizeJson = (raw: string): string =>
  * apóstrofo (`O'BRIEN.pdf` — Domino lo emite escapado, `O\'BRIEN.pdf`, y la
  * normalización de escapes deja la comilla suelta) no se puede atravesar con
  * `[^']+` y el sílabo se perdía entero.
+ *
+ * El `.pdf` final NO es decorativo: ancla dónde termina el nombre. Sin él, la
+ * captura no codiciosa se detiene en el PRIMER `')` que encuentre, así que un
+ * nombre que contenga esa secuencia (`raro') SIL.pdf`) se truncaba en silencio
+ * a `raro` y producía una URL a un adjunto inexistente — la misma corrupción
+ * callada que motivó arreglar la normalización de escapes, y ahora
+ * irreparable: con `on conflict do nothing` la fila mala ya no se corrige
+ * re-importando. Exigiendo la extensión, el motor sigue buscando hasta el
+ * cierre real. Un adjunto que no sea PDF devuelve `null` (sin sílabo), que es
+ * la degradación limpia de siempre.
  */
-const ABRE_ARCHIVO = /AbreArchivo\('vSyllabusXCicloAV\/[0-9A-Fa-f]+\/\$File\/(.+?)'\)/;
+const ABRE_ARCHIVO = /AbreArchivo\('vSyllabusXCicloAV\/[0-9A-Fa-f]+\/\$File\/(.+?\.pdf)'\)/i;
 
 interface RawViewEntry {
   "@unid"?: unknown;
