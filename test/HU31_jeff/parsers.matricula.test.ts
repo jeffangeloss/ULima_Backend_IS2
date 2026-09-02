@@ -27,6 +27,13 @@ describe("parseCicloActivo", () => {
     if (r.ok) return;
     expect(r.reason).toContain("contradictorios");
   });
+
+  test("una entidad entre CICLO y los digitos ya no rompe la lectura", () => {
+    const r = parseCicloActivo('RestrictToCategory=20262_650033 <td>CICLO:&nbsp;2026-2</td>');
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.periodCode).toBe("2026-2");
+  });
 });
 
 describe("parseConsolidadoMatricula", () => {
@@ -59,5 +66,33 @@ describe("parseConsolidadoMatricula", () => {
 
   test("falla con ok:false si el encabezado no trae CODIGO", () => {
     expect(parseConsolidadoMatricula("<html><table><tr><td>x</td></tr></table></html>").ok).toBe(false);
+  });
+
+  test("la identidad se toma de la fila bajo el encabezado CODIGO", () => {
+    const r = parseConsolidadoMatricula(matricula);
+    if (!r.ok) throw new Error("parser fallo");
+    expect(r.data.studentCode).toMatch(/^\d{8}$/);
+  });
+
+  test("una fila senuelo antes del encabezado no se confunde con la identidad", () => {
+    const senuelo = matricula.replace(
+      /<table/i,
+      '<table><tr><td>99999999</td><td>TRAMITE</td><td>X</td></tr>',
+    );
+    const r = parseConsolidadoMatricula(senuelo);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data.studentCode).not.toBe("99999999");
+  });
+
+  test("falla si hay mas de una fila de identidad candidata", () => {
+    const dup = matricula.replace(
+      /(<tr[^>]*>(?:(?!<\/tr>)[\s\S])*?\b\d{8}\b[\s\S]*?<\/tr>)/i,
+      "$1$1",
+    );
+    const r = parseConsolidadoMatricula(dup);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.reason).toContain("candidatas");
   });
 });

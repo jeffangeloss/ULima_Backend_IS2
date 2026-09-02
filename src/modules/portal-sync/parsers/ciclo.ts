@@ -1,4 +1,4 @@
-import type { ParseResult } from "./html.js";
+import { clean, stripTags, type ParseResult } from "./html.js";
 import type { CicloActivo } from "../portal-sync.types.js";
 
 /**
@@ -17,11 +17,13 @@ import type { CicloActivo } from "../portal-sync.types.js";
 export const parseCicloActivo = (html: string): ParseResult<CicloActivo> => {
   const fromSilabo = [...html.matchAll(/RestrictToCategory=(\d{5})_\d{4,6}/g)].map((m) => m[1]);
 
-  const text = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ");
+  const text = clean(
+    stripTags(
+      html
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " "),
+    ),
+  );
   // Sin flag `i` a propósito.
   const fromLabel = [...text.matchAll(/\bCICLO\s*:\s*(\d{4})\s*-\s*([0-2])/g)].map((m) => `${m[1]}${m[2]}`);
 

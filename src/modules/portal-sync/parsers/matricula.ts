@@ -1,7 +1,6 @@
 import { cellsOf, clean, stripTags, trsOf, type ParseResult } from "./html.js";
 import type { Matricula, MatriculaRow } from "../portal-sync.types.js";
 
-const CODE = /\b(\d{8})\b/;
 const PERIOD = /Per[ií]odo\s*:?\s*(\d{4}-[0-2])/i;
 
 /**
@@ -16,26 +15,39 @@ export const parseConsolidadoMatricula = (html: string): ParseResult<Matricula> 
   const periodCode = text.match(PERIOD)?.[1];
   if (!periodCode) return { ok: false, reason: "no se pudo leer el período" };
 
-  // Fila de identidad: CÓDIGO | NOMBRES Y APELLIDOS | CARRERA (3 celdas, la 1a de 8 dígitos).
-  let studentCode = "";
-  let studentName = "";
-  let careerName = "";
-  for (const tr of trsOf(html)) {
-    const cells = cellsOf(tr);
-    if (cells.length !== 3) continue;
-    if (!CODE.test(cells[0])) continue;
-    [studentCode, studentName, careerName] = [cells[0].match(CODE)![1], cells[1], cells[2]];
-    break;
+  // Identidad anclada al encabezado. Sin ancla, cualquier fila de 3 celdas con
+  // 8 dígitos delante (un número de trámite, por ejemplo) se aceptaría como
+  // identidad. Y si aparece más de una candidata, se falla en vez de elegir:
+  // esta es la única prueba de que la sesión del portal es del alumno correcto.
+  const rows = trsOf(html);
+  const headerIdx = rows.findIndex((tr) => {
+    const c = cellsOf(tr);
+    return c.length === 3 && /^C[ÓO]DIGO$/i.test(c[0]);
+  });
+  if (headerIdx === -1) {
+    return { ok: false, reason: "no se encontró la fila de encabezado CÓDIGO" };
   }
-  if (!studentCode) return { ok: false, reason: "no se pudo leer el código de alumno" };
 
-  const rows: MatriculaRow[] = [];
+  const idRows = rows
+    .slice(headerIdx + 1)
+    .map((tr) => cellsOf(tr))
+    .filter((c) => c.length === 3 && /^\d{8}$/.test(c[0]));
+
+  if (idRows.length === 0) {
+    return { ok: false, reason: "no se encontró la fila de identidad bajo el encabezado CÓDIGO" };
+  }
+  if (idRows.length > 1) {
+    return { ok: false, reason: `hay ${idRows.length} filas de identidad candidatas; el portal cambió de formato` };
+  }
+  const [studentCode, studentName, careerName] = idRows[0];
+
+  const courseRows: MatriculaRow[] = [];
   for (const tr of trsOf(html)) {
     const cells = cellsOf(tr);
     // Fila de curso: CAR. (4 díg.) + COD (4-6 díg.) + SEC. (dígitos) y al menos 8 celdas.
     if (cells.length < 8) continue;
     if (!/^\d{4}$/.test(cells[0]) || !/^\d{4,6}$/.test(cells[1]) || !/^\d{1,4}$/.test(cells[2])) continue;
-    rows.push({
+    courseRows.push({
       carCode: cells[0],
       courseCode: cells[1],
       sectionCode: cells[2],
@@ -46,7 +58,7 @@ export const parseConsolidadoMatricula = (html: string): ParseResult<Matricula> 
       attempt: Number.parseInt(cells[7], 10) || 1,
     });
   }
-  if (!rows.length) return { ok: false, reason: "no se encontraron filas de curso" };
+  if (!courseRows.length) return { ok: false, reason: "no se encontraron filas de curso" };
 
-  return { ok: true, data: { studentCode, studentName, careerName, periodCode, rows } };
+  return { ok: true, data: { studentCode, studentName, careerName, periodCode, rows: courseRows } };
 };
