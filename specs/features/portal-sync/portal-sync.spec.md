@@ -7,6 +7,8 @@ targets:
   - ../../../src/services/portal.client.ts
   - ../../../src/config/env.ts
   - ../../../src/config/app-config.ts
+  - ../../../src/server.ts
+  - ../../../src/shared/middleware/rate-limit.ts
   - ../../../src/db/schema/schema.ts
   - ../../../drizzle/**
   - ../../../test/HU31_jeff/**

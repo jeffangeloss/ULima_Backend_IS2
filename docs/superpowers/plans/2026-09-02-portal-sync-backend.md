@@ -35,7 +35,7 @@
 
 **Interfaces:**
 - Consumes: nada.
-- Produces: `decodeEntities(s: string): string`, `clean(s: string): string`, `stripTags(s: string): string`, `rowsOf(html: string, tableMatcher: RegExp): string[][]`, `type ParseResult<T> = { ok: true; data: T } | { ok: false; reason: string }`.
+- Produces: `decodeEntities(s: string): string`, `clean(s: string): string`, `stripTags(s: string): string`, `trsOf(html: string): string[]`, `tdsOf(tr: string): string[]`, `cellsOf(tr: string): string[]`, `type ParseResult<T> = { ok: true; data: T } | { ok: false; reason: string }`.
 
 - [ ] **Step 1: Copiar los fixtures ya anonimizados**
 
@@ -54,7 +54,7 @@ Expected: `fixtures limpios`. Si aparece cualquier archivo, no commitear y volve
 ```ts
 // test/HU31_jeff/html.test.ts
 import { describe, expect, test } from "bun:test";
-import { clean, decodeEntities, rowsOf, stripTags } from "../../src/modules/portal-sync/parsers/html.js";
+import { cellsOf, clean, decodeEntities, stripTags, tdsOf, trsOf } from "../../src/modules/portal-sync/parsers/html.js";
 
 describe("html utils", () => {
   test("decodeEntities convierte las entidades que emite layout.jsp", () => {
@@ -75,9 +75,18 @@ describe("html utils", () => {
     expect(stripTags("<td><font size=1><b>650033</b></font></td>")).toBe("650033");
   });
 
-  test("rowsOf devuelve las celdas de cada fila de la tabla que casa", () => {
-    const html = "<table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>";
-    expect(rowsOf(html, /<table[^>]*>[\s\S]*?<\/table>/i)).toEqual([["a", "b"], ["c", "d"]]);
+  test("trsOf devuelve las filas crudas y cellsOf su texto limpio", () => {
+    const html = "<table><tr><td>a</td><th>b</th></tr><tr><td>&nbsp;c </td><td>d</td></tr></table>";
+    const trs = trsOf(html);
+    expect(trs).toHaveLength(2);
+    expect(cellsOf(trs[0])).toEqual(["a", "b"]);
+    expect(cellsOf(trs[1])).toEqual(["c", "d"]);
+  });
+
+  test("tdsOf conserva los atributos, que el horario necesita", () => {
+    const tds = tdsOf('<tr><td width="10%"><font title="650033 X">v</font></td></tr>');
+    expect(tds).toHaveLength(1);
+    expect(tds[0]).toContain('title="650033 X"');
   });
 });
 ```
@@ -117,23 +126,22 @@ export const stripTags = (s: string): string => s.replace(/<[^>]*>/g, " ");
 export const clean = (s: string): string =>
   decodeEntities(s ?? "").replace(/\s+/g, " ").trim();
 
-/** Celdas (td/th) de cada fila de la PRIMERA tabla que case con `tableMatcher`. */
-export const rowsOf = (html: string, tableMatcher: RegExp): string[][] => {
-  const table = html.match(tableMatcher)?.[0];
-  if (!table) return [];
-  const rows: string[][] = [];
-  for (const tr of table.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
-    const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) ?? []).map((td) => clean(stripTags(td)));
-    if (cells.length) rows.push(cells);
-  }
-  return rows;
-};
+/** Filas crudas del HTML, con su marcado intacto. */
+export const trsOf = (html: string): string[] => html.match(/<tr[\s\S]*?<\/tr>/gi) ?? [];
+
+/** Celdas `<td>` CRUDAS de una fila: los parsers de horario y Aula Virtual
+ *  necesitan los atributos (`title`, `width`), no solo el texto. */
+export const tdsOf = (tr: string): string[] => tr.match(/<td[\s\S]*?<\/td>/gi) ?? [];
+
+/** Texto ya normalizado de cada celda (`td` o `th`) de una fila. */
+export const cellsOf = (tr: string): string[] =>
+  (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) ?? []).map((td) => clean(stripTags(td)));
 ```
 
 - [ ] **Step 5: Verificar que pasa**
 
 Run: `bun test test/HU31_jeff/html.test.ts`
-Expected: PASS (4 tests).
+Expected: PASS (5 tests).
 
 - [ ] **Step 6: Commit**
 
@@ -332,7 +340,7 @@ export const parseCicloActivo = (html: string): ParseResult<CicloActivo> => {
 
 ```ts
 // src/modules/portal-sync/parsers/matricula.ts
-import { clean, stripTags, type ParseResult } from "./html.js";
+import { cellsOf, clean, stripTags, trsOf, type ParseResult } from "./html.js";
 import type { Matricula, MatriculaRow } from "../portal-sync.types.js";
 
 const CODE = /\b(\d{8})\b/;
@@ -354,8 +362,8 @@ export const parseConsolidadoMatricula = (html: string): ParseResult<Matricula> 
   let studentCode = "";
   let studentName = "";
   let careerName = "";
-  for (const tr of html.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
-    const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) ?? []).map((td) => clean(stripTags(td)));
+  for (const tr of trsOf(html)) {
+    const cells = cellsOf(tr);
     if (cells.length !== 3) continue;
     if (!CODE.test(cells[0])) continue;
     [studentCode, studentName, careerName] = [cells[0].match(CODE)![1], cells[1], cells[2]];
@@ -364,8 +372,8 @@ export const parseConsolidadoMatricula = (html: string): ParseResult<Matricula> 
   if (!studentCode) return { ok: false, reason: "no se pudo leer el código de alumno" };
 
   const rows: MatriculaRow[] = [];
-  for (const tr of html.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
-    const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) ?? []).map((td) => clean(stripTags(td)));
+  for (const tr of trsOf(html)) {
+    const cells = cellsOf(tr);
     // Fila de curso: CAR. (4 díg.) + COD (4-6 díg.) + SEC. (dígitos) y al menos 8 celdas.
     if (cells.length < 8) continue;
     if (!/^\d{4}$/.test(cells[0]) || !/^\d{4,6}$/.test(cells[1]) || !/^\d{1,4}$/.test(cells[2])) continue;
@@ -481,7 +489,7 @@ Expected: FAIL — módulos no encontrados.
 
 ```ts
 // src/modules/portal-sync/parsers/aula-virtual.ts
-import { clean, stripTags, type ParseResult } from "./html.js";
+import { clean, stripTags, tdsOf, trsOf, type ParseResult } from "./html.js";
 import type { AulaVirtualRow } from "../portal-sync.types.js";
 
 /** "DIEZ QUIÑONES / PANDURO / PERCY" -> "PERCY DIEZ QUIÑONES PANDURO". */
@@ -500,8 +508,8 @@ export const normalizeTeacherName = (raw: string): string => {
  */
 export const parseAulaVirtual = (html: string): ParseResult<AulaVirtualRow[]> => {
   const out: AulaVirtualRow[] = [];
-  for (const tr of html.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
-    const tds = tr.match(/<td[\s\S]*?<\/td>/gi) ?? [];
+  for (const tr of trsOf(html)) {
+    const tds = tdsOf(tr);
     if (tds.length < 3) continue;
     const code = clean(stripTags(tds[0]));
     if (!/^\d{4,6}$/.test(code)) continue;
@@ -526,7 +534,7 @@ export const parseAulaVirtual = (html: string): ParseResult<AulaVirtualRow[]> =>
 
 ```ts
 // src/modules/portal-sync/parsers/horario.ts
-import { clean, stripTags, type ParseResult } from "./html.js";
+import { clean, stripTags, tdsOf, trsOf, type ParseResult } from "./html.js";
 import type { HorarioSession } from "../portal-sync.types.js";
 
 const hhmm = (h: number): string => `${String(h).padStart(2, "0")}:00`;
@@ -542,8 +550,8 @@ interface Cell { courseCode: string; dayOfWeek: number; hour: number; classroom:
 export const parseHorario = (html: string): ParseResult<HorarioSession[]> => {
   const cells: Cell[] = [];
 
-  for (const tr of html.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
-    const tds = tr.match(/<td[\s\S]*?<\/td>/gi) ?? [];
+  for (const tr of trsOf(html)) {
+    const tds = tdsOf(tr);
     if (tds.length < 7) continue;
     const hourLabel = clean(stripTags(tds[0]));
     const hm = hourLabel.match(/^(\d{1,2})\s*-\s*(\d{1,2})$/);
@@ -668,7 +676,7 @@ Expected: FAIL — módulo no encontrado.
 
 ```ts
 // src/modules/portal-sync/parsers/record.ts
-import { clean, stripTags, type ParseResult } from "./html.js";
+import { cellsOf, trsOf, type ParseResult } from "./html.js";
 import type { RecordRow } from "../portal-sync.types.js";
 
 /**
@@ -681,8 +689,8 @@ export const parseRecordAcademico = (html: string): ParseResult<RecordRow[]> => 
   const out: RecordRow[] = [];
   let currentPeriod = "";
 
-  for (const tr of html.match(/<tr[\s\S]*?<\/tr>/gi) ?? []) {
-    const cells = (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) ?? []).map((td) => clean(stripTags(td)));
+  for (const tr of trsOf(html)) {
+    const cells = cellsOf(tr);
     if (cells.length < 9) continue;
 
     const cicloCell = cells[0];
@@ -1155,7 +1163,7 @@ git commit -m "feat(portal-sync): cliente HTTP del portal con allowlist, timeout
 
 **Interfaces:**
 - Consumes: `db`.
-- Produces: `PortalSyncRepository` con `upsertPeriod(tx, code): Promise<{ id: number; code: string; created: boolean; datesDefaulted: boolean }>`, `ensureAcademicWeeks(tx, periodId, startDate)`, `findActivePeriod(): Promise<{id:number; code:string} | null>`, `defaultPeriodDates(code): { start: string; end: string }`.
+- Produces: `PortalSyncRepository` con `runInTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>`, `upsertPeriod(tx, code, activate)`, `ensureAcademicWeeks(tx, periodId, startDate)`, `findActivePeriod(): Promise<{id:number; code:string} | null>`, `findUserCode(userId)`, `countEnrollmentsInPeriod(studentId, periodId)`, y las funciones puras `defaultPeriodDates(code)` y `periodCodeIsNewer(incoming, current)`.
 
 - [ ] **Step 1: Escribir el test que falla**
 
@@ -1221,6 +1229,11 @@ export const periodCodeIsNewer = (incoming: string, current: string | null): boo
 
 export class PortalSyncRepository {
   constructor(readonly database: typeof db) {}
+
+  /** Única puerta de entrada a la transacción; el service nunca abre una. */
+  async runInTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+    return await this.database.transaction(fn);
+  }
 
   async findActivePeriod(): Promise<{ id: number; code: string } | null> {
     const rows = (await this.database.execute(sql`
@@ -1808,18 +1821,7 @@ describe("PortalSyncService.getStatus", () => {
 Run: `bun test test/HU31_jeff/service.import.test.ts`
 Expected: FAIL — módulo no encontrado.
 
-- [ ] **Step 3: Agregar `runInTransaction` al repository**
-
-En `portal-sync.repository.ts`, dentro de la clase:
-
-```ts
-  /** Única puerta de entrada a la transacción; el service nunca abre una. */
-  async runInTransaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
-    return await this.database.transaction(fn);
-  }
-```
-
-- [ ] **Step 4: Implementar el service**
+- [ ] **Step 3: Implementar el service**
 
 ```ts
 // src/modules/portal-sync/portal-sync.service.ts
@@ -2035,12 +2037,12 @@ export class PortalSyncService {
 }
 ```
 
-- [ ] **Step 5: Verificar que pasa**
+- [ ] **Step 4: Verificar que pasa**
 
 Run: `bun test test/HU31_jeff/service.import.test.ts && bun run build`
 Expected: PASS (9 tests) y compilación limpia.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/modules/portal-sync test/HU31_jeff/service.import.test.ts
@@ -2058,7 +2060,8 @@ git commit -m "feat(portal-sync): service de importacion con identidad estricta 
 - Create: `src/modules/portal-sync/index.ts`
 - Modify: `src/modules/index.ts`
 - Modify: `src/shared/middleware/rate-limit.ts`
-- Test: `test/HU31_jeff/routes.import.test.ts`
+- Modify: `src/server.ts` (lista `modules` del health check)
+- Test: `test/HU31_jeff/schemas.import.test.ts`
 
 **Interfaces:**
 - Consumes: `PortalSyncService`, `authMiddleware`, `requireRole`, `STUDENT_ROLES`, `validateJson`, `HttpError`.
@@ -2067,7 +2070,7 @@ git commit -m "feat(portal-sync): service de importacion con identidad estricta 
 - [ ] **Step 1: Escribir el test que falla**
 
 ```ts
-// test/HU31_jeff/routes.import.test.ts
+// test/HU31_jeff/schemas.import.test.ts
 import { describe, expect, test } from "bun:test";
 import { importCookiesSchema } from "../../src/modules/portal-sync/portal-sync.schemas.js";
 
@@ -2100,7 +2103,7 @@ describe("importCookiesSchema", () => {
 
 - [ ] **Step 2: Verificar que falla**
 
-Run: `bun test test/HU31_jeff/routes.import.test.ts`
+Run: `bun test test/HU31_jeff/schemas.import.test.ts`
 Expected: FAIL — módulo no encontrado.
 
 - [ ] **Step 3: Implementar schemas, controller y rutas**
@@ -2254,7 +2257,7 @@ Expected: PASS en toda la carpeta y compilación limpia.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/modules src/shared/middleware/rate-limit.ts src/server.ts test/HU31_jeff/routes.import.test.ts
+git add src/modules src/shared/middleware/rate-limit.ts src/server.ts test/HU31_jeff/schemas.import.test.ts
 git commit -m "feat(portal-sync): rutas, controller, validacion de cookies y rate limit"
 ```
 
