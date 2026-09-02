@@ -15,6 +15,10 @@ describe("parseAulaVirtual", () => {
     expect(plan?.sectionCode).toBe("952");
     expect(plan?.teacherName).toBe("PERCY DIEZ QUIÑONES PANDURO");
   });
+
+  test("parseAulaVirtual falla con ok:false sin tabla de cursos", () => {
+    expect(parseAulaVirtual("<html>nada</html>").ok).toBe(false);
+  });
 });
 
 describe("normalizeTeacherName", () => {
@@ -51,5 +55,9 @@ describe("parseHorario", () => {
     expect(bloque?.startTime).toBe("07:00");
     expect(bloque?.endTime).toBe("09:00");
     expect(bloque?.classroom).toBe("N-405");
+  });
+
+  test("parseHorario falla con ok:false sin tabla de horario", () => {
+    expect(parseHorario("<html>nada</html>").ok).toBe(false);
   });
 });

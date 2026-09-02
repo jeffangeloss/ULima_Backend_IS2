@@ -11,10 +11,14 @@ describe("parseInfoAcademica", () => {
     expect(r.data.careerName).toBe("INGENIERÍA DE SISTEMAS");
   });
 
-  test("no extrae PPA ni ubicacion relativa (decision 2: descartados)", () => {
+  test("solo extrae la carrera: ni PPA, ni ubicacion, ni nivel", () => {
     const r = parseInfoAcademica(layout);
     if (!r.ok) throw new Error("parser fallo");
-    expect(Object.keys(r.data).sort()).toEqual(["careerName", "lastPeriodLevel"]);
+    expect(Object.keys(r.data)).toEqual(["careerName"]);
+  });
+
+  test("parseInfoAcademica falla si no hay bloque de informacion academica", () => {
+    expect(parseInfoAcademica("<html>nada</html>").ok).toBe(false);
   });
 });
 

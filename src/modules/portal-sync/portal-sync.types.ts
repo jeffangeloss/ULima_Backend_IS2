@@ -21,7 +21,7 @@ export interface RecordRow {
   attempt: number; credits: number; grade: number | null; sectionCode: string;
 }
 
-export interface InfoAcademica { careerName: string | null; lastPeriodLevel: number | null }
+export interface InfoAcademica { careerName: string | null }
 export interface Impedimentos { hasImpediment: boolean; hasDebt: boolean; text: string }
 
 export type WarningCode =
