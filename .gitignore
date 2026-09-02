@@ -56,3 +56,5 @@ backup_*.sql
 # Mutation testing (Stryker)
 .stryker-tmp/
 reports/
+.vercel
+.env*

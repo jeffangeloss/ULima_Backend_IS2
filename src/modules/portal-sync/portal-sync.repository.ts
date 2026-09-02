@@ -6,6 +6,31 @@ import type { RecordRow, SyllabusEntry } from "./portal-sync.types.js";
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
+ * Arreglo de enteros para `= any(...)` / `<> all(...)`.
+ *
+ * NO se puede interpolar un arreglo de JS directamente: la plantilla `sql` de
+ * Drizzle lo expande como LISTA DE VALORES entre paréntesis, o sea un
+ * constructor de fila, no un arreglo. `all(${[1,2,3]})` renderiza
+ * `all(($1, $2, $3))` y Postgres lo rechaza con 42809 ("op ANY/ALL (array)
+ * requires array on right side"). Con un solo elemento tampoco funciona:
+ * `all(($1))` sigue siendo un escalar entre paréntesis.
+ *
+ * Se detectó el 2026-09-02 en la primera importación real contra el portal;
+ * ninguna prueba con dobles podía verlo, porque el fallo lo produce Postgres.
+ *
+ * Envolver en `array[...]` no arregla nada — daría `array[($1, $2, $3)]`, un
+ * arreglo de UNA fila. La salida acá es mandar UN solo parámetro de texto y
+ * dejar que Postgres lo convierta, con lo que la consulta sigue totalmente
+ * parametrizada (nada se concatena en el SQL).
+ *
+ * Ojo: esto aplica a la plantilla `sql` de DRIZZLE. Los scripts de
+ * `src/db/seed/` usan el cliente postgres-js, que sí liga un arreglo de JS
+ * como arreglo de Postgres; ahí la interpolación directa es correcta.
+ */
+const intArray = (values: number[]) =>
+  sql`string_to_array(${values.map((v) => Number(v)).join(",")}, ',')::int[]`;
+
+/**
  * Adelanta una fecha `AAAA-MM-DD` al lunes siguiente; si ya es lunes, la deja
  * igual. `ensureAcademicWeeks` genera cada semana como `start_date + (n-1)*7`,
  * así que si `start_date` no cae en lunes TODAS las semanas del período quedan
@@ -372,7 +397,7 @@ export class PortalSyncRepository {
       where e.student_id = ${studentId}
         and co.academic_period_id = ${periodId}
         and e.status = 'active'
-        and e.section_id <> all(${keep})
+        and e.section_id <> all(${intArray(keep)})
     `)) as unknown as Array<{ id: number }>;
     if (!candidates.length) return 0;
 
@@ -380,7 +405,7 @@ export class PortalSyncRepository {
     if (withdrawalWouldLockOut(active, candidates.length)) return -1;   // -1 = se omitió para no bloquear el login
 
     const ids = candidates.map((r) => Number(r.id));
-    await tx.execute(sql`update enrollment set status = 'withdrawn' where id = any(${ids})`);
+    await tx.execute(sql`update enrollment set status = 'withdrawn' where id = any(${intArray(ids)})`);
     return ids.length;
   }
 
