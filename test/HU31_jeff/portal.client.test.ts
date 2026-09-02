@@ -52,4 +52,16 @@ describe("PortalClient", () => {
     const c = clientWith(async () => new Response("ok", { status: 200 }));
     await expect(c.fetchAll("../evil", cookies)).rejects.toMatchObject({ code: "PORTAL_UNAVAILABLE" });
   });
+
+  test("fetchAll solo descarga matricula y record: datosPersonales no se pide, nadie lo lee", async () => {
+    const urls: string[] = [];
+    const c = clientWith(async (url) => {
+      urls.push(url);
+      return new Response("<html>ok</html>", { status: 200 });
+    });
+    const pages = await c.fetchAll("20262", cookies);
+    expect(Object.keys(pages).sort()).toEqual(["matricula", "record"]);
+    expect(urls).toHaveLength(2);
+    expect(urls.some((u) => /DatosPersonales/i.test(u))).toBe(false);
+  });
 });

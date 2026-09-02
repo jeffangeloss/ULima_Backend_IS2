@@ -14,7 +14,7 @@ const CODE_EN_FIXTURE = matricula.match(/\b(\d{8})\b/)![1];
 const fakeClient = (over: Partial<PortalClient> = {}): PortalClient =>
   ({
     fetchPage: async () => layout,
-    fetchAll: async () => ({ matricula, record, datosPersonales: "<html></html>" }),
+    fetchAll: async () => ({ matricula, record }),
     logout: async () => {},
     ...over,
   }) as unknown as PortalClient;
@@ -63,7 +63,7 @@ describe("PortalSyncService.importFromPortal", () => {
 
   test("422 si el consolidado no es parseable (identidad no verificable)", async () => {
     const client = fakeClient({
-      fetchAll: async () => ({ matricula: "<html>vacio</html>", record, datosPersonales: "" }),
+      fetchAll: async () => ({ matricula: "<html>vacio</html>", record }),
     } as Partial<PortalClient>);
     const svc = new PortalSyncService(fakeRepo(), client);
     await expect(svc.importFromPortal(3, 7, cookies)).rejects.toMatchObject({
@@ -127,7 +127,7 @@ describe("PortalSyncService.importFromPortal", () => {
       },
     } as never);
     const client = fakeClient({
-      fetchAll: async () => ({ matricula: matriculaConDosSecciones, record, datosPersonales: "<html></html>" }),
+      fetchAll: async () => ({ matricula: matriculaConDosSecciones, record }),
     } as Partial<PortalClient>);
 
     const svc = new PortalSyncService(repo, client);

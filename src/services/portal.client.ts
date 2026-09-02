@@ -10,7 +10,6 @@ export const PORTAL_PATHS = {
   layout: "layout.jsp",
   matricula: (cociclo: string) => `gama/servlets/ComandoMostrarConsMatr?COCICLO=${cociclo}&Fg=1`,
   record: "gada/servlets/ComandoListarRecordAcademico?ac=1",
-  datosPersonales: "ul/servlets/ComandoVisualizarDatosPersonales",
   logout: "servlets/CustomLogoutServlet",
 } as const;
 
@@ -80,12 +79,11 @@ export class PortalClient {
     if (!/^\d{5}$/.test(cociclo)) {
       throw new HttpError(502, "Ciclo del portal con formato inesperado.", "PORTAL_UNAVAILABLE");
     }
-    const [matricula, record, datosPersonales] = await Promise.all([
+    const [matricula, record] = await Promise.all([
       this.fetchPage(PORTAL_PATHS.matricula(cociclo), cookies),
       this.fetchPage(PORTAL_PATHS.record, cookies),
-      this.fetchPage(PORTAL_PATHS.datosPersonales, cookies),
     ]);
-    return { matricula, record, datosPersonales };
+    return { matricula, record };
   }
 
   /** Best effort: cerrar la sesión del portal nunca debe romper la importación. */
