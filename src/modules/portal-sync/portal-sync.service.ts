@@ -5,6 +5,7 @@ import {
   shouldActivatePeriod, teacherCodeFor,
   levelFromCoverage, levelNeverGoesDown,
   type ProgressStatus,
+  careerNamesDiffer,
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
@@ -88,7 +89,7 @@ export class PortalSyncService {
 
     const student = await this.repository.findStudent(studentId);
     if (!student) throw new HttpError(422, "Perfil de alumno no encontrado.", "PORTAL_IDENTITY_UNVERIFIABLE");
-    if (mat.data.careerName && student.careerName && mat.data.careerName !== student.careerName) {
+    if (careerNamesDiffer(mat.data.careerName, student.careerName)) {
       warnings.push({
         code: "CAREER_MISMATCH", block: "matricula",
         message: `El portal reporta "${mat.data.careerName}" y en ULima++ figura "${student.careerName}". No se modificó la carrera.`,

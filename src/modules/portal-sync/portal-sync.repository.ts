@@ -143,6 +143,30 @@ export const teacherCodeFor = (fullName: string): string => {
   return `PORTAL:${slug}`.slice(0, 50).replace(/-+$/, "");
 };
 
+/**
+ * ¿Son la misma carrera, escritas distinto?
+ *
+ * El portal manda el nombre en MAYÚSCULAS ("INGENIERÍA DE SISTEMAS") y en
+ * ULima++ está en capitalización normal ("Ingeniería de Sistemas"). Comparar
+ * las cadenas crudas hacía que TODA importación emitiera un `CAREER_MISMATCH`
+ * avisando de una diferencia que no existe, y esa advertencia es justamente la
+ * que debe significar "ojo, el portal dice que estudias otra cosa".
+ *
+ * Se normaliza quitando acentos, pasando a mayúsculas y colapsando espacios.
+ * Los acentos entran porque el portal es ISO-8859-1 y no siempre los conserva
+ * igual; el espacio, porque el consolidado a veces trae dobles.
+ */
+export const normalizeCareerName = (name: string): string =>
+  (name ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase().replace(/\s+/g, " ").trim();
+
+/** Distinta carrera de verdad, no una diferencia de mayúsculas o acentos. */
+export const careerNamesDiffer = (portal: string | null, local: string | null): boolean => {
+  if (!portal || !local) return false;
+  return normalizeCareerName(portal) !== normalizeCareerName(local);
+};
+
 export const PLACEHOLDER_TEACHER = "DOCENTE POR ASIGNAR";
 
 export type ProgressStatus = "in_progress" | "approved" | "failed";
