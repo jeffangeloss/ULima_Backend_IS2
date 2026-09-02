@@ -148,6 +148,7 @@ export class ScheduleRepository {
       from enrollment e
       join section sec on sec.id = e.section_id
       join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       join syllabus sy on sy.course_offering_id = co.id
       join assessment a on a.syllabus_id = sy.id
@@ -203,6 +204,7 @@ export class ScheduleRepository {
       from section sec
       join teacher t on t.id = sec.teacher_id
       join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       left join schedule_session ss on ss.section_id = sec.id
       where sec.teacher_id = ${teacherId} or sec.jp_id = ${teacherId}
@@ -269,6 +271,7 @@ export class ScheduleRepository {
         ss.color_hex
       from section sec
       join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       join syllabus sy on sy.course_offering_id = co.id
       join assessment a on a.syllabus_id = sy.id
