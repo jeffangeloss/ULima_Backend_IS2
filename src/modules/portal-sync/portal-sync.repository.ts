@@ -21,12 +21,52 @@ export const snapToNextMonday = (dateStr: string): string => {
   return date.toISOString().slice(0, 10);
 };
 
-/** Fechas por defecto de un período que el portal no tiene documentado. */
+/**
+ * Calendarios académicos publicados por la Universidad. Cuando el ciclo está
+ * aquí se usan sus fechas reales; solo se cae al cálculo aproximado cuando no.
+ *
+ * Importa que sean exactas: de `start_date` salen las semanas académicas, y de
+ * ellas la "semana N" que responde el chatbot y la aritmética de alertas. Con
+ * el cálculo aproximado, 2026-2 arrancaba tres semanas antes de lo real.
+ *
+ * La Universidad publica estos calendarios como "sujetos a modificaciones":
+ * si cambian, se corrige aquí.
+ */
+export const KNOWN_PERIOD_CALENDARS: Record<string, { start: string; end: string }> = {
+  "2026-2": { start: "2026-08-24", end: "2026-12-14" },
+};
+
+/** ¿El ciclo tiene un calendario publicado por la Universidad (vs. fechas por defecto)? */
+export const hasPublishedCalendar = (code: string): boolean =>
+  Object.prototype.hasOwnProperty.call(KNOWN_PERIOD_CALENDARS, code);
+
+/**
+ * Fechas de un período. Si la Universidad publicó su calendario se usan tal
+ * cual (sin el snap a lunes: una fecha publicada es autoritativa aunque no
+ * cayera en lunes); si no, se cae al cálculo aproximado de siempre.
+ */
 export const defaultPeriodDates = (code: string): { start: string; end: string } => {
+  const published = KNOWN_PERIOD_CALENDARS[code];
+  if (published) return published;
   const [year, n] = code.split("-");
   if (n === "1") return { start: snapToNextMonday(`${year}-03-15`), end: `${year}-07-31` };
   if (n === "2") return { start: snapToNextMonday(`${year}-08-01`), end: `${year}-12-20` };
   return { start: snapToNextMonday(`${year}-01-05`), end: `${year}-02-28` };
+};
+
+/**
+ * Cantidad de semanas de 7 días necesarias para cubrir [startDate, endDate],
+ * mínimo 1. `ensureAcademicWeeks` genera exactamente esta cantidad: un número
+ * fijo (17) generaba semanas más allá del fin real cuando el ciclo dura menos
+ * (2026-2, con calendario publicado, dura 16).
+ */
+export const academicWeekCount = (startDate: string, endDate: string): number => {
+  const toUTCDays = (dateStr: string): number => {
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return Date.UTC(year, month - 1, day) / 86_400_000;
+  };
+  const spanDays = toUTCDays(endDate) - toUTCDays(startDate);
+  return Math.max(1, Math.ceil(spanDays / 7));
 };
 
 /** El ciclo global solo AVANZA: nunca se retrocede por la importación de un alumno. */
@@ -134,27 +174,29 @@ export class PortalSyncRepository {
       insert into academic_period (code, start_date, end_date, is_active)
       values (${code}, ${start}::date, ${end}::date, ${activate})
       on conflict (code) do update set is_active = ${activate}
-      returning id, code, (xmax = 0) as "created", start_date as "startDate"
-    `)) as unknown as Array<{ id: number; code: string; created: boolean; startDate: string }>;
+      returning id, code, (xmax = 0) as "created", start_date as "startDate", end_date as "endDate"
+    `)) as unknown as Array<{ id: number; code: string; created: boolean; startDate: string; endDate: string }>;
 
     const row = rows[0];
     return {
       id: Number(row.id),
       code: row.code,
       created: Boolean(row.created),
-      datesDefaulted: Boolean(row.created),
+      datesDefaulted: Boolean(row.created) && !hasPublishedCalendar(row.code),
       startDate: String(row.startDate),
+      endDate: String(row.endDate),
     };
   }
 
-  /** 17 semanas del período. Sin ellas, schedule y chatbot no resuelven "semana N". */
-  async ensureAcademicWeeks(tx: Tx, periodId: number, startDate: string): Promise<void> {
+  /** Semanas del período, en cantidad derivada del span real. Ver `academicWeekCount`. */
+  async ensureAcademicWeeks(tx: Tx, periodId: number, startDate: string, endDate: string): Promise<void> {
+    const weeks = academicWeekCount(startDate, endDate);
     await tx.execute(sql`
       insert into academic_week (academic_period_id, week_number, start_date, end_date)
       select ${periodId}, gs,
              (${startDate}::date + ((gs - 1) * 7))::date,
              (${startDate}::date + ((gs - 1) * 7) + 6)::date
-      from generate_series(1, 17) as gs
+      from generate_series(1, ${weeks}) as gs
       on conflict (academic_period_id, week_number) do nothing
     `);
   }

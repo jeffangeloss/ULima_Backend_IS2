@@ -1,7 +1,8 @@
 import { HttpError } from "../../shared/errors/http-error.js";
 import type { PortalClient } from "../../services/portal.client.js";
 import {
-  PortalSyncRepository, periodCodeIsNewer, pickBestRecordRow, progressStatusFor, teacherCodeFor,
+  PortalSyncRepository, hasPublishedCalendar, periodCodeIsNewer, pickBestRecordRow, progressStatusFor,
+  teacherCodeFor,
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
@@ -101,11 +102,13 @@ export class PortalSyncService {
       const activate = periodCodeIsNewer(ciclo.data.periodCode, activeBeforeTx?.code ?? null);
       const p = await this.repository.upsertPeriod(tx, ciclo.data.periodCode, activate);
       if (p.created) {
-        await this.repository.ensureAcademicWeeks(tx, p.id, p.startDate);
-        warnings.push({
-          code: "PERIOD_DATES_DEFAULTED", block: "periodo",
-          message: `Se creó el período ${p.code} con fechas por defecto; Sistemas debe corregirlas.`,
-        });
+        await this.repository.ensureAcademicWeeks(tx, p.id, p.startDate, p.endDate);
+        if (!hasPublishedCalendar(p.code)) {
+          warnings.push({
+            code: "PERIOD_DATES_DEFAULTED", block: "periodo",
+            message: `Se creó el período ${p.code} con fechas por defecto; Sistemas debe corregirlas.`,
+          });
+        }
       }
 
       // sectionIdByCourse resuelve el horario, que solo trae courseCode: dos filas

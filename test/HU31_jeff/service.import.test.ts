@@ -26,7 +26,9 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     findStudent: async () => ({ id: 7, userId: 3, careerId: 1, curriculumId: 1, careerName: "INGENIERÍA DE SISTEMAS" }),
     countEnrollmentsInPeriod: async () => 0,
     runInTransaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
-    upsertPeriod: async () => ({ id: 2, code: "2026-2", created: true, datesDefaulted: true, startDate: "2026-08-01" }),
+    upsertPeriod: async () => (
+      { id: 2, code: "2026-2", created: true, datesDefaulted: false, startDate: "2026-08-24", endDate: "2026-12-14" }
+    ),
     ensureAcademicWeeks: async () => {},
     upsertTeacher: async () => ({ id: 10, created: true }),
     upsertCourse: async () => ({ id: 20, created: true }),
@@ -53,6 +55,25 @@ describe("PortalSyncService.importFromPortal", () => {
     expect(r.identity.portalCode).toBe(CODE_EN_FIXTURE);
     expect(r.summary.enrollmentsUpserted).toBe(5);
     expect(r.summary.sessionsUpserted).toBeGreaterThan(0);
+  });
+
+  test("no reporta PERIOD_DATES_DEFAULTED si el periodo creado tiene calendario publicado", async () => {
+    // El mock por defecto crea "2026-2", que SI tiene calendario publicado
+    // (KNOWN_PERIOD_CALENDARS): sus fechas son correctas, no hay nada que avisar.
+    const svc = new PortalSyncService(fakeRepo(), fakeClient());
+    const r = await svc.importFromPortal(3, 7, cookies);
+    expect(r.warnings.some((w) => w.code === "PERIOD_DATES_DEFAULTED")).toBe(false);
+  });
+
+  test("reporta PERIOD_DATES_DEFAULTED si el periodo creado NO tiene calendario publicado", async () => {
+    const repo = fakeRepo({
+      upsertPeriod: async () => (
+        { id: 2, code: "2027-2", created: true, datesDefaulted: true, startDate: "2027-08-02", endDate: "2027-12-20" }
+      ),
+    } as never);
+    const svc = new PortalSyncService(repo, fakeClient());
+    const r = await svc.importFromPortal(3, 7, cookies);
+    expect(r.warnings.some((w) => w.code === "PERIOD_DATES_DEFAULTED")).toBe(true);
   });
 
   test("403 si el codigo del portal no es el del alumno autenticado", async () => {
@@ -131,7 +152,9 @@ describe("PortalSyncService.importFromPortal", () => {
       findActivePeriod: async () => ({ id: 9, code: "2026-3" }),
       upsertPeriod: async (_tx, _code, activate: boolean) => {
         activateSeen.push(activate);
-        return { id: 2, code: "2026-2", created: true, datesDefaulted: true, startDate: "2026-08-01" };
+        return {
+          id: 2, code: "2026-2", created: true, datesDefaulted: false, startDate: "2026-08-24", endDate: "2026-12-14",
+        };
       },
     } as never);
     const svc = new PortalSyncService(repo, fakeClient());
