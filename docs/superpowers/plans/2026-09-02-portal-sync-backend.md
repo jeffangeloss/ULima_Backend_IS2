@@ -943,7 +943,7 @@ git commit -m "feat(portal-sync): columna enrollment.final_grade con migracion 0
 - Consumes: `config`, `HttpError`.
 - Produces: `PortalClient` con
   `fetchPage(path: string, cookies: PortalCookies): Promise<string>`,
-  `fetchAll(cociclo: string, cookies: PortalCookies): Promise<{ layout: string; matricula: string; record: string; datosPersonales: string }>`,
+  `fetchAll(cociclo: string, cookies: PortalCookies): Promise<{ matricula: string; record: string; datosPersonales: string }>` (no devuelve `layout`: el service ya lo descargó para resolver el ciclo),
   `logout(cookies: PortalCookies): Promise<void>`,
   y la constante exportada `PORTAL_PATHS`.
 
