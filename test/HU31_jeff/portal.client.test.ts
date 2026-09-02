@@ -12,6 +12,33 @@ const clientWithSyllabus = (impl: (url: string) => Promise<Response>) =>
     "https://webaloe.ulima.edu.pe", 8000, impl as unknown as typeof fetch, "https://cactus.ulima.edu.pe",
   );
 
+/** Error tal como lo emite un fetch abortado. */
+const abortError = () => Object.assign(new Error("The operation was aborted."), { name: "AbortError" });
+
+/** Responde cabeceras 200 y luego NUNCA termina de emitir el cuerpo (proxy a
+ *  medio morir, respuesta chunked truncada). El stream solo falla si se aborta
+ *  la señal del fetch, que es lo que hace el fetch real cuando el
+ *  AbortController se dispara: si el timeout ya se desarmó, cuelga para
+ *  siempre. */
+const respuestaConCuerpoColgado = (init?: RequestInit): Response =>
+  new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("<html>"));
+        (init?.signal as AbortSignal | undefined)?.addEventListener("abort", () => controller.error(abortError()));
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "text/html;charset=ISO-8859-1" } },
+  );
+
+/** Espera `p` con un tope propio: si la promesa NUNCA resuelve (justo el bug
+ *  que se cubre) devuelve "colgada" en vez de dejar colgado el runner. */
+const conTope = async <T>(p: Promise<T>, ms = 800): Promise<T | Error | "colgada"> =>
+  Promise.race([
+    p.catch((e: Error) => e),
+    new Promise<"colgada">((resolve) => { setTimeout(() => resolve("colgada"), ms); }),
+  ]);
+
 describe("PortalClient", () => {
   test("manda las cookies y no sigue redirecciones", async () => {
     let seen = "";
@@ -52,6 +79,20 @@ describe("PortalClient", () => {
     const err = await c.fetchPage("layout.jsp", cookies).catch((e) => e as HttpError);
     expect(err.message).not.toContain("SECRETO");
   });
+
+  test("un cuerpo que nunca termina de llegar corta por timeout, no cuelga la petición", async () => {
+    // fetch resuelve al llegar las CABECERAS: si el timer se desarma ahí, la
+    // lectura del cuerpo corre sin límite de tiempo y con el AbortController
+    // ya desactivado. Un host que responde 200 y deja de emitir bytes colgaba
+    // la promesa para siempre, y con ella la importación entera.
+    const c = new PortalClient(
+      "https://webaloe.ulima.edu.pe", 50,
+      ((_url: string, init?: RequestInit) => Promise.resolve(respuestaConCuerpoColgado(init))) as unknown as typeof fetch,
+    );
+    const r = await conTope(c.fetchPage("layout.jsp", cookies));
+    expect(r).not.toBe("colgada");
+    expect(r).toMatchObject({ statusCode: 504, code: "PORTAL_TIMEOUT" });
+  }, 5000);
 
   test("rechaza un cociclo que no sea de 5 digitos", async () => {
     const c = clientWith(async () => new Response("ok", { status: 200 }));
@@ -126,4 +167,17 @@ describe("PortalClient.fetchSyllabus", () => {
     expect(await c.fetchSyllabus("20262", "abc", cookies)).toBeNull();
     expect(calls).toBe(0);
   });
+  test("un cuerpo que nunca termina de llegar se degrada a null por timeout, no cuelga la importación", async () => {
+    // Mismo bug que en fetchPage, pero multiplicado por N sílabos: el
+    // Promise.all del service espera a que resuelvan TODAS las promesas, así
+    // que una sola colgada dejaba la importación sin escribir nada.
+    const c = new PortalClient(
+      "https://webaloe.ulima.edu.pe", 50,
+      ((_url: string, init?: RequestInit) => Promise.resolve(respuestaConCuerpoColgado(init))) as unknown as typeof fetch,
+      "https://cactus.ulima.edu.pe",
+    );
+    const r = await conTope(c.fetchSyllabus("20262", "650033", cookies));
+    expect(r).not.toBe("colgada");
+    expect(r).toBeNull();
+  }, 5000);
 });
