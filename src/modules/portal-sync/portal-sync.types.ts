@@ -32,6 +32,7 @@ export interface SyllabusEntry { unid: string; fileName: string; url: string }
 export type WarningCode =
   | "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED"
   | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE"
+  | "LEVEL_REGRESSION_BLOCKED"
   | "SYLLABUS_UNAVAILABLE";
 export interface SyncWarning { code: WarningCode; block: string; message: string }
 

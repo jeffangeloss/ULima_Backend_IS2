@@ -31,7 +31,7 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
   ({
     findActivePeriod: async () => ({ id: 1, code: "2026-1" }),
     findUserCode: async () => CODE_EN_FIXTURE,
-    findStudent: async () => ({ id: 7, userId: 3, careerId: 1, curriculumId: 1, careerName: "INGENIERÍA DE SISTEMAS" }),
+    findStudent: async () => ({ id: 7, userId: 3, careerId: 1, curriculumId: 1, currentLevel: null, careerName: "INGENIERÍA DE SISTEMAS" }),
     countEnrollmentsInPeriod: async () => 0,
     runInTransaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
     upsertPeriod: async () => (
@@ -53,7 +53,8 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     findCurriculumCourseId: async () => 60,
     upsertProgress: async () => {},
     upsertImpedimentAlert: async () => true,
-    findStudentLevel: async () => null,
+    // Sin obligatorios: levelFromCoverage devuelve null y no se toca el nivel.
+    findCycleCoverage: async () => [],
     updateStudentLevel: async () => {},
     fillFullNameIfEmpty: async () => {},
     upsertSyllabus: async () => ({ id: 999, created: true }),
@@ -252,13 +253,15 @@ describe("PortalSyncService.importFromPortal", () => {
     for (const id of idsFor650033) expect(keptSectionIds).toContain(id);
   });
 
-  test("el nivel del alumno se escribe con lo que devuelve findStudentLevel", async () => {
-    // findStudentLevel ya resuelve el ciclo obligatorio pendiente mas bajo
-    // consultando curriculum_course + student_course_progress; el service
-    // solo debe pasar ese valor a updateStudentLevel tal cual.
+  test("el nivel sale de la cobertura por ciclo: el pendiente mas bajo sobre el ultimo completo", async () => {
+    // Ciclos 1..5 completos, el 6 a medias: el nivel es 6.
     const updates: Array<{ studentId: number; level: number }> = [];
     const repo = fakeRepo({
-      findStudentLevel: async () => 6,
+      findCycleCoverage: async () => [
+        { cycle: 1, total: 6, approved: 6 }, { cycle: 2, total: 6, approved: 6 },
+        { cycle: 3, total: 6, approved: 6 }, { cycle: 4, total: 6, approved: 6 },
+        { cycle: 5, total: 6, approved: 6 }, { cycle: 6, total: 6, approved: 2 },
+      ],
       updateStudentLevel: async (_tx, studentId: number, level: number) => {
         updates.push({ studentId, level });
       },
@@ -269,10 +272,10 @@ describe("PortalSyncService.importFromPortal", () => {
     expect(updates).toEqual([{ studentId: 7, level: 6 }]);
   });
 
-  test("no escribe el nivel cuando findStudentLevel devuelve null (aprobo todo lo obligatorio)", async () => {
+  test("no escribe el nivel cuando ya aprobo todos los obligatorios", async () => {
     let updateCalls = 0;
     const repo = fakeRepo({
-      findStudentLevel: async () => null,
+      findCycleCoverage: async () => [{ cycle: 1, total: 4, approved: 4 }],
       updateStudentLevel: async () => { updateCalls++; },
     });
     const svc = new PortalSyncService(repo, fakeClient());

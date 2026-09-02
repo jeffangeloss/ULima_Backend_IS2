@@ -3,6 +3,7 @@ import type { PortalClient } from "../../services/portal.client.js";
 import {
   PortalSyncRepository, defaultPeriodDates, hasPublishedCalendar, pickBestRecordRow, progressStatusFor,
   shouldActivatePeriod, teacherCodeFor,
+  levelFromCoverage, levelNeverGoesDown,
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
@@ -279,10 +280,22 @@ export class PortalSyncService {
       }
 
       // Nivel del alumno: el ciclo del curso obligatorio más bajo que aún le
-      // falta (pendiente o cursándolo). Se calcula DESPUÉS del loop de progreso
-      // de arriba para ver el progreso que esta misma importación acaba de
-      // escribir. null = ya aprobó todos los obligatorios; no se toca nada.
-      const level = await this.repository.findStudentLevel(tx, studentId, student.curriculumId);
+      // falta (pendiente o cursándolo), ignorando lo que esté por debajo del
+      // ciclo más alto ya completo. Se calcula DESPUÉS del loop de progreso de
+      // arriba para ver el progreso que esta misma importación acaba de
+      // escribir. null = no hay ciclo que asignar; no se toca nada.
+      const coverage = await this.repository.findCycleCoverage(tx, studentId, student.curriculumId);
+      const calculado = levelFromCoverage(coverage);
+      const { level, regresion } = levelNeverGoesDown(calculado, student.currentLevel ?? null);
+      if (regresion) {
+        // El nivel no bajó, pero que las dos cuentas no coincidan es señal de
+        // que faltan datos de progreso: se avisa en vez de esconderlo.
+        warnings.push({
+          code: "LEVEL_REGRESSION_BLOCKED", block: "matricula",
+          message: `El cálculo dio ciclo ${calculado} y en ULima++ figura ${student.currentLevel}. `
+            + "Se mantuvo el guardado: probablemente hay cursos de tu récord que no calzan con tu malla.",
+        });
+      }
       if (level !== null) {
         if (level >= 1 && level <= 10) {
           await this.repository.updateStudentLevel(tx, studentId, level);

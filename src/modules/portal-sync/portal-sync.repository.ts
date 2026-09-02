@@ -159,13 +159,58 @@ export const pickBestRecordRow = (rows: RecordRow[]): RecordRow | null => {
   return [...rows].sort((a, b) => b.attempt - a.attempt || b.periodCode.localeCompare(a.periodCode))[0];
 };
 
+/** Obligatorios de un ciclo de la malla y cuántos tiene aprobados el alumno. */
+export interface CycleCoverage { cycle: number; total: number; approved: number }
+
 /**
- * De una lista de cursos obligatorios pendientes, el nivel del alumno es el
- * ciclo MÍNIMO entre ellos (el owner: "el nivel del curso obligatorio más
- * bajo que todavía le falta"). Lista vacía => ya aprobó todo lo obligatorio.
+ * Nivel del alumno: el ciclo del curso obligatorio más bajo que todavía le
+ * falta, esté pendiente o cursándolo (regla del owner), pero **ignorando todo
+ * lo que esté por debajo del ciclo más alto que ya tiene completo**.
+ *
+ * Ese recorte no es una licencia: es lo que hace la regla utilizable con datos
+ * reales. En la primera importación real (2026-09-02) el alumno cayó de nivel
+ * 8 a 1, porque de sus 52 obligatorios solo 26 tenían fila de progreso: los
+ * otros 26 están en su récord con códigos que no calzan con la malla
+ * (convalidaciones, códigos antiguos), así que se contaban como pendientes.
+ * Le pasa a cualquier alumno con convalidaciones, no es un caso raro.
+ *
+ * El recorte se apoya en los prerrequisitos de la malla: si el ciclo 8 está
+ * aprobado entero, un obligatorio de ciclo 3 que figura pendiente no puede ser
+ * trabajo real —no se llega al 8 sin pasar el 3—, es un fallo de
+ * emparejamiento. Los ciclos por encima del último completo sí se miran todos:
+ * ahí un pendiente es información legítima.
+ *
+ * Devuelve null cuando no hay obligatorios (malla vacía o sin datos), y cuando
+ * están TODOS aprobados: el alumno terminó la carrera y no hay ciclo que
+ * asignar, así que no se toca lo guardado.
  */
-export const minOutstandingCycle = (rows: Array<{ cycle: number }>): number | null =>
-  rows.length ? Math.min(...rows.map((r) => r.cycle)) : null;
+export const levelFromCoverage = (rows: CycleCoverage[]): number | null => {
+  const ciclos = rows.filter((r) => r.total > 0).sort((a, b) => a.cycle - b.cycle);
+  if (!ciclos.length) return null;
+
+  // Ciclo más alto con TODOS sus obligatorios aprobados. 0 si ninguno lo está
+  // (alumno que recién empieza): entonces no se recorta nada.
+  const completos = ciclos.filter((r) => r.approved >= r.total).map((r) => r.cycle);
+  const ultimoCompleto = completos.length ? Math.max(...completos) : 0;
+
+  const pendiente = ciclos.find((r) => r.cycle > ultimoCompleto && r.approved < r.total);
+  return pendiente ? pendiente.cycle : null;
+};
+
+/**
+ * El nivel NUNCA baja. Red de seguridad sobre `levelFromCoverage`: si el
+ * cálculo da menos que lo que ya estaba guardado, gana lo guardado.
+ *
+ * Un alumno no retrocede de ciclo, así que un cálculo más bajo es casi siempre
+ * un artefacto de datos incompletos, y el daño de creerle es visible (la app le
+ * mostraría contenido de un ciclo que ya pasó). Se separa de `levelFromCoverage`
+ * a propósito: son dos defensas distintas y conviene poder ver cuál actuó.
+ */
+export const levelNeverGoesDown = (calculado: number | null, guardado: number | null) => {
+  if (calculado === null) return { level: null, regresion: false };
+  if (guardado !== null && calculado < guardado) return { level: guardado, regresion: true };
+  return { level: calculado, regresion: false };
+};
 
 /**
  * ¿Retirar `toWithdraw` matrículas dejaría al alumno sin ninguna activa?
@@ -343,17 +388,28 @@ export class PortalSyncRepository {
    * con estado distinto de 'approved' (in_progress, failed y withdrawn siguen
    * faltando). Devuelve null si ya aprobó todos los obligatorios.
    */
-  async findStudentLevel(tx: Tx, studentId: number, curriculumId: number): Promise<number | null> {
+  /**
+   * Cobertura por ciclo: cuántos obligatorios tiene la malla y cuántos aprobó
+   * el alumno. Antes se traían solo las filas NO aprobadas y se tomaba el
+   * mínimo, pero así no hay forma de distinguir "ciclo que de verdad le falta"
+   * de "ciclo cuyos cursos no se pudieron emparejar": ambos se ven igual. Con
+   * el total al lado, `levelFromCoverage` sí puede.
+   */
+  async findCycleCoverage(tx: Tx, studentId: number, curriculumId: number): Promise<CycleCoverage[]> {
     const rows = (await tx.execute(sql`
-      select cc.cycle as "cycle"
+      select cc.cycle as "cycle",
+             count(*)::int as "total",
+             count(*) filter (where scp.status = 'approved')::int as "approved"
       from curriculum_course cc
       left join student_course_progress scp
         on scp.curriculum_course_id = cc.id and scp.student_id = ${studentId}
       where cc.curriculum_id = ${curriculumId}
         and cc.category <> 'elective'
-        and (scp.status is null or scp.status <> 'approved')
-    `)) as unknown as Array<{ cycle: number }>;
-    return minOutstandingCycle(rows.map((r) => ({ cycle: Number(r.cycle) })));
+      group by cc.cycle
+    `)) as unknown as Array<{ cycle: number; total: number; approved: number }>;
+    return rows.map((r) => ({
+      cycle: Number(r.cycle), total: Number(r.total), approved: Number(r.approved),
+    }));
   }
 
   async updateStudentLevel(tx: Tx, studentId: number, level: number): Promise<void> {
@@ -501,10 +557,16 @@ export class PortalSyncRepository {
   async findStudent(studentId: number) {
     const rows = (await this.database.execute(sql`
       select s.id, s.user_id as "userId", s.career_id as "careerId", s.curriculum_id as "curriculumId",
+             s.current_level as "currentLevel",
              c.name as "careerName"
       from student s join career c on c.id = s.career_id
       where s.id = ${studentId} limit 1
-    `)) as unknown as Array<{ id: number; userId: number; careerId: number; curriculumId: number; careerName: string }>;
+    `)) as unknown as Array<{
+      id: number; userId: number; careerId: number; curriculumId: number;
+      // Nivel YA guardado: `levelNeverGoesDown` lo necesita para no dejar que
+      // un cálculo con datos incompletos haga retroceder al alumno.
+      currentLevel: number | null; careerName: string;
+    }>;
     return rows[0] ?? null;
   }
 }
