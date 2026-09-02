@@ -88,9 +88,17 @@ export class PortalSyncService {
     }
 
     // ── 4. Escrituras (todas dentro de UNA transacción) ─────────────────────
+    // findActivePeriod se lee ANTES de abrir la transacción y se pasa adentro:
+    // leerlo con this.repository dentro del callback corre sobre el pool, no
+    // sobre `tx`, y devuelve una foto tomada FUERA de la transacción. Dos
+    // alumnos importando al inicio de un ciclo pueden ambos leer "sin activo"
+    // y ambos decidir activate=true; el segundo INSERT viola el índice único
+    // parcial de período activo y responde 500. Leerlo antes no elimina la
+    // carrera (haría falta un advisory lock) pero saca de en medio la segunda
+    // conexión y la lectura obsoleta dentro de la propia transacción.
+    const activeBeforeTx = await this.repository.findActivePeriod();
     const period = await this.repository.runInTransaction(async (tx) => {
-      const active = await this.repository.findActivePeriod();
-      const activate = periodCodeIsNewer(ciclo.data.periodCode, active?.code ?? null);
+      const activate = periodCodeIsNewer(ciclo.data.periodCode, activeBeforeTx?.code ?? null);
       const p = await this.repository.upsertPeriod(tx, ciclo.data.periodCode, activate);
       if (p.created) {
         await this.repository.ensureAcademicWeeks(tx, p.id, p.startDate);

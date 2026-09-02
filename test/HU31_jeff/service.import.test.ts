@@ -97,6 +97,48 @@ describe("PortalSyncService.importFromPortal", () => {
     expect(logouts).toBe(1);
   });
 
+  test("findActivePeriod se lee antes de abrir la transaccion, no adentro", async () => {
+    // Antes, findActivePeriod se llamaba con this.repository DENTRO del
+    // callback de runInTransaction: corria sobre el pool, no sobre tx, y leia
+    // una foto tomada fuera de la transaccion. Dos alumnos importando al
+    // inicio de ciclo podian leer ambos "sin activo" y ambos decidir
+    // activate=true, violando el indice unico de periodo activo en el
+    // segundo insert. Se verifica que ahora se lee y termina ANTES de que
+    // runInTransaction siquiera empiece.
+    const calls: string[] = [];
+    const repo = fakeRepo({
+      findActivePeriod: async () => { calls.push("findActivePeriod"); return { id: 1, code: "2026-1" }; },
+      runInTransaction: (async (fn: (t: unknown) => Promise<unknown>) => {
+        calls.push("runInTransaction:start");
+        return fn({});
+      }) as never,
+    });
+    const svc = new PortalSyncService(repo, fakeClient());
+    await svc.importFromPortal(3, 7, cookies);
+
+    expect(calls).toEqual(["findActivePeriod", "runInTransaction:start"]);
+  });
+
+  test("la decision de activar el periodo usa el snapshot leido antes de la transaccion", async () => {
+    // El fixture trae el ciclo "2026-2". Si el periodo activo leido ANTES de
+    // la transaccion ya es mas nuevo ("2026-3"), periodCodeIsNewer debe dar
+    // false y esa es la bandera que debe llegarle a upsertPeriod: prueba que
+    // la decision se toma con el valor leido afuera, no con una lectura
+    // nueva de adentro.
+    const activateSeen: boolean[] = [];
+    const repo = fakeRepo({
+      findActivePeriod: async () => ({ id: 9, code: "2026-3" }),
+      upsertPeriod: async (_tx, _code, activate: boolean) => {
+        activateSeen.push(activate);
+        return { id: 2, code: "2026-2", created: true, datesDefaulted: true, startDate: "2026-08-01" };
+      },
+    } as never);
+    const svc = new PortalSyncService(repo, fakeClient());
+    await svc.importFromPortal(3, 7, cookies);
+
+    expect(activateSeen).toEqual([false]);
+  });
+
   test("dos filas del consolidado con el mismo curso y distinta seccion (GR.) llegan AMBAS al keep del retiro", async () => {
     // sectionIdByCourse es un Map por courseCode: si el retiro usara sus .values()
     // perdería una de las dos secciones y la retiraría por error en la misma
