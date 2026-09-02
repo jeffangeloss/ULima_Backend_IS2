@@ -70,7 +70,7 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
 describe("PortalSyncService.importFromPortal", () => {
   test("importa y devuelve resumen con el periodo del portal", async () => {
     const svc = new PortalSyncService(fakeRepo(), fakeClient());
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
     expect(r.period.code).toBe("2026-2");
     expect(r.identity.portalCode).toBe(CODE_EN_FIXTURE);
     expect(r.summary.enrollmentsUpserted).toBe(5);
@@ -81,7 +81,7 @@ describe("PortalSyncService.importFromPortal", () => {
     // El mock por defecto crea "2026-2", que SI tiene calendario publicado
     // (KNOWN_PERIOD_CALENDARS): sus fechas son correctas, no hay nada que avisar.
     const svc = new PortalSyncService(fakeRepo(), fakeClient());
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
     expect(r.warnings.some((w) => w.code === "PERIOD_DATES_DEFAULTED")).toBe(false);
   });
 
@@ -92,7 +92,7 @@ describe("PortalSyncService.importFromPortal", () => {
       ),
     } as never);
     const svc = new PortalSyncService(repo, fakeClient());
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
     expect(r.warnings.some((w) => w.code === "PERIOD_DATES_DEFAULTED")).toBe(true);
   });
 
@@ -101,7 +101,7 @@ describe("PortalSyncService.importFromPortal", () => {
     // pasado respecto a la fecha real de ejecucion de los tests: activa sin
     // advertencia.
     const svc = new PortalSyncService(fakeRepo(), fakeClient());
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
     expect(r.warnings.some((w) => w.code === "PERIOD_NOT_ACTIVATED_YET")).toBe(false);
   });
 
@@ -124,7 +124,7 @@ describe("PortalSyncService.importFromPortal", () => {
     } as never);
 
     const svc = new PortalSyncService(repo, client);
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
 
     expect(activateSeen).toEqual([false]);
     expect(r.period.code).toBe("2099-2");
@@ -133,7 +133,7 @@ describe("PortalSyncService.importFromPortal", () => {
 
   test("403 si el codigo del portal no es el del alumno autenticado", async () => {
     const svc = new PortalSyncService(fakeRepo({ findUserCode: async () => "99999999" }), fakeClient());
-    await expect(svc.importFromPortal(3, 7, cookies)).rejects.toMatchObject({
+    await expect(svc.importFromPortal(3, 7, { cookies })).rejects.toMatchObject({
       statusCode: 403, code: "PORTAL_IDENTITY_MISMATCH",
     });
   });
@@ -143,7 +143,7 @@ describe("PortalSyncService.importFromPortal", () => {
       fetchAll: async () => ({ matricula: "<html>vacio</html>", record }),
     } as Partial<PortalClient>);
     const svc = new PortalSyncService(fakeRepo(), client);
-    await expect(svc.importFromPortal(3, 7, cookies)).rejects.toMatchObject({
+    await expect(svc.importFromPortal(3, 7, { cookies })).rejects.toMatchObject({
       statusCode: 422, code: "PORTAL_IDENTITY_UNVERIFIABLE",
     });
   });
@@ -155,13 +155,13 @@ describe("PortalSyncService.importFromPortal", () => {
       runInTransaction: (async (fn: (t: unknown) => Promise<unknown>) => { tx++; return fn({}); }) as never,
     });
     const svc = new PortalSyncService(repo, fakeClient());
-    await svc.importFromPortal(3, 7, cookies).catch(() => {});
+    await svc.importFromPortal(3, 7, { cookies }).catch(() => {});
     expect(tx).toBe(0);
   });
 
   test("advierte cuando el retiro se omite para no bloquear el login", async () => {
     const svc = new PortalSyncService(fakeRepo({ withdrawMissingEnrollments: async () => -1 }), fakeClient());
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
     expect(r.warnings.some((w) => w.code === "WITHDRAW_SKIPPED_WOULD_LOCK_OUT")).toBe(true);
     expect(r.summary.enrollmentsWithdrawn).toBe(0);
   });
@@ -170,7 +170,7 @@ describe("PortalSyncService.importFromPortal", () => {
     let logouts = 0;
     const client = fakeClient({ logout: async () => { logouts++; } } as Partial<PortalClient>);
     const svc = new PortalSyncService(fakeRepo({ findUserCode: async () => "99999999" }), client);
-    await svc.importFromPortal(3, 7, cookies).catch(() => {});
+    await svc.importFromPortal(3, 7, { cookies }).catch(() => {});
     expect(logouts).toBe(1);
   });
 
@@ -191,7 +191,7 @@ describe("PortalSyncService.importFromPortal", () => {
       }) as never,
     });
     const svc = new PortalSyncService(repo, fakeClient());
-    await svc.importFromPortal(3, 7, cookies);
+    await svc.importFromPortal(3, 7, { cookies });
 
     expect(calls).toEqual(["findActivePeriod", "runInTransaction:start"]);
   });
@@ -213,7 +213,7 @@ describe("PortalSyncService.importFromPortal", () => {
       },
     } as never);
     const svc = new PortalSyncService(repo, fakeClient());
-    await svc.importFromPortal(3, 7, cookies);
+    await svc.importFromPortal(3, 7, { cookies });
 
     expect(activateSeen).toEqual([false]);
   });
@@ -252,7 +252,7 @@ describe("PortalSyncService.importFromPortal", () => {
     } as Partial<PortalClient>);
 
     const svc = new PortalSyncService(repo, client);
-    await svc.importFromPortal(3, 7, cookies);
+    await svc.importFromPortal(3, 7, { cookies });
 
     // Sanity: el fixture editado en verdad generó dos secciones para 650033.
     expect(idsFor650033).toHaveLength(2);
@@ -273,7 +273,7 @@ describe("PortalSyncService.importFromPortal", () => {
       },
     } as never);
     const svc = new PortalSyncService(repo, fakeClient());
-    await svc.importFromPortal(3, 7, cookies);
+    await svc.importFromPortal(3, 7, { cookies });
 
     expect(updates).toEqual([{ studentId: 7, level: 6 }]);
   });
@@ -285,7 +285,7 @@ describe("PortalSyncService.importFromPortal", () => {
       updateStudentLevel: async () => { updateCalls++; },
     });
     const svc = new PortalSyncService(repo, fakeClient());
-    await svc.importFromPortal(3, 7, cookies);
+    await svc.importFromPortal(3, 7, { cookies });
 
     expect(updateCalls).toBe(0);
   });
@@ -303,7 +303,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     } as never);
     const client = fakeClient({ fetchSyllabus: async () => silabo } as Partial<PortalClient>);
     const svc = new PortalSyncService(repo, client);
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
 
     // El fixture de matrícula trae 5 cursos distintos (650033, 650035,
     // 650067, 650070, 650084): con el portal devolviendo sílabo para todos,
@@ -314,7 +314,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
 
   test("SYLLABUS_UNAVAILABLE si el portal no publica sílabo para ningún curso (caso por defecto)", async () => {
     const svc = new PortalSyncService(fakeRepo(), fakeClient());
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
 
     expect(r.summary.syllabiUpserted).toBe(0);
     expect(r.warnings.some((w) => w.code === "SYLLABUS_UNAVAILABLE")).toBe(true);
@@ -325,7 +325,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
       fetchSyllabus: async (_cociclo: string, courseCode: string) => (courseCode === "650033" ? silabo : null),
     } as Partial<PortalClient>);
     const svc = new PortalSyncService(fakeRepo(), client);
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
 
     expect(r.summary.syllabiUpserted).toBe(1);
     // Ni SYLLABUS_UNAVAILABLE (al menos un curso trajo sílabo) ni ninguna
@@ -339,7 +339,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     // devolvió. La advertencia no puede salir del contador.
     const repo = fakeRepo({ upsertSyllabus: async () => null } as never);
     const client = fakeClient({ fetchSyllabus: async () => silabo } as Partial<PortalClient>);
-    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, cookies);
+    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, { cookies });
 
     expect(r.summary.syllabiUpserted).toBe(0);
     expect(r.warnings.some((w) => w.code === "SYLLABUS_UNAVAILABLE")).toBe(false);
@@ -350,7 +350,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     // muerta y con todas las peticiones expiradas: desde el backend no se
     // distinguen. Afirmar la causa manda a soporte a descartar un problema de
     // infraestructura como "la Universidad no publicó nada".
-    const r = await new PortalSyncService(fakeRepo(), fakeClient()).importFromPortal(3, 7, cookies);
+    const r = await new PortalSyncService(fakeRepo(), fakeClient()).importFromPortal(3, 7, { cookies });
     const w = r.warnings.find((x) => x.code === "SYLLABUS_UNAVAILABLE");
 
     expect(w).toBeDefined();
@@ -364,7 +364,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     } as Partial<PortalClient>);
     const svc = new PortalSyncService(fakeRepo(), client);
 
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
 
     // El resto de la importación (identidad, matrícula) sigue intacto.
     expect(r.period.code).toBe("2026-2");
@@ -383,7 +383,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
       upsertSyllabus: async (_tx, offeringId: number) => (offeringId === 650033 ? null : { id: 1, created: true }),
     } as never);
     const client = fakeClient({ fetchSyllabus: async () => silabo } as Partial<PortalClient>);
-    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, cookies);
+    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, { cookies });
 
     // 5 cursos distintos en el fixture; 650033 ya tenía fila.
     expect(r.summary.syllabiUpserted).toBe(4);
@@ -406,7 +406,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
       syllabusBaseUrl: "https://cactus-replica.ulima.edu.pe",
     } as unknown as Partial<PortalClient>);
 
-    await new PortalSyncService(repo, client).importFromPortal(3, 7, cookies);
+    await new PortalSyncService(repo, client).importFromPortal(3, 7, { cookies });
 
     expect(urls).not.toHaveLength(0);
     for (const u of urls) expect(u.startsWith("https://cactus-replica.ulima.edu.pe/ac/")).toBe(true);
@@ -433,7 +433,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     } as Partial<PortalClient>);
 
     const svc = new PortalSyncService(repo, client);
-    const r = await svc.importFromPortal(3, 7, cookies);
+    const r = await svc.importFromPortal(3, 7, { cookies });
 
     // 650033 aparece dos veces (dos secciones) pero es UNA sola oferta.
     expect(upsertSyllabusCalls.filter((id) => id === 650033)).toHaveLength(1);

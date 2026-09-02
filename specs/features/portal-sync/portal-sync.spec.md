@@ -111,7 +111,7 @@ src/services/portal.client.ts  cliente HTTP del portal (patrón de cohere.client
 Ver `docs/specs/api-contracts.md`, sección **Portal Sync**.
 
 - `GET /portal-sync/status` — `{ activePeriod, needsImport, enrollmentsInActivePeriod }`.
-- `POST /portal-sync/import` — body `{ cookies }`; response `{ period, identity, summary, warnings }`.
+- `POST /portal-sync/import` — body `{ cookies }` **o** `{ credentials }`; response `{ period, identity, summary, warnings }`.
 
 ## Rules
 
@@ -128,6 +128,54 @@ Ver `docs/specs/api-contracts.md`, sección **Portal Sync**.
 - Portal 5xx o error de conexión → `502 PORTAL_UNAVAILABLE`; exceso de `PORTAL_TIMEOUT_MS` → `504 PORTAL_TIMEOUT`.
   `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
 - Rate limit: 5 importaciones por alumno por hora (`src/shared/middleware/rate-limit.ts`), porque cada llamada dispara ~8-10 peticiones salientes a los sistemas de la Universidad (`layout.jsp` + matrícula + récord + un sílabo por curso distinto). El contador vive en memoria, igual que el del chatbot: en serverless el límite es por instancia, no global.
+
+### Login con credenciales (`credentials`)
+
+El body de `POST /portal-sync/import` acepta **una de dos formas**, nunca las dos:
+
+- `{ cookies: { JSESSIONID, LtpaToken2, LtpaToken? } }` — la sesión del portal ya la obtuvo el cliente.
+- `{ credentials: { password, passcode } }` — el backend hace el login contra miUlima y obtiene la sesión él mismo.
+
+**Decisión del owner (2026-09-02)**: el diseño original era que el alumno se
+logueara dentro de un WebView y la app solo leyera las cookies, de modo que la
+contraseña nunca saliera del portal. Se descartó porque `JSESSIONID` y
+`LtpaToken2` son `HttpOnly` y leerlas exige verificar `CookieManager` contra un
+iPhone real, un prerrequisito que el owner prefirió no pagar. La consecuencia
+aceptada es que la contraseña de miUlima pasa por la app y por este backend.
+
+**Por eso estas reglas no son opcionales:**
+
+- La contraseña y el passcode **nunca** se registran: ni en logs, ni en mensajes
+  de error, ni en trazas. Ningún `HttpError` los incluye.
+- **Nunca** se persisten: no van a la base de datos, ni a caché, ni a disco.
+  Viven solo en la variable local del login y se descartan al terminar.
+- **No se piden en el body**: el usuario del portal es el código del alumno, que
+  el backend ya tiene en `app_user.code` a partir del JWT. Pedirlo al cliente
+  sería innecesario y agregaría una vía para suplantar a otro alumno.
+
+**Flujo**, el mismo verificado en el spike (§Cómo se obtiene la sesión):
+`GET layout.jsp` → `POST j_security_check` con el código y la contraseña →
+`POST solicitarValidarToken.jsp?bAv=0` con el passcode → verificación con
+`layout.jsp`. **Nunca se vuelve a pedir `redirectJsp.jsp`**: hacerlo tumba la
+sesión recién creada.
+
+**Detección de fallo**, que no es obvia: un passcode rechazado devuelve **HTTP
+200 con la misma página y sin mensaje de error**. La única señal fiable de éxito
+es la redirección. Por eso el criterio es la redirección y no el status ni el
+texto.
+
+- Credenciales o passcode rechazados → **`409 PORTAL_LOGIN_REJECTED`**.
+  **Nunca 401**: el `ApiClient` de la app trata cualquier 401 como expiración del
+  JWT y cierra la sesión de ULima++; un tipeo en el passcode no puede echar al
+  alumno de la app.
+- El mensaje no distingue si falló la contraseña o el passcode: distinguirlo le
+  daría a un atacante una forma de verificar contraseñas.
+
+**Devolución de cupo**: el rate limit de 5 por hora descuenta ANTES de trabajar.
+Un passcode es de 6 dígitos y caduca cada 30 s, así que equivocarse es normal:
+cinco tipeos dejarían al alumno bloqueado una hora sin haber importado nunca.
+Un `PORTAL_LOGIN_REJECTED` **devuelve el cupo consumido**. Los demás fallos no:
+un 502 del portal sí consumió trabajo real.
 
 ### Cliente del portal (`src/services/portal.client.ts`)
 

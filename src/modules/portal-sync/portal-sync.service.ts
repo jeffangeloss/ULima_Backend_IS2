@@ -33,11 +33,35 @@ export class PortalSyncService {
     return { activePeriod, enrollmentsInActivePeriod: n, needsImport: n === 0 };
   }
 
-  async importFromPortal(userId: number, studentId: number, cookies: PortalCookies): Promise<ImportResult> {
+  /**
+   * Punto de entrada de la importación. Acepta la sesión del portal ya hecha
+   * (`cookies`) o las credenciales para hacerla acá (`credentials`); el esquema
+   * garantiza que llega exactamente una de las dos.
+   *
+   * Con `credentials`, el usuario del portal NO viene del cliente: sale de
+   * `app_user.code`. La contraseña y el passcode se usan solo para el login y
+   * se descartan; nunca se registran ni se persisten.
+   */
+  async importFromPortal(
+    userId: number, studentId: number,
+    entrada: { cookies?: PortalCookies; credentials?: { password: string; passcode: string } },
+  ): Promise<ImportResult> {
+    let cookies = entrada.cookies;
+    if (!cookies) {
+      const creds = entrada.credentials!;
+      const userCode = await this.repository.findUserCode(userId);
+      if (!userCode) {
+        throw new HttpError(422, "No se pudo confirmar tu identidad.", "PORTAL_IDENTITY_UNVERIFIABLE");
+      }
+      // Si esto lanza, no hay sesión que cerrar: el `finally` de abajo no corre
+      // porque el try todavía no empezó.
+      cookies = await this.client.login(userCode, creds.password, creds.passcode);
+    }
+    const sesion = cookies;
     try {
-      return await this.runImport(userId, studentId, cookies);
+      return await this.runImport(userId, studentId, sesion);
     } finally {
-      await this.client.logout(cookies);   // best effort, siempre
+      await this.client.logout(sesion);   // best effort, siempre
     }
   }
 

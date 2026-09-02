@@ -11,6 +11,7 @@ export const PORTAL_PATHS = {
   matricula: (cociclo: string) => `gama/servlets/ComandoMostrarConsMatr?COCICLO=${cociclo}&Fg=1`,
   record: "gada/servlets/ComandoListarRecordAcademico?ac=1",
   logout: "servlets/CustomLogoutServlet",
+  securityCheck: "j_security_check",
 } as const;
 
 /** Vista Domino de sílabos. Vive en un host DISTINTO de `webaloe` (ver
@@ -19,6 +20,23 @@ const SYLLABUS_VIEW_PATH = "/ac/ac_bd001.nsf/vSyllabusXCicloAV";
 
 const sessionInvalid = () =>
   new HttpError(409, "La sesión de miUlima no es válida o expiró.", "PORTAL_SESSION_INVALID");
+
+/**
+ * Credenciales o passcode rechazados.
+ *
+ * 409 y NUNCA 401: el `ApiClient` de la app trata cualquier 401 como expiración
+ * del JWT y cierra la sesión de ULima++. Un tipeo en un código de 6 dígitos que
+ * caduca cada 30 s no puede echar al alumno de la app.
+ *
+ * El mensaje no dice si falló la contraseña o el passcode: distinguirlo le daría
+ * a un atacante una forma de verificar contraseñas contra el portal.
+ */
+const loginRejected = () =>
+  new HttpError(
+    409,
+    "miUlima rechazó los datos. Revisa tu contraseña y el código del authenticator.",
+    "PORTAL_LOGIN_REJECTED",
+  );
 
 /**
  * Traduce un fallo de red — o de LECTURA del cuerpo, que es el mismo fallo más
@@ -205,6 +223,130 @@ export class PortalClient {
       // dejaba de emitir bytes, y con ella el `Promise.all` de los N sílabos.
       clearTimeout(timer);
     }
+  }
+
+  // ── Login con credenciales ───────────────────────────────────────────────
+  //
+  // Solo se usa cuando el cliente manda `credentials` en vez de `cookies`. El
+  // flujo es el mismo que se verificó empíricamente contra el portal real (ver
+  // §Cómo se obtiene la sesión en la spec), y sus dos trampas están anotadas
+  // abajo, en el paso donde muerden.
+
+  /** Acumula las `Set-Cookie` de toda la cadena. `webaloe` reparte la sesión
+   *  entre varias redirecciones, así que ninguna respuesta sola alcanza. */
+  private collectCookies(jar: Map<string, string>, res: Response): void {
+    for (const raw of res.headers.getSetCookie()) {
+      const par = raw.split(";")[0] ?? "";
+      const i = par.indexOf("=");
+      if (i <= 0) continue;
+      const nombre = par.slice(0, i).trim();
+      const valor = par.slice(i + 1).trim();
+      // Un valor vacío es el portal BORRANDO la cookie; hay que respetarlo.
+      if (valor) jar.set(nombre, valor); else jar.delete(nombre);
+    }
+  }
+
+  /** Una petición del login: manda el jar, recoge lo que llegue, no sigue
+   *  redirecciones (las sigue `chase`, que necesita ver cada salto). */
+  private async hop(
+    jar: Map<string, string>, method: "GET" | "POST", url: string,
+    form?: Record<string, string>, referer?: string,
+  ): Promise<{ status: number; location: string | null; body: string }> {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), this.timeoutMs);
+    try {
+      const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+      const headers: Record<string, string> = { "User-Agent": UA };
+      if (cookie) headers.Cookie = cookie;
+      if (referer) headers.Referer = referer;
+      if (form) headers["Content-Type"] = "application/x-www-form-urlencoded";
+      const res = await this.fetchImpl(url, {
+        method, redirect: "manual", signal: ac.signal, headers,
+        body: form ? new URLSearchParams(form).toString() : undefined,
+      });
+      this.collectCookies(jar, res);
+      const buf = await res.arrayBuffer();
+      return {
+        status: res.status,
+        location: res.headers.get("location"),
+        // ISO-8859-1 como el resto de `webaloe` (el tipado de Bun no lo declara,
+        // igual que en `fetchPage`). Solo se usa para buscar marcadores ASCII;
+        // este cuerpo nunca se devuelve al cliente.
+        body: new TextDecoder("iso-8859-1" as Bun.Encoding).decode(buf),
+      };
+    } catch (e) {
+      throw portalFailure(e);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Sigue la cadena de 302 acumulando cookies. Devuelve dónde terminó. */
+  private async chase(
+    jar: Map<string, string>, inicio: { status: number; location: string | null; body: string },
+    urlActual: string, saltos = 8,
+  ): Promise<{ url: string; body: string }> {
+    let paso = inicio;
+    let url = urlActual;
+    for (let i = 0; i < saltos && paso.status >= 300 && paso.status < 400 && paso.location; i++) {
+      url = new URL(paso.location, url).toString();
+      // TRAMPA: `redirectJsp.jsp` no se vuelve a pedir NUNCA. Es una página que
+      // solo lleva un `window.location.replace` a layout.jsp, y volver a
+      // pedirla tumba la sesión recién creada. Se corta acá y el paso 4 va
+      // directo a layout.jsp.
+      if (url.includes("redirectJsp.jsp")) return { url, body: "" };
+      paso = await this.hop(jar, "GET", url, undefined, urlActual);
+    }
+    return { url, body: paso.body };
+  }
+
+  /**
+   * Inicia sesión en miUlima y devuelve las cookies de la sesión creada.
+   *
+   * `userCode` NO viene del cliente: sale de `app_user.code` a partir del JWT.
+   * `password` y `passcode` se usan y se descartan: no se registran en ningún
+   * log, no se persisten y no aparecen en ningún mensaje de error.
+   */
+  async login(userCode: string, password: string, passcode: string): Promise<PortalCookies> {
+    const jar = new Map<string, string>();
+    const base = `${this.baseUrl}${ROOT}`;
+
+    // 1. Sin sesión: fija WASReqURL y rebota a inicio.jsp.
+    const p1 = await this.hop(jar, "GET", `${base}${PORTAL_PATHS.layout}`);
+    await this.chase(jar, p1, `${base}${PORTAL_PATHS.layout}`);
+
+    // 2. Usuario y contraseña. `ac` es el timestamp que manda el formulario.
+    const p2 = await this.hop(jar, "POST", `${base}${PORTAL_PATHS.securityCheck}`, {
+      ac: String(Date.now()), url2: "", j_username: userCode, j_password: password,
+    }, `${base}inicio.jsp`);
+    const tras2 = await this.chase(jar, p2, `${base}${PORTAL_PATHS.securityCheck}`);
+
+    // Volver a inicio.jsp sin pasar por el segundo factor = credenciales malas.
+    if (tras2.url.includes("inicio.jsp") && !tras2.url.includes("solicitarValidarToken")) {
+      throw loginRejected();
+    }
+
+    // 3. Segundo factor, si el portal lo pide.
+    if (tras2.url.includes("solicitarValidarToken")) {
+      const p3 = await this.hop(jar, "POST", tras2.url, { url2: "", sPasscode: passcode }, tras2.url);
+      // TRAMPA: un passcode rechazado devuelve 200 con la MISMA página y sin
+      // mensaje de error. La redirección es la única señal fiable de éxito, así
+      // que el criterio es esa y no el status ni el texto.
+      if (p3.status < 300 || p3.status >= 400) throw loginRejected();
+      await this.chase(jar, p3, tras2.url);
+    }
+
+    // 4. Verificación. Se va DIRECTO a layout.jsp (ver la trampa de `chase`).
+    const p4 = await this.hop(jar, "GET", `${base}${PORTAL_PATHS.layout}`, undefined, `${base}redirectJsp.jsp`);
+    const tras4 = await this.chase(jar, p4, `${base}${PORTAL_PATHS.layout}`);
+    const cuerpo = tras4.body || p4.body;
+    if (tras4.url.includes("inicio.jsp") || !cuerpo.includes("Bienvenid")) throw loginRejected();
+
+    const JSESSIONID = jar.get("JSESSIONID");
+    const LtpaToken2 = jar.get("LtpaToken2");
+    if (!JSESSIONID || !LtpaToken2) throw loginRejected();
+    const LtpaToken = jar.get("LtpaToken");
+    return LtpaToken ? { JSESSIONID, LtpaToken2, LtpaToken } : { JSESSIONID, LtpaToken2 };
   }
 
   /** Best effort: cerrar la sesión del portal nunca debe romper la importación. */

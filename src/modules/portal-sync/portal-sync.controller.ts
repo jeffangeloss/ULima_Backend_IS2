@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 import { HttpError } from "../../shared/errors/http-error.js";
 import { validateJson } from "../../shared/middleware/validate-dto.js";
-import { importCookiesSchema } from "./portal-sync.schemas.js";
+import { importSchema } from "./portal-sync.schemas.js";
 import type { PortalSyncService } from "./portal-sync.service.js";
 
 export class PortalSyncController {
@@ -18,10 +18,11 @@ export class PortalSyncController {
   }
 
   async importFromPortal(c: Context) {
-    // El body NUNCA se registra en logs: lleva cookies de sesión del portal.
-    const { cookies } = await validateJson(c, importCookiesSchema);
+    // El body NUNCA se registra en logs: lleva cookies de sesión del portal o,
+    // en la variante con credenciales, la contraseña de miUlima del alumno.
+    const { cookies, credentials } = await validateJson(c, importSchema);
     const studentId = this.requireStudentId(c);
     const userId = Number(c.get("userId"));
-    return c.json(await this.service.importFromPortal(userId, studentId, cookies));
+    return c.json(await this.service.importFromPortal(userId, studentId, { cookies, credentials }));
   }
 }
