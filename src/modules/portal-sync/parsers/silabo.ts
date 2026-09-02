@@ -14,13 +14,25 @@ const UNID_MAX_LENGTH = 120;    // syllabus.drive_file_id varchar(120)
  * `test/HU31_jeff/fixtures/silabo.json`, que sin este arreglo NUNCA parsea,
  * aunque sea una respuesta válida y completa.
  *
- * Se normaliza duplicando toda barra invertida que no inicie un escape JSON
- * válido: `\!` queda como `\\!` (barra invertida escapada, seguida del
- * carácter literal `!`), que sí es JSON válido y decodifica al mismo texto
- * origen salvo por la barra invertida en sí (irrelevante: no aparece en los
- * campos que se leen).
+ * La normalización recorre el cuerpo de izquierda a derecha consumiendo
+ * PRIMERO los escapes válidos (`\uXXXX` con sus cuatro dígitos hex, y `\"`
+ * `\\` `\/` `\b` `\f` `\n` `\r` `\t`), que quedan intactos. Solo cuando la
+ * barra invertida no inicia un escape válido se ELIMINA, dejando el carácter
+ * literal que la seguía: `\!` → `!`, `\>` → `>`, `\'` → `'`.
+ *
+ * Se elimina, y NO se duplica, a propósito: duplicarla (`\!` → `\\!`) también
+ * produce JSON válido, pero decodifica a una barra invertida LITERAL dentro
+ * del texto, que termina guardada en `syllabus.title` y percent-codificada
+ * (`%5C`) en `drive_file_url` — una URL que apunta a un adjunto que en Domino
+ * no existe. Esa corrupción sería silenciosa: no devuelve `null`, devuelve un
+ * registro que parece bueno.
+ *
+ * Consumir primero los escapes válidos también deja intacto un cuerpo que ya
+ * era JSON válido: en `"A\\!B"` la barra escapada se conserva y el `!` que la
+ * sigue no la convierte en un escape inválido.
  */
-const sanitizeJson = (raw: string): string => raw.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+const sanitizeJson = (raw: string): string =>
+  raw.replace(/\\u[0-9A-Fa-f]{4}|\\["\\/bfnrt]|\\([\s\S])/g, (match, invalido?: string) => invalido ?? match);
 
 /** `vSyllabusXCicloAV/<UNID>/$File/<filename>`, dentro del snippet JS. */
 const ABRE_ARCHIVO = /AbreArchivo\('vSyllabusXCicloAV\/[0-9A-Fa-f]+\/\$File\/([^']+)'\)/;

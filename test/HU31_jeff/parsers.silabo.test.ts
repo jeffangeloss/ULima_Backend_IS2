@@ -28,6 +28,15 @@ const makeSilaboJson = (unid: string, fileName: string): string =>
     ],
   });
 
+/** Respuesta CRUDA al estilo Domino: los escapes `\<`, `\>`, `\!` no son
+ *  válidos en JSON estricto (igual que en el fixture real), así que no se
+ *  puede construir con `JSON.stringify`. `fileNameCrudo` se inserta tal cual
+ *  dentro del snippet, con los escapes que Domino emitiría. */
+const makeSilaboCrudo = (unid: string, fileNameCrudo: string): string =>
+  `{"@toplevelentries":"1","viewentry":[{"@position":"1","@unid":"${unid}","entrydata":[` +
+  `{"@columnnumber":"0","@name":"$17","text":{"0":"<SCRIPT LANGUAGE=\\"JavaScript\\"\\>\\r<\\!--\\r ` +
+  `AbreArchivo('vSyllabusXCicloAV/${unid}/$File/${fileNameCrudo}');\\r//--\\>\\r<\\/SCRIPT\\>"}}]}]}`;
+
 const emptyViewJson = JSON.stringify({ "@timestamp": "20260902T193518,00Z", "@toplevelentries": "0", viewentry: [] });
 
 describe("parseSyllabusEntry", () => {
@@ -72,6 +81,42 @@ describe("parseSyllabusEntry", () => {
       unid: "1A2B3C",
       fileName: "2026-1 SIL BASE DE DATOS.pdf",
       url: `${config.syllabus.baseUrl}/ac/ac_bd001.nsf/vSyllabusXCicloAV/1A2B3C/$File/2026-1%20SIL%20BASE%20DE%20DATOS.pdf`,
+    });
+  });
+
+  describe("normalización de escapes de Domino (sanitizeJson)", () => {
+    test("un filename con `\\<PARTE 1\\>` sale limpio, sin barras invertidas en el título ni en la URL", () => {
+      // Domino escapa `<` y `>` con barra invertida y ese escape NO es válido
+      // en JSON estricto. La barra sobrante debe ELIMINARSE, no duplicarse:
+      // duplicándola quedaba literal en `syllabus.title` y percent-codificada
+      // (%5C) en `drive_file_url`, apuntando a un adjunto que no existe.
+      const r = parseSyllabusEntry(makeSilaboCrudo("AB12CD", "2026-2 SIL SISTEMAS \\<PARTE 1\\>.pdf"));
+      expect(r).not.toBeNull();
+      expect(r?.fileName).toBe("2026-2 SIL SISTEMAS <PARTE 1>.pdf");
+      expect(r?.fileName).not.toContain("\\");
+      expect(r?.url).not.toContain("%5C");
+      expect(r?.url).toBe(
+        `${config.syllabus.baseUrl}/ac/ac_bd001.nsf/vSyllabusXCicloAV/AB12CD/$File/` +
+        `${encodeURIComponent("2026-2 SIL SISTEMAS <PARTE 1>.pdf")}`,
+      );
+    });
+
+    test("una entrada que YA era JSON válido no se rompe: la barra invertida escapada se conserva", () => {
+      // `\\\\!` en el cuerpo es una barra invertida legítimamente escapada
+      // seguida de `!`. Normalizarla como si fuera un escape inválido producía
+      // JSON que ya no parsea, y el sílabo se perdía por completo.
+      const json = makeSilaboJson("AB34EF", "2026-2 SIL A\\!B.pdf");
+      expect(() => JSON.parse(json)).not.toThrow();
+      const r = parseSyllabusEntry(json);
+      expect(r?.fileName).toBe("2026-2 SIL A\\!B.pdf");
+    });
+
+    test("un `\\u` que no inicia un escape unicode válido no rompe el parseo", () => {
+      // `\\usuarios` no es `\\uXXXX`: la barra debe descartarse igual que
+      // cualquier otro escape inválido, en vez de dejarse pasar como si el
+      // escape fuera válido (con lo que JSON.parse fallaba y no había sílabo).
+      const r = parseSyllabusEntry(makeSilaboCrudo("AB56AB", "C:\\usuarios SIL.pdf"));
+      expect(r?.fileName).toBe("C:usuarios SIL.pdf");
     });
   });
 
