@@ -219,7 +219,7 @@ Devuelve cursos + evaluaciones del sílabo con sus pesos, para la calculadora de
         "id": "1",
         "nombre": "INGENIERÍA DE SOFTWARE II",
         "ciclo": "2026-1",
-        "silaboUrl": "https://drive.google.com/...",
+        "silaboUrl": "https://drive.google.com/... | https://cactus.ulima.edu.pe/ac/ac_bd001.nsf/vSyllabusXCicloAV/...",
         "secciones": [
           { "idSeccion": "1", "codigoSeccion": "856" }
         ]
@@ -242,6 +242,7 @@ Devuelve cursos + evaluaciones del sílabo con sus pesos, para la calculadora de
     ]
   }
   ```
+- **`silaboUrl`**: sale de `syllabus.drive_file_url` y **no siempre es un enlace de Google Drive**. Las ofertas con sílabo ya cargado conservan su enlace de Drive; una oferta que NO tenía fila `syllabus` puede recibirla desde `POST /portal-sync/import`, y entonces la URL apunta a la base Domino de sílabos (`cactus.ulima.edu.pe/ac/ac_bd001.nsf/vSyllabusXCicloAV/...`). Esa URL está **protegida por sesión de Domino**: el visor in-app no puede abrirla como abre las de Drive (limitación conocida y abierta, ver `specs/features/portal-sync/portal-sync.spec.md` §Decisiones pendientes #10). La importación **nunca reemplaza** una `silaboUrl` existente, así que un enlace de Drive que hoy funciona sigue funcionando.
 
 ### POST /grades/me/calculate
 
@@ -595,4 +596,5 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
   - La verificación de identidad ocurre ANTES de cualquier escritura y no se degrada a `warnings`.
   - Idempotente: repetir la importación deja el mismo estado (todos los upsert usan `ON CONFLICT` sobre constraints existentes). No toca `simulated_grades`, simulación de malla, especialidades, anuncios, asesorías, representantes, chat, networking, `schedule_session.color_hex` ni las horas de asistencia.
   - **La primera importación de un ciclo nuevo activa ese `academic_period` para TODOS los alumnos** (`is_active` es único global). Solo avanza el ciclo, nunca lo retrocede, y solo activa si la fecha de inicio del ciclo ya llegó (la Universidad publica el calendario días antes de que empiecen las clases). Si el período se crea antes de esa fecha, queda inactivo y la respuesta trae el warning `PERIOD_NOT_ACTIVATED_YET`; una importación posterior en o después de esa fecha lo activa.
-  - **Sílabos**: además de matrícula y récord, la importación busca en paralelo el sílabo de cada curso importado en la base Domino de sílabos (`cactus.ulima.edu.pe`, host separado y con su propia allowlist — ver `specs/features/portal-sync/portal-sync.spec.md` §SSO). `summary.syllabiUpserted` cuenta cuántos se guardaron. Que un curso no tenga sílabo publicado es normal y no genera advertencia por curso; solo si NINGÚN curso del ciclo trae sílabo se agrega una única advertencia `SYLLABUS_UNAVAILABLE`. Un fallo al buscar o guardar un sílabo nunca aborta la importación ni afecta el resto del `summary`.
+  - **Sílabos**: además de matrícula y récord, la importación busca en paralelo el sílabo de cada curso importado en la base Domino de sílabos (`cactus.ulima.edu.pe`, host separado y con su propia allowlist — ver `specs/features/portal-sync/portal-sync.spec.md` §SSO). `summary.syllabiUpserted` cuenta las filas **efectivamente escritas**. Que un curso no tenga sílabo publicado es normal y no genera advertencia por curso; solo si NINGÚN curso del ciclo trae sílabo se agrega una única advertencia `SYLLABUS_UNAVAILABLE` (esa advertencia se decide con el resultado de la descarga, no con el contador, y su mensaje no afirma que el portal no publicó nada: desde el backend no se distingue eso de un fallo de red o de sesión). Un fallo al buscar o guardar un sílabo nunca aborta la importación ni afecta el resto del `summary`: la búsqueda se degrada por curso y la escritura usa `on conflict do nothing` sin conflict target, que cubre las dos restricciones únicas de la tabla y por eso no puede levantar un `23505`.
+  - **La importación NO pisa sílabos existentes**: si la oferta ya tenía fila `syllabus` (sembrada o de una importación anterior), se conserva tal cual — incluido su `silaboUrl` de Google Drive, que `GET /grades/me/courses` sirve a todos los alumnos de la oferta. La contrapartida aceptada es que **un sílabo republicado no se actualiza** al re-importar el mismo ciclo.
