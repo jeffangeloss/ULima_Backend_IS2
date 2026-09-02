@@ -112,6 +112,31 @@ export class PortalSyncService {
       }),
     );
 
+    // Un curso sin sílabo es normal (no todo curso publica uno) y NO se
+    // advierte por curso; solo se avisa si NINGÚN curso de este ciclo trajo
+    // sílabo, con una única advertencia agregada.
+    //
+    // Se decide ACÁ, con los hechos de la descarga a la vista, y NO desde
+    // `summary.syllabiUpserted`: con el `on conflict do nothing` de
+    // `upsertSyllabus`, cero escrituras ya no significa "no hay sílabos" —
+    // puede significar que todas las ofertas ya tenían fila.
+    //
+    // El mensaje no afirma que el portal no publicó nada: desde el backend no
+    // se distingue "no hay sílabo publicado" de "cactus caído", "sesión de
+    // Domino muerta" (el 409 que §3.5 traga) o "todas las peticiones
+    // expiraron". Dar por buena una causa mandaría a soporte a descartar un
+    // problema de infraestructura.
+    //
+    // La guarda de "había cursos que consultar" es defensiva: hoy
+    // `parseConsolidadoMatricula` ya falla (422, más arriba) si el consolidado
+    // no trae ninguna fila de curso, así que ese caso no llega hasta acá.
+    if (courseCodesToSync.length > 0 && syllabusByCourse.size === 0) {
+      warnings.push({
+        code: "SYLLABUS_UNAVAILABLE", block: "silabo",
+        message: "No se pudo obtener el sílabo de ningún curso de este ciclo.",
+      });
+    }
+
     // ── 4. Escrituras (todas dentro de UNA transacción) ─────────────────────
     // findActivePeriod se lee ANTES de abrir la transacción y se pasa adentro:
     // leerlo con this.repository dentro del callback corre sobre el pool, no
@@ -206,16 +231,6 @@ export class PortalSyncService {
           : null;
         await this.repository.upsertEnrollment(tx, studentId, sec.id, finalGrade);
         summary.enrollmentsUpserted++;
-      }
-
-      // Un curso sin sílabo es normal (no todo curso publica uno) y NO se
-      // advierte por curso; solo se avisa si NINGÚN curso de este ciclo trajo
-      // sílabo, con una única advertencia agregada.
-      if (summary.syllabiUpserted === 0) {
-        warnings.push({
-          code: "SYLLABUS_UNAVAILABLE", block: "silabo",
-          message: "El portal no publicó sílabo para ningún curso de este ciclo.",
-        });
       }
 
       if (horario.ok) {

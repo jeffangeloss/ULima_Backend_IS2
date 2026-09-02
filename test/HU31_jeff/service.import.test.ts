@@ -320,6 +320,31 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     expect(r.warnings.filter((w) => w.code === "SYLLABUS_UNAVAILABLE")).toHaveLength(0);
   });
 
+  test("no advierte SYLLABUS_UNAVAILABLE si hubo sílabos aunque no se escribiera NINGUNA fila", async () => {
+    // Todas las ofertas ya tenían sílabo (filas sembradas): el `do nothing` no
+    // escribe nada y syllabiUpserted queda en 0, pero el portal SÍ los
+    // devolvió. La advertencia no puede salir del contador.
+    const repo = fakeRepo({ upsertSyllabus: async () => null } as never);
+    const client = fakeClient({ fetchSyllabus: async () => silabo } as Partial<PortalClient>);
+    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, cookies);
+
+    expect(r.summary.syllabiUpserted).toBe(0);
+    expect(r.warnings.some((w) => w.code === "SYLLABUS_UNAVAILABLE")).toBe(false);
+  });
+
+  test("el mensaje de SYLLABUS_UNAVAILABLE no afirma que el portal no publicó nada", async () => {
+    // El mismo warning se emite con cactus caído, con la sesión de Domino
+    // muerta y con todas las peticiones expiradas: desde el backend no se
+    // distinguen. Afirmar la causa manda a soporte a descartar un problema de
+    // infraestructura como "la Universidad no publicó nada".
+    const r = await new PortalSyncService(fakeRepo(), fakeClient()).importFromPortal(3, 7, cookies);
+    const w = r.warnings.find((x) => x.code === "SYLLABUS_UNAVAILABLE");
+
+    expect(w).toBeDefined();
+    expect(w?.message).toBe("No se pudo obtener el sílabo de ningún curso de este ciclo.");
+    expect(w?.message).not.toContain("publicó");
+  });
+
   test("un fallo al buscar el sílabo (excepción de red) NUNCA aborta la importación", async () => {
     const client = fakeClient({
       fetchSyllabus: async () => { throw new Error("cactus.ulima.edu.pe no respondió"); },
