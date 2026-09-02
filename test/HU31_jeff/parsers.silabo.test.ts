@@ -4,29 +4,37 @@ import { config } from "../../src/config/app-config.js";
 
 const silabo = await Bun.file("test/HU31_jeff/fixtures/silabo.json").text();
 
+/** Una `viewentry` de la vista. Con `fileName === null` el documento se lista
+ *  SIN snippet `AbreArchivo` utilizable (caso real: un documento sin adjunto).
+ *  `snippetUnid` permite que el UNID del snippet difiera del `@unid` de la
+ *  entrada, que es el campo que termina en la URL persistida. */
+const makeEntry = (unid: string, fileName: string | null, snippetUnid = unid) => ({
+  "@position": "1",
+  "@unid": unid,
+  "@noteid": "13D8E2",
+  "@siblings": "1",
+  entrydata: [
+    {
+      "@columnnumber": "0", "@name": "$17",
+      text: {
+        "0": fileName === null
+          ? `<SCRIPT LANGUAGE="JavaScript">\r<!--\r //-->\r</SCRIPT>`
+          : `<SCRIPT LANGUAGE="JavaScript">\r<!--\r AbreArchivo('vSyllabusXCicloAV/${snippetUnid}/$File/${fileName}');\r//-->\r</SCRIPT>`,
+      },
+    },
+    { "@columnnumber": "1", "@name": "SyllaArchiPDF_TX", text: { "0": "" } },
+  ],
+});
+
+/** Vista con las entradas dadas, en el orden dado (el cliente pide `Count=5`). */
+const makeSilaboJsonVarias = (...entradas: Array<ReturnType<typeof makeEntry>>): string =>
+  JSON.stringify({ "@timestamp": "20260902T193518,00Z", "@toplevelentries": `${entradas.length}`, viewentry: entradas });
+
 /** Construye una respuesta de vSyllabusXCicloAV válida (JSON.stringify no
  *  produce los escapes inválidos que sí trae la respuesta real de Domino;
  *  esa forma cruda se cubre aparte contra el fixture comprometido). */
-const makeSilaboJson = (unid: string, fileName: string): string =>
-  JSON.stringify({
-    "@timestamp": "20260902T193518,00Z",
-    "@toplevelentries": "1",
-    viewentry: [
-      {
-        "@position": "1",
-        "@unid": unid,
-        "@noteid": "13D8E2",
-        "@siblings": "1",
-        entrydata: [
-          {
-            "@columnnumber": "0", "@name": "$17",
-            text: { "0": `<SCRIPT LANGUAGE="JavaScript">\r<!--\r AbreArchivo('vSyllabusXCicloAV/${unid}/$File/${fileName}');\r//-->\r</SCRIPT>` },
-          },
-          { "@columnnumber": "1", "@name": "SyllaArchiPDF_TX", text: { "0": "" } },
-        ],
-      },
-    ],
-  });
+const makeSilaboJson = (unid: string, fileName: string, snippetUnid = unid): string =>
+  makeSilaboJsonVarias(makeEntry(unid, fileName, snippetUnid));
 
 /** Respuesta CRUDA al estilo Domino: los escapes `\<`, `\>`, `\!` no son
  *  válidos en JSON estricto (igual que en el fixture real), así que no se
@@ -117,6 +125,49 @@ describe("parseSyllabusEntry", () => {
       // escape fuera válido (con lo que JSON.parse fallaba y no había sílabo).
       const r = parseSyllabusEntry(makeSilaboCrudo("AB56AB", "C:\\usuarios SIL.pdf"));
       expect(r?.fileName).toBe("C:usuarios SIL.pdf");
+    });
+  });
+
+  describe("@unid y recorrido de las entradas", () => {
+    test("un @unid con traversal y query => null (no se persiste ni se entrega como enlace)", () => {
+      // El @unid entra CRUDO en la URL que se guarda y que la app abre. El
+      // snippet lleva un UNID hexadecimal válido a propósito: sin la
+      // validación del @unid, el parser devolvía una URL con `../` y con el
+      // path cortado por `?`/`#`.
+      const json = makeSilaboJson("../../../otra.nsf/vX?x=1#", "x.pdf", "AB12CD");
+      expect(parseSyllabusEntry(json)).toBeNull();
+    });
+
+    test("un @unid con caracteres fuera de [0-9A-Fa-f] => null", () => {
+      expect(parseSyllabusEntry(makeSilaboJson("ZZZZ", "x.pdf", "AB12CD"))).toBeNull();
+    });
+
+    test("un @unid vacío => null", () => {
+      expect(parseSyllabusEntry(makeSilaboJson("", "x.pdf", "AB12CD"))).toBeNull();
+    });
+
+    test("si la primera entrada no trae snippet AbreArchivo usable, se sigue con la siguiente", () => {
+      // El cliente pide Count=5: una categoría puede traer más de un documento
+      // (sílabo republicado que convive con el anterior, o un documento sin
+      // adjunto listado primero). Quedarse solo con viewentry[0] perdía el
+      // sílabo aunque estuviera publicado.
+      const json = makeSilaboJsonVarias(makeEntry("AA11BB", null), makeEntry("CC22DD", "2026-2 SIL REDES.pdf"));
+      const r = parseSyllabusEntry(json);
+      expect(r?.unid).toBe("CC22DD");
+      expect(r?.fileName).toBe("2026-2 SIL REDES.pdf");
+    });
+
+    test("se salta una entrada con @unid inválido y se queda con la siguiente válida", () => {
+      const json = makeSilaboJsonVarias(
+        makeEntry("no-hex", "2026-2 SIL VIEJO.pdf", "AB12CD"),
+        makeEntry("CC22DD", "2026-2 SIL REDES.pdf"),
+      );
+      expect(parseSyllabusEntry(json)?.unid).toBe("CC22DD");
+    });
+
+    test("si NINGUNA entrada es usable => null", () => {
+      const json = makeSilaboJsonVarias(makeEntry("AA11BB", null), makeEntry("CC22DD", null));
+      expect(parseSyllabusEntry(json)).toBeNull();
     });
   });
 
