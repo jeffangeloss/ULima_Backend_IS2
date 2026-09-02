@@ -45,8 +45,16 @@ const UNID_PATTERN = new RegExp(`^[0-9A-Fa-f]{1,${UNID_MAX_LENGTH}}$`);
 const sanitizeJson = (raw: string): string =>
   raw.replace(/\\u[0-9A-Fa-f]{4}|\\["\\/bfnrt]|\\([\s\S])/g, (match, invalido?: string) => invalido ?? match);
 
-/** `vSyllabusXCicloAV/<UNID>/$File/<filename>`, dentro del snippet JS. */
-const ABRE_ARCHIVO = /AbreArchivo\('vSyllabusXCicloAV\/[0-9A-Fa-f]+\/\$File\/([^']+)'\)/;
+/**
+ * `vSyllabusXCicloAV/<UNID>/$File/<filename>`, dentro del snippet JS.
+ *
+ * El filename se captura de forma NO codiciosa hasta el `')` que cierra la
+ * llamada, no como "todo lo que no sea comilla simple": un nombre con
+ * apóstrofo (`O'BRIEN.pdf` — Domino lo emite escapado, `O\'BRIEN.pdf`, y la
+ * normalización de escapes deja la comilla suelta) no se puede atravesar con
+ * `[^']+` y el sílabo se perdía entero.
+ */
+const ABRE_ARCHIVO = /AbreArchivo\('vSyllabusXCicloAV\/[0-9A-Fa-f]+\/\$File\/(.+?)'\)/;
 
 interface RawViewEntry {
   "@unid"?: unknown;

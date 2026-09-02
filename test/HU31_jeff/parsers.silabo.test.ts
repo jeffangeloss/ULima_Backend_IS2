@@ -171,6 +171,21 @@ describe("parseSyllabusEntry", () => {
     });
   });
 
+  describe("filename con apóstrofo", () => {
+    test("un filename con apóstrofo (O'BRIEN.pdf) se lee completo, no se pierde el sílabo", () => {
+      const r = parseSyllabusEntry(makeSilaboJson("AB12CD", "2026-2 SIL O'BRIEN.pdf"));
+      expect(r?.fileName).toBe("2026-2 SIL O'BRIEN.pdf");
+      expect(r?.url).toContain(encodeURIComponent("2026-2 SIL O'BRIEN.pdf"));
+    });
+
+    test("el mismo filename con el apóstrofo escapado por Domino (\\') también se lee", () => {
+      // Domino escapa la comilla simple dentro del snippet JS; ese `\'` no es
+      // un escape JSON válido, así que la normalización lo deja como `'`.
+      const r = parseSyllabusEntry(makeSilaboCrudo("AB12CD", "2026-2 SIL O\\'BRIEN.pdf"));
+      expect(r?.fileName).toBe("2026-2 SIL O'BRIEN.pdf");
+    });
+  });
+
   describe("guardas de longitud (drive_file_id varchar(120), title varchar(150), drive_file_url varchar(255))", () => {
     // Los UNID de prueba deben ser hex válido (como los reales de Domino):
     // el regex que extrae el filename de AbreArchivo(...) exige
