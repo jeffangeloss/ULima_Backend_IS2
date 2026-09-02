@@ -92,6 +92,8 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
 
 Errores de login con código: `401 USER_NOT_FOUND`, `401 INVALID_PASSWORD`, `403 NOT_ENROLLED`. Errores adicionales de Google: `401 INVALID_TOKEN`, `403 INVALID_DOMAIN`.
 
+`User.currentCycle` es `string | null`: el `period_code` del curso actual del alumno si tiene matrícula en el período activo; si no tiene (p. ej. antes de importar el ciclo nuevo desde el portal), cae al código del período activo igual; `null` solo si no hay ningún período activo. Nunca un ciclo hardcodeado.
+
 ## Academic Profile
 
 ### GET /academic-profile/me
@@ -438,8 +440,9 @@ Retorna la carga académica por semana para el periodo académico activo, identi
 
 Notas:
 
-- Horario usa `schedule_session` de secciones con enrollment activo.
+- Horario usa `schedule_session` de secciones con enrollment activo, acotadas al **período académico activo** (`academic_period.is_active = true`); igual para evaluaciones, carga semanal y el horario/evaluaciones del docente (`GET /schedule/teacher/*`). Sin este filtro, un alumno o docente con datos en dos ciclos a la vez vería ambos superpuestos.
 - Evaluaciones usan `assessment.week_number` mapeado dinámicamente a fechas reales de la clase en esa semana académica.
+- Las semanas académicas (`weekText`, `WeekX.startDate` de la ecuación de fecha, y la respuesta de `GET /schedule/me/load`) salen del período académico activo en base de datos (`academic_week`, o si no tiene filas, derivadas de las fechas propias del período), nunca de un calendario fijo en código. Ver `specs/features/schedule/schedule.spec.md` BR-SCH-04.
 - Alta carga es 3+ evaluaciones en una misma semana académica.
 
 - `GET /schedule/me/sessions` expone `schedule_session.classroom` por sesiÃ³n como `aula`/`salon`; `color` puede venir como nombre legacy o como hexadecimal desde `schedule_session.color_hex`.
@@ -585,10 +588,10 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
         "sessionsUpserted": 12, "enrollmentsUpserted": 5, "enrollmentsWithdrawn": 0,
         "progressUpserted": 53, "progressSkipped": 4, "alertsCreated": 1
       },
-      "warnings": [ { "code": "PERIOD_DATES_DEFAULTED" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE", "block": "string", "message": "string" } ]
+      "warnings": [ { "code": "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE", "block": "string", "message": "string" } ]
     }
     ```
   - Errores: **`409 PORTAL_SESSION_INVALID`** (el portal devolvió `inicio.jsp` o pidió passcode — es 409 y no 401 a propósito: `ApiClient` del frontend trata todo 401 como expiración del JWT y cerraría la sesión del usuario), `403 PORTAL_IDENTITY_MISMATCH` (código del portal ≠ `app_user.code`), `422 PORTAL_IDENTITY_UNVERIFIABLE` (no se pudo leer el código del portal), `502 PORTAL_UNAVAILABLE`, `504 PORTAL_TIMEOUT`, `429 TOO_MANY_REQUESTS` (máx. 5 importaciones por alumno por hora).
   - La verificación de identidad ocurre ANTES de cualquier escritura y no se degrada a `warnings`.
   - Idempotente: repetir la importación deja el mismo estado (todos los upsert usan `ON CONFLICT` sobre constraints existentes). No toca `simulated_grades`, simulación de malla, especialidades, anuncios, asesorías, representantes, chat, networking, `schedule_session.color_hex` ni las horas de asistencia.
-  - **La primera importación de un ciclo nuevo activa ese `academic_period` para TODOS los alumnos** (`is_active` es único global). Solo avanza el ciclo, nunca lo retrocede.
+  - **La primera importación de un ciclo nuevo activa ese `academic_period` para TODOS los alumnos** (`is_active` es único global). Solo avanza el ciclo, nunca lo retrocede, y solo activa si la fecha de inicio del ciclo ya llegó (la Universidad publica el calendario días antes de que empiecen las clases). Si el período se crea antes de esa fecha, queda inactivo y la respuesta trae el warning `PERIOD_NOT_ACTIVATED_YET`; una importación posterior en o después de esa fecha lo activa.

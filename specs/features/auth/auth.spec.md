@@ -28,6 +28,7 @@ targets:
 - Si `password` no coincide → `401 INVALID_PASSWORD`.
 - El usuario solo inicia sesión si existe como `student` y tiene al menos una matrícula `enrollment.status = 'active'`. Excepción: si el `code` pertenece a un `teacher` vinculado a `app_user` vía `teacher.user_id`, inicia sesión como docente sin requerir matrícula activa (HU18).
 - Si no tiene matrícula activa ni es docente → `403 NOT_ENROLLED`.
+- **`hasActiveEnrollment` (la puerta de login) NO se filtra por período académico activo, a propósito**: cuenta cualquier `enrollment.status = 'active'`, sin importar de qué ciclo. Filtrarla al período activo dejaría fuera de la app a cualquier alumno que todavía no haya importado el ciclo nuevo desde el portal — incluyendo la propia importación que lo arreglaría (RS-BE-8 de `portal-sync.spec.md`).
 
 ### BR-AUTH-02: Role derivation
 - Si el login es docente (vía `teacher.user_id`), el rol es `teacher` y no aplica la derivación de `section_representative`.
@@ -147,6 +148,12 @@ targets:
   "setupComplete": true
 }
 ```
+
+### BR-AUTH-13: Cursos y ciclo actual, alcance al período académico activo
+
+- `currentCourses` (dentro de `courseProgress`) sale de `findCurrentCourses`, que ahora **filtra por el período académico activo** (`course_offering.academic_period_id` → `academic_period.is_active = true`), igual que `schedule.repository.ts` (ver `schedule.spec.md` BR-SCH-01). Sin este filtro, un alumno con matrícula en dos ciclos a la vez mostraba cursos de ambos períodos mezclados, y `currentCycle` terminaba siendo el `period_code` del curso que ordenara primero alfabéticamente entre los dos ciclos, no el del ciclo vigente.
+- `currentCycle` (`AuthUser.currentCycle: string | null`) es el `period_code` del primer curso actual. Si el alumno no tiene matrícula en el período activo (p. ej. antes de importar el ciclo nuevo desde el portal), cae al **código del período activo** (`AuthRepository.findActivePeriodCode`); si tampoco hay ningún período activo, es `null`. Nunca un ciclo hardcodeado en código.
+  - El cliente Flutter (`lib/models/user_model.dart:137`) ya parsea `json['currentCycle'] as String? ?? '2026-1'`, así que un valor `null` es seguro de recibir: no rompe un campo no-nulo.
 
 ## Endpoints
 
