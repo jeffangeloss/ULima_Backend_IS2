@@ -1,6 +1,19 @@
 import "dotenv/config";
 import { z } from "zod";
 
+/** Host único permitido para el portal. La URL base NUNCA puede depender de
+ *  quien llama: el endpoint acepta cookies del cliente y hace peticiones
+ *  salientes, así que el destino tiene que estar fijado aquí (anti-SSRF). */
+export const PORTAL_ALLOWED_HOST = "webaloe.ulima.edu.pe";
+
+export const isAllowedPortalBaseUrl = (value: string): boolean => {
+  try {
+    return new URL(value).host === PORTAL_ALLOWED_HOST;
+  } catch {
+    return false;
+  }
+};
+
 const envSchema = z.object({
   DATABASE_URL: z.string().url("DATABASE_URL debe ser una URL de conexión válida de PostgreSQL"),
   JWT_SECRET: z.string().min(8, "JWT_SECRET debe tener al menos 8 caracteres"),
@@ -48,7 +61,7 @@ const envSchema = z.object({
   // portal-sync (miUlima). Host FIJO por seguridad: si se cambia, debe seguir
   // siendo webaloe.ulima.edu.pe; cualquier otro valor es rechazado (anti-SSRF).
   PORTAL_BASE_URL: z.string().url().optional().default("https://webaloe.ulima.edu.pe")
-    .refine((v) => new URL(v).host === "webaloe.ulima.edu.pe", "PORTAL_BASE_URL debe apuntar a webaloe.ulima.edu.pe"),
+    .refine(isAllowedPortalBaseUrl, "PORTAL_BASE_URL debe apuntar a webaloe.ulima.edu.pe"),
   PORTAL_TIMEOUT_MS: z.string().optional().transform((v) => {
     const n = parseInt(v ?? "8000", 10);
     return Number.isInteger(n) && n > 0 ? n : 8000;
