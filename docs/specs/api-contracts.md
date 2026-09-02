@@ -564,11 +564,11 @@ Inteligencia artificial conversacional (Cohere) integrada como asistente académ
 - Timeout Cohere Chat: 8 segundos. Errores Cohere retornan 503 con mensaje genérico.
 - Requiere `COHERE_API_KEY` en variables de entorno.
 
-## Portal Sync (carga de ciclo desde miUlima) — PROPUESTO, pendiente de implementar
+## Portal Sync (carga de ciclo desde miUlima) — Implementado
 
 Importa los datos oficiales del alumno desde el portal miUlima usando la **sesión del portal que el alumno abrió en un WebView de la app**. El backend nunca recibe contraseña ni código TOTP. Ver `specs/features/portal-sync/portal-sync.spec.md`.
 
-Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` y `code` del JWT):
+Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el código del alumno se lee de `app_user` por `userId`, no del JWT):
 
 - `GET /portal-sync/status`
   - Response: `{ "activePeriod": { "id": number, "code": "2026-2" } | null, "enrollmentsInActivePeriod": number, "needsImport": boolean }`
