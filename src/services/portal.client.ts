@@ -13,6 +13,10 @@ export const PORTAL_PATHS = {
   logout: "servlets/CustomLogoutServlet",
 } as const;
 
+/** Vista Domino de sílabos. Vive en un host DISTINTO de `webaloe` (ver
+ *  `config.syllabus.baseUrl`), no bajo `ROOT`. */
+const SYLLABUS_VIEW_PATH = "/ac/ac_bd001.nsf/vSyllabusXCicloAV";
+
 const sessionInvalid = () =>
   new HttpError(409, "La sesión de miUlima no es válida o expiró.", "PORTAL_SESSION_INVALID");
 
@@ -21,6 +25,7 @@ export class PortalClient {
     private readonly baseUrl: string = config.portal.baseUrl,
     private readonly timeoutMs: number = config.portal.timeoutMs,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly syllabusBaseUrl: string = config.syllabus.baseUrl,
   ) {}
 
   private cookieHeader(c: PortalCookies): string {
@@ -84,6 +89,63 @@ export class PortalClient {
       this.fetchPage(PORTAL_PATHS.record, cookies),
     ]);
     return { matricula, record };
+  }
+
+  /**
+   * Sílabo de un curso en un ciclo, desde la base Domino de sílabos —
+   * `cactus.ulima.edu.pe`, un host distinto de `webaloe` (ver
+   * `config.syllabus.baseUrl`, allowlist propia en `env.ts`).
+   *
+   * La sesión SSO (LTPA) que abre `webaloe` también autentica esta base: se
+   * comprobó empíricamente (2026-09-02) que la MISMA cookie de sesión del
+   * portal devuelve el mismo documento que un login directo a Domino — sin
+   * segundo login ni credenciales adicionales.
+   *
+   * Valida `cociclo` (`^\d{5}$`) y `courseCode` (`^\d{4,6}$`) antes de
+   * interpolarlos en la URL, igual que `fetchAll` con el COCICLO.
+   *
+   * A diferencia de `fetchPage`/`fetchAll`, un sílabo es un dato adicional
+   * (no el propósito de la importación): cualquier problema que NO sea
+   * sesión inválida se degrada a `null` en vez de lanzar (timeout, error de
+   * red, status inesperado). Solo una redirección — la única señal de
+   * sesión muerta verificable en HTTP; no existe, a diferencia de
+   * `inicio.jsp`/`solicitarValidarToken` en `webaloe`, un marcador conocido
+   * de "página de login" de Domino — sigue lanzando el mismo 409 que
+   * `fetchPage`, para que quien llama sepa que la sesión murió.
+   *
+   * Se decodifica SIEMPRE como UTF-8: Cactus declara un charset en el
+   * `Content-Type` que no coincide con el cuerpo real (comprobado en el
+   * spike del 2026-09-02); decodificar según lo declarado mancha los
+   * acentos.
+   */
+  async fetchSyllabus(cociclo: string, courseCode: string, cookies: PortalCookies): Promise<string | null> {
+    if (!/^\d{5}$/.test(cociclo) || !/^\d{4,6}$/.test(courseCode)) return null;
+
+    const url =
+      `${this.syllabusBaseUrl}${SYLLABUS_VIEW_PATH}?ReadViewEntries&OutputFormat=JSON&Count=5` +
+      `&RestrictToCategory=${cociclo}_${courseCode}`;
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), this.timeoutMs);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(url, {
+        method: "GET",
+        redirect: "manual",
+        signal: ac.signal,
+        headers: { Cookie: this.cookieHeader(cookies), "User-Agent": UA, Accept: "application/json,*/*;q=0.8" },
+      });
+    } catch {
+      // Timeout o error de red: se degrada a "no hay sílabo", nunca aborta.
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (res.status >= 300 && res.status < 400) throw sessionInvalid();
+    if (res.status !== 200) return null;
+
+    const buf = await res.arrayBuffer();
+    return new TextDecoder("utf-8").decode(buf);
   }
 
   /** Best effort: cerrar la sesión del portal nunca debe romper la importación. */

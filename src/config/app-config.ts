@@ -35,6 +35,9 @@ export const config = {
     baseUrl: env.PORTAL_BASE_URL,
     timeoutMs: env.PORTAL_TIMEOUT_MS,
   },
+  syllabus: {
+    baseUrl: env.SYLLABUS_BASE_URL,
+  },
 } as const;
 
 export type AppConfig = typeof config;

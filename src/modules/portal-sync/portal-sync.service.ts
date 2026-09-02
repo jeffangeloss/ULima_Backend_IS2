@@ -6,16 +6,16 @@ import {
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
-  parseImpedimentos, parseInfoAcademica, parseRecordAcademico,
+  parseImpedimentos, parseInfoAcademica, parseRecordAcademico, parseSyllabusEntry,
 } from "./parsers/index.js";
 import type {
-  ImportResult, ImportSummary, PortalCookies, RecordRow, SyncStatus, SyncWarning,
+  ImportResult, ImportSummary, PortalCookies, RecordRow, SyllabusEntry, SyncStatus, SyncWarning,
 } from "./portal-sync.types.js";
 
 const emptySummary = (): ImportSummary => ({
   coursesCreated: 0, teachersCreated: 0, sectionsCreated: 0, sectionsUpdated: 0,
   sessionsUpserted: 0, enrollmentsUpserted: 0, enrollmentsWithdrawn: 0,
-  progressUpserted: 0, progressSkipped: 0, alertsCreated: 0,
+  progressUpserted: 0, progressSkipped: 0, alertsCreated: 0, syllabiUpserted: 0,
 });
 
 export class PortalSyncService {
@@ -88,6 +88,27 @@ export class PortalSyncService {
       }
     }
 
+    // ── 3.5 Sílabos: en paralelo, FUERA de la transacción (misma razón que
+    // matrícula/récord: son peticiones de red y no deben mantener la conexión
+    // de BD abierta). Se resuelven por CURSO, no por fila: dos secciones del
+    // mismo curso comparten un solo sílabo (una sola oferta por curso+ciclo).
+    // Un sílabo es un dato adicional, no el propósito de la importación:
+    // cualquier fallo (red, sesión, parseo) se degrada a "sin sílabo para
+    // este curso" y NUNCA aborta el resto de la importación.
+    const courseCodesToSync = [...new Set(mat.data.rows.map((r) => r.courseCode))];
+    const syllabusByCourse = new Map<string, SyllabusEntry>();
+    await Promise.all(
+      courseCodesToSync.map(async (courseCode) => {
+        try {
+          const json = await this.client.fetchSyllabus(ciclo.data.cocicloUrl, courseCode, cookies);
+          const parsed = json ? parseSyllabusEntry(json) : null;
+          if (parsed) syllabusByCourse.set(courseCode, parsed);
+        } catch {
+          /* un sílabo perdido nunca aborta la importación */
+        }
+      }),
+    );
+
     // ── 4. Escrituras (todas dentro de UNA transacción) ─────────────────────
     // findActivePeriod se lee ANTES de abrir la transacción y se pasa adentro:
     // leerlo con this.repository dentro del callback corre sobre el pool, no
@@ -135,6 +156,10 @@ export class PortalSyncService {
       // se retira; perder una acá la retira por error dentro de la misma transacción.
       const sectionIdByCourse = new Map<string, number>();
       const keepSectionIds: number[] = [];
+      // Evita upsertear el mismo sílabo dos veces cuando dos filas de
+      // matrícula comparten curso (dos secciones): ambas resuelven a la
+      // MISMA oferta (uq_course_offering es por período+curso, no por fila).
+      const syllabusUpsertedOfferings = new Set<number>();
       for (const row of mat.data.rows) {
         const teacherName = teacherByCourse.get(row.courseCode) ?? "";
         const t = await this.repository.upsertTeacher(tx, teacherName);
@@ -151,6 +176,17 @@ export class PortalSyncService {
         if (c.created) summary.coursesCreated++;
 
         const off = await this.repository.upsertOffering(tx, p.id, c.id, row.credits);
+
+        // Sílabo, si el portal publicó uno para este curso (§3.5). Después de
+        // que la oferta existe, como exige la clave `course_offering_id` de
+        // `syllabus`.
+        const syllabusEntry = syllabusByCourse.get(row.courseCode);
+        if (syllabusEntry && !syllabusUpsertedOfferings.has(off.id)) {
+          await this.repository.upsertSyllabus(tx, off.id, syllabusEntry);
+          syllabusUpsertedOfferings.add(off.id);
+          summary.syllabiUpserted++;
+        }
+
         const sec = await this.repository.upsertSection(tx, off.id, row.sectionCode, t.id);
         if (sec.created) summary.sectionsCreated++; else summary.sectionsUpdated++;
         sectionIdByCourse.set(row.courseCode, sec.id);
@@ -162,6 +198,16 @@ export class PortalSyncService {
           : null;
         await this.repository.upsertEnrollment(tx, studentId, sec.id, finalGrade);
         summary.enrollmentsUpserted++;
+      }
+
+      // Un curso sin sílabo es normal (no todo curso publica uno) y NO se
+      // advierte por curso; solo se avisa si NINGÚN curso de este ciclo trajo
+      // sílabo, con una única advertencia agregada.
+      if (summary.syllabiUpserted === 0) {
+        warnings.push({
+          code: "SYLLABUS_UNAVAILABLE", block: "silabo",
+          message: "El portal no publicó sílabo para ningún curso de este ciclo.",
+        });
       }
 
       if (horario.ok) {

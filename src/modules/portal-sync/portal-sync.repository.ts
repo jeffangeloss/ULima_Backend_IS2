@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import type { RecordRow } from "./portal-sync.types.js";
+import type { RecordRow, SyllabusEntry } from "./portal-sync.types.js";
 
 /** Transacción de Drizzle/postgres-js; se tipa laxo para no acoplar a la versión. */
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -421,6 +421,46 @@ export class PortalSyncRepository {
       where student_id = ${studentId} and title = 'Impedimento de matrícula' and message <> ${message}
     `);
     return false;
+  }
+
+  /**
+   * `syllabus` por `uq_syllabus_course_offering (course_offering_id)`. Un
+   * curso pertenece a un ciclo, y su sílabo se resuelve por curso+ciclo, así
+   * que ese conflict target (no `drive_file_id`) es el correcto para "el
+   * mismo curso, misma oferta, sílabo republicado" (re-sincronizar el mismo
+   * ciclo debe actualizar la fila, no duplicarla).
+   *
+   * `drive_file_id`/`drive_file_url`: nombres HISTÓRICOS de cuando el
+   * sílabo solo podía vivir en Google Drive; ahora también guardan la
+   * referencia al documento Domino (UNID y URL de `vSyllabusXCicloAV`). Se
+   * mantienen tal cual — sin migración ni rename — por decisión del owner
+   * (2026-09-02, ver `portal-sync.spec.md`).
+   *
+   * `drive_file_id` tiene ADEMÁS un unique de columna propio
+   * (`syllabus_drive_file_id_unique`). No se contempla acá: un UNID de
+   * Domino es único por documento y un sílabo pertenece a un curso en un
+   * ciclo, así que una colisión de `drive_file_id` entre dos
+   * `course_offering_id` distintos no debería ocurrir en la práctica. Si
+   * ocurriera, este INSERT fallaría con `23505` (conflicto no cubierto por
+   * `ON CONFLICT (course_offering_id)`) y el error se propagaría tal cual.
+   * OJO: la degradación a no-fatal del service cubre la DESCARGA del sílabo
+   * (§3.5), no esta escritura, que corre dentro de la transacción de la
+   * importación — un error acá la aborta entera. Por eso el parser
+   * (`parseSyllabusEntry`) descarta de antemano todo valor que la base de
+   * datos podría rechazar por longitud, y por eso este upsert se mantiene
+   * dentro de la transacción solo mientras la colisión siga siendo
+   * imposible en la práctica: el sílabo se pide por `<COCICLO>_<curso>` y
+   * la oferta es única por período+curso, así que UNID y oferta van 1:1.
+   */
+  async upsertSyllabus(tx: Tx, courseOfferingId: number, entry: SyllabusEntry) {
+    const rows = (await tx.execute(sql`
+      insert into syllabus (course_offering_id, title, drive_file_id, drive_file_url)
+      values (${courseOfferingId}, ${entry.fileName}, ${entry.unid}, ${entry.url})
+      on conflict (course_offering_id) do update
+        set title = excluded.title, drive_file_id = excluded.drive_file_id, drive_file_url = excluded.drive_file_url
+      returning id, (xmax = 0) as "created"
+    `)) as unknown as Array<{ id: number; created: boolean }>;
+    return { id: Number(rows[0].id), created: Boolean(rows[0].created) };
   }
 
   async findStudent(studentId: number) {

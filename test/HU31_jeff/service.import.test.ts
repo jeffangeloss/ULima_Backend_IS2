@@ -11,10 +11,15 @@ const cookies = { JSESSIONID: "a", LtpaToken2: "b" };
 // Código de alumno que trae el fixture anonimizado.
 const CODE_EN_FIXTURE = matricula.match(/\b(\d{8})\b/)![1];
 
+const silabo = await Bun.file("test/HU31_jeff/fixtures/silabo.json").text();
+
 const fakeClient = (over: Partial<PortalClient> = {}): PortalClient =>
   ({
     fetchPage: async () => layout,
     fetchAll: async () => ({ matricula, record }),
+    // Por defecto el portal no publica sílabo para ningún curso: es el caso
+    // más común (no todo curso lo publica) y no debe romper nada.
+    fetchSyllabus: async () => null,
     logout: async () => {},
     ...over,
   }) as unknown as PortalClient;
@@ -44,6 +49,7 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     findStudentLevel: async () => null,
     updateStudentLevel: async () => {},
     fillFullNameIfEmpty: async () => {},
+    upsertSyllabus: async () => ({ id: 999, created: true }),
     ...over,
   }) as unknown as PortalSyncRepository;
 
@@ -266,6 +272,92 @@ describe("PortalSyncService.importFromPortal", () => {
     await svc.importFromPortal(3, 7, cookies);
 
     expect(updateCalls).toBe(0);
+  });
+});
+
+describe("PortalSyncService.importFromPortal — sílabos", () => {
+  test("cuenta en el resumen un sílabo por cada curso que el portal devuelve", async () => {
+    // El fakeRepo por defecto hace eco de un mismo id (30) de oferta para
+    // TODOS los cursos (no distingue por curso); acá se necesita una oferta
+    // DISTINTA por curso para comprobar que se cuenta uno por curso y no un
+    // único upsert que se deduplica de más.
+    const repo = fakeRepo({
+      upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
+      upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+    } as never);
+    const client = fakeClient({ fetchSyllabus: async () => silabo } as Partial<PortalClient>);
+    const svc = new PortalSyncService(repo, client);
+    const r = await svc.importFromPortal(3, 7, cookies);
+
+    // El fixture de matrícula trae 5 cursos distintos (650033, 650035,
+    // 650067, 650070, 650084): con el portal devolviendo sílabo para todos,
+    // el resumen debe contar los 5.
+    expect(r.summary.syllabiUpserted).toBe(5);
+    expect(r.warnings.some((w) => w.code === "SYLLABUS_UNAVAILABLE")).toBe(false);
+  });
+
+  test("SYLLABUS_UNAVAILABLE si el portal no publica sílabo para ningún curso (caso por defecto)", async () => {
+    const svc = new PortalSyncService(fakeRepo(), fakeClient());
+    const r = await svc.importFromPortal(3, 7, cookies);
+
+    expect(r.summary.syllabiUpserted).toBe(0);
+    expect(r.warnings.some((w) => w.code === "SYLLABUS_UNAVAILABLE")).toBe(true);
+  });
+
+  test("un curso sin sílabo es normal: sílabo parcial no advierte, solo cuenta lo que llegó", async () => {
+    const client = fakeClient({
+      fetchSyllabus: async (_cociclo: string, courseCode: string) => (courseCode === "650033" ? silabo : null),
+    } as Partial<PortalClient>);
+    const svc = new PortalSyncService(fakeRepo(), client);
+    const r = await svc.importFromPortal(3, 7, cookies);
+
+    expect(r.summary.syllabiUpserted).toBe(1);
+    // Ni SYLLABUS_UNAVAILABLE (al menos un curso trajo sílabo) ni ninguna
+    // advertencia por cada uno de los 4 cursos que no trajeron.
+    expect(r.warnings.filter((w) => w.code === "SYLLABUS_UNAVAILABLE")).toHaveLength(0);
+  });
+
+  test("un fallo al buscar el sílabo (excepción de red) NUNCA aborta la importación", async () => {
+    const client = fakeClient({
+      fetchSyllabus: async () => { throw new Error("cactus.ulima.edu.pe no respondió"); },
+    } as Partial<PortalClient>);
+    const svc = new PortalSyncService(fakeRepo(), client);
+
+    const r = await svc.importFromPortal(3, 7, cookies);
+
+    // El resto de la importación (identidad, matrícula) sigue intacto.
+    expect(r.period.code).toBe("2026-2");
+    expect(r.summary.enrollmentsUpserted).toBe(5);
+    expect(r.summary.syllabiUpserted).toBe(0);
+    expect(r.warnings.some((w) => w.code === "SYLLABUS_UNAVAILABLE")).toBe(true);
+  });
+
+  test("dos secciones del mismo curso comparten oferta: el sílabo se upsertea UNA sola vez", async () => {
+    const row0 = matricula.match(/<tr class=cursosMatRow id=cMatrow0>[\s\S]*?<\/tr>/)?.[0];
+    if (!row0) throw new Error("fixture sin cMatrow0");
+    const dupRow = row0.replace("id=cMatrow0", "id=cMatrowDup").replace("952", "953");
+    const matriculaConDosSecciones = matricula.replace(row0, row0 + "\n" + dupRow);
+
+    const upsertSyllabusCalls: number[] = [];
+    const repo = fakeRepo({
+      upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
+      upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      upsertSyllabus: async (_tx, offeringId: number) => {
+        upsertSyllabusCalls.push(offeringId);
+        return { id: 1, created: true };
+      },
+    } as never);
+    const client = fakeClient({
+      fetchAll: async () => ({ matricula: matriculaConDosSecciones, record }),
+      fetchSyllabus: async () => silabo,
+    } as Partial<PortalClient>);
+
+    const svc = new PortalSyncService(repo, client);
+    const r = await svc.importFromPortal(3, 7, cookies);
+
+    // 650033 aparece dos veces (dos secciones) pero es UNA sola oferta.
+    expect(upsertSyllabusCalls.filter((id) => id === 650033)).toHaveLength(1);
+    expect(r.summary.syllabiUpserted).toBe(5);
   });
 });
 

@@ -1,0 +1,28 @@
+{
+"@timestamp": "20260902T193518,00Z",
+"@toplevelentries": "1",
+"viewentry": [
+{
+"@position": "1",
+"@unid": "E86886A81087A25805258E4F00502E2C",
+"@noteid": "13D8E2",
+"@siblings": "1",
+"entrydata": [
+{
+"@columnnumber": "0",
+"@name": "$17",
+"text": {
+"0": "<SCRIPT LANGUAGE=\"JavaScript\"\>\r<\!--\r AbreArchivo('vSyllabusXCicloAV/E86886A81087A25805258E4F00502E2C/$File/2026-2 SIL PLANEAMIENTO ESTRATÉGICO.pdf');\r//--\>\r<\/SCRIPT\>"
+}
+},
+{
+"@columnnumber": "1",
+"@name": "SyllaArchiPDF_TX",
+"text": {
+"0": ""
+}
+}
+]
+}
+]
+}

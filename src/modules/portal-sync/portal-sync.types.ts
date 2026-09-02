@@ -24,15 +24,21 @@ export interface RecordRow {
 export interface InfoAcademica { careerName: string | null }
 export interface Impedimentos { hasImpediment: boolean; hasDebt: boolean; text: string }
 
+/** Entrada de sílabo resuelta de la vista Domino `vSyllabusXCicloAV`, ya
+ *  lista para persistir. `unid` es el identificador único del documento
+ *  Domino; `url` ya lleva el filename percent-encoded. */
+export interface SyllabusEntry { unid: string; fileName: string; url: string }
+
 export type WarningCode =
   | "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED"
-  | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE";
+  | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE"
+  | "SYLLABUS_UNAVAILABLE";
 export interface SyncWarning { code: WarningCode; block: string; message: string }
 
 export interface ImportSummary {
   coursesCreated: number; teachersCreated: number; sectionsCreated: number; sectionsUpdated: number;
   sessionsUpserted: number; enrollmentsUpserted: number; enrollmentsWithdrawn: number;
-  progressUpserted: number; progressSkipped: number; alertsCreated: number;
+  progressUpserted: number; progressSkipped: number; alertsCreated: number; syllabiUpserted: number;
 }
 
 export interface ImportResult {

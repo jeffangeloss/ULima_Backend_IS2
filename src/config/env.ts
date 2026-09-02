@@ -14,6 +14,21 @@ export const isAllowedPortalBaseUrl = (value: string): boolean => {
   }
 };
 
+/** Host único permitido para la base Domino de sílabos. Variable SEPARADA de
+ *  `PORTAL_ALLOWED_HOST` (y con su propio predicado) a propósito: si fueran
+ *  una sola variable aceptando dos hosts, cualquiera de los dos sistemas
+ *  podría apuntarse al otro. Con dos variables, cada una fija a un solo host,
+ *  eso no es posible (anti-SSRF). */
+export const SYLLABUS_ALLOWED_HOST = "cactus.ulima.edu.pe";
+
+export const isAllowedSyllabusBaseUrl = (value: string): boolean => {
+  try {
+    return new URL(value).host === SYLLABUS_ALLOWED_HOST;
+  } catch {
+    return false;
+  }
+};
+
 const envSchema = z.object({
   DATABASE_URL: z.string().url("DATABASE_URL debe ser una URL de conexión válida de PostgreSQL"),
   JWT_SECRET: z.string().min(8, "JWT_SECRET debe tener al menos 8 caracteres"),
@@ -66,6 +81,11 @@ const envSchema = z.object({
     const n = parseInt(v ?? "8000", 10);
     return Number.isInteger(n) && n > 0 ? n : 8000;
   }),
+  // Sílabos (base Domino ac_bd001.nsf). Host FIJO por seguridad, igual que
+  // PORTAL_BASE_URL pero con su propia allowlist: debe seguir siendo
+  // cactus.ulima.edu.pe; cualquier otro valor es rechazado (anti-SSRF).
+  SYLLABUS_BASE_URL: z.string().url().optional().default("https://cactus.ulima.edu.pe")
+    .refine(isAllowedSyllabusBaseUrl, "SYLLABUS_BASE_URL debe apuntar a cactus.ulima.edu.pe"),
 });
 
 const parsed = envSchema.safeParse(process.env);

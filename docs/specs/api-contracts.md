@@ -586,12 +586,13 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
       "summary": {
         "coursesCreated": 0, "teachersCreated": 0, "sectionsCreated": 0, "sectionsUpdated": 5,
         "sessionsUpserted": 12, "enrollmentsUpserted": 5, "enrollmentsWithdrawn": 0,
-        "progressUpserted": 53, "progressSkipped": 4, "alertsCreated": 1
+        "progressUpserted": 53, "progressSkipped": 4, "alertsCreated": 1, "syllabiUpserted": 3
       },
-      "warnings": [ { "code": "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE", "block": "string", "message": "string" } ]
+      "warnings": [ { "code": "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE" | "SYLLABUS_UNAVAILABLE", "block": "string", "message": "string" } ]
     }
     ```
   - Errores: **`409 PORTAL_SESSION_INVALID`** (el portal devolvió `inicio.jsp` o pidió passcode — es 409 y no 401 a propósito: `ApiClient` del frontend trata todo 401 como expiración del JWT y cerraría la sesión del usuario), `403 PORTAL_IDENTITY_MISMATCH` (código del portal ≠ `app_user.code`), `422 PORTAL_IDENTITY_UNVERIFIABLE` (no se pudo leer el código del portal), `502 PORTAL_UNAVAILABLE`, `504 PORTAL_TIMEOUT`, `429 TOO_MANY_REQUESTS` (máx. 5 importaciones por alumno por hora).
   - La verificación de identidad ocurre ANTES de cualquier escritura y no se degrada a `warnings`.
   - Idempotente: repetir la importación deja el mismo estado (todos los upsert usan `ON CONFLICT` sobre constraints existentes). No toca `simulated_grades`, simulación de malla, especialidades, anuncios, asesorías, representantes, chat, networking, `schedule_session.color_hex` ni las horas de asistencia.
   - **La primera importación de un ciclo nuevo activa ese `academic_period` para TODOS los alumnos** (`is_active` es único global). Solo avanza el ciclo, nunca lo retrocede, y solo activa si la fecha de inicio del ciclo ya llegó (la Universidad publica el calendario días antes de que empiecen las clases). Si el período se crea antes de esa fecha, queda inactivo y la respuesta trae el warning `PERIOD_NOT_ACTIVATED_YET`; una importación posterior en o después de esa fecha lo activa.
+  - **Sílabos**: además de matrícula y récord, la importación busca en paralelo el sílabo de cada curso importado en la base Domino de sílabos (`cactus.ulima.edu.pe`, host separado y con su propia allowlist — ver `specs/features/portal-sync/portal-sync.spec.md` §SSO). `summary.syllabiUpserted` cuenta cuántos se guardaron. Que un curso no tenga sílabo publicado es normal y no genera advertencia por curso; solo si NINGÚN curso del ciclo trae sílabo se agrega una única advertencia `SYLLABUS_UNAVAILABLE`. Un fallo al buscar o guardar un sílabo nunca aborta la importación ni afecta el resto del `summary`.

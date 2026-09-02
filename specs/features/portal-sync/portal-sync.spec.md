@@ -1,6 +1,6 @@
 ---
 name: Portal Sync
-description: Carga de ciclo por alumno desde el portal miUlima (webaloe.ulima.edu.pe/portalUL) hacia PostgreSQL, usando la sesión del portal que el alumno abre en la app.
+description: Carga de ciclo por alumno desde el portal miUlima (webaloe.ulima.edu.pe/portalUL) hacia PostgreSQL, usando la sesión del portal que el alumno abre en la app; incluye sílabos desde la base Domino cactus.ulima.edu.pe, vía la misma sesión SSO.
 targets:
   - ../../../src/modules/portal-sync/**
   - ../../../src/modules/index.ts
@@ -16,7 +16,7 @@ targets:
 
 # Portal Sync
 
-> Estado: **aprobada e implementada**. Revisada el 2026-09-02 contra el esquema real, los fixtures del portal y las convenciones del repo; las correcciones de esa revisión ya están incorporadas. Pendiente: aplicar en la base de datos real la migración `drizzle/0004_portal_sync_final_grade.sql` y correr la verificación manual end-to-end contra el portal miUlima (ver §Verification). Queda además una decisión suelta sin aprobar que no bloquea el desarrollo (ver §Decisiones pendientes).
+> Estado: **aprobada e implementada**. Revisada el 2026-09-02 contra el esquema real, los fixtures del portal y las convenciones del repo; las correcciones de esa revisión ya están incorporadas. Se agregó el sílabo (nueva fuente Domino, `cactus.ulima.edu.pe`) el mismo día, aprobado por el owner (ver §SSO, §Sílabos, §Decisiones). Pendiente: aplicar en la base de datos real la migración `drizzle/0004_portal_sync_final_grade.sql` y correr la verificación manual end-to-end contra el portal miUlima (ver §Verification). Quedan además decisiones sueltas sin resolver que no bloquean el desarrollo (ver §Decisiones pendientes).
 
 ## Contexto
 
@@ -37,6 +37,12 @@ Flujo del portal verificado el 2026-09-01 (spike `spike-portal/fetch_portal.py`,
 
 Los pasos 1 a 4 los ejecuta el **WebView**, no el backend. El backend solo consume las cookies del paso 4.
 
+### SSO con la base de sílabos (Domino)
+
+La Universidad corre **dos sistemas con inicio de sesión único (SSO)**: el portal del alumno (`webaloe.ulima.edu.pe`, WebSphere) y la base de sílabos (`cactus.ulima.edu.pe`, Domino). WebSphere deja la cookie `LtpaToken` con `Domain=.ulima.edu.pe` (no atada a un host); LTPA es el token SSO de IBM entre WebSphere y Domino.
+
+**Verificado empíricamente el 2026-09-02**: la misma petición hecha con las cookies de la sesión del portal a la base de sílabos de Domino devuelve el MISMO documento que un login directo a Domino, y ninguna de las dos respuestas es una página de login. Es decir, las cookies que `portal-sync` ya recibe del WebView del portal **alcanzan para leer sílabos de Domino, sin segundo login ni credenciales adicionales**.
+
 ### Páginas fuente (relativas a `/portalUL/`, ISO-8859-1)
 
 | Página | Contenido usado |
@@ -50,6 +56,25 @@ Los pasos 1 a 4 los ejecuta el **WebView**, no el backend. El backend solo consu
 **Ciclo activo (`COCICLO`)**: se obtiene SIEMPRE de `layout.jsp` mediante `parseCicloActivo` (rótulos `CICLO: 2026-2` de los bloques Información para Matrícula / Aula Virtual). Nunca se hardcodea ni se toma de la BD. Formatos: `20262` en las URL de matrícula, `AAAA-N` en `academic_period.code`.
 
 `gada/servlets/ComandoListarConsNotas` **no se usa**: para el ciclo en curso devuelve `0` (no vacío) en todas las notas, lo que marcaría como desaprobados los cursos activos.
+
+### Sílabos (fuente nueva: Domino, `cactus.ulima.edu.pe`, JSON, UTF-8)
+
+Fuente **distinta** de las anteriores: otro host (§SSO), otra base (`ac_bd001.nsf`, no `/portalUL/`) y otro formato (JSON, no HTML). El sílabo de UN curso en UN ciclo se obtiene con:
+
+```text
+https://cactus.ulima.edu.pe/ac/ac_bd001.nsf/vSyllabusXCicloAV?ReadViewEntries&OutputFormat=JSON&Count=5&RestrictToCategory=<COCICLO>_<courseCode>
+```
+
+`COCICLO` es el mismo `cocicloUrl` que resuelve `parseCicloActivo` (ya usado para matrícula); `courseCode` es el código de curso del consolidado. Respuesta real verificada, sin datos personales, guardada en `test/HU31_jeff/fixtures/silabo.json`.
+
+Forma de la respuesta: `viewentry[0]["@unid"]` es el id único del documento Domino (UNID). `viewentry[0].entrydata[].text["0"]` trae, en una de sus entradas, un fragmento JavaScript con `AbreArchivo('vSyllabusXCicloAV/<UNID>/$File/<filename>.pdf')`; el `filename` lleva el ciclo y el nombre del curso, p. ej. `2026-2 SIL PLANEAMIENTO ESTRATÉGICO.pdf`.
+
+**Gotcha de charset, ya observado**: el cuerpo es UTF-8 aunque el `Content-Type` declare otra cosa. Decodificar según el `Content-Type` mancha los acentos; `PortalClient.fetchSyllabus` decodifica SIEMPRE como UTF-8, sin mirarlo (a diferencia de `fetchPage`, que sí respeta el `Content-Type` para `webaloe`).
+
+**Gotcha de JSON, ya observado**: Domino emite el fragmento JS (dentro de un comentario HTML `<!-- ... -->`) con escapes de barra invertida que NO son válidos en JSON estricto (`\!`, `\>`): `JSON.parse` directo sobre una respuesta real y bien formada falla con "Bad escaped character". `parseSyllabusEntry` normaliza esos escapes antes de parsear (ver comentario en `src/modules/portal-sync/parsers/silabo.ts`).
+
+Que un curso no tenga sílabo publicado (`viewentry` vacío) es normal, no un error: `parseSyllabusEntry` devuelve `null`, igual que ante JSON malformado. No sigue el patrón `ParseResult` de los demás parsers (no hay `warnings` por curso; ver §Sincronización paso 12).
+`[@test] ../../../test/HU31_jeff/parsers.silabo.test.ts`
 
 ## Requirements
 
@@ -104,17 +129,21 @@ Ver `docs/specs/api-contracts.md`, sección **Portal Sync**.
 
 ### Cliente del portal (`src/services/portal.client.ts`)
 
-- Variables nuevas en `src/config/env.ts` (mismo patrón Zod que `COHERE_API_KEY`), expuestas por `src/config/app-config.ts` como `config.portal`:
-  - `PORTAL_BASE_URL` — default `https://webaloe.ulima.edu.pe`. **Validada contra una allowlist de host fija** (`webaloe.ulima.edu.pe`) para que no sea un vector de SSRF.
+- Variables nuevas en `src/config/env.ts` (mismo patrón Zod que `COHERE_API_KEY`), expuestas por `src/config/app-config.ts`:
+  - `PORTAL_BASE_URL` (`config.portal.baseUrl`) — default `https://webaloe.ulima.edu.pe`. **Validada contra una allowlist de host fija** (`webaloe.ulima.edu.pe`, `isAllowedPortalBaseUrl`) para que no sea un vector de SSRF.
     `[@test] ../../../test/HU31_jeff/env.portal-allowlist.test.ts`
-  - `PORTAL_TIMEOUT_MS` — default `8000`.
-- Las rutas de las páginas son **constantes del módulo**. Lo único interpolado en una URL es el `COCICLO`, que se valida contra `^\d{5}$` antes de usarse. Ningún otro valor del HTML entra en una URL. Solo se descargan `matricula` y `record`: no se pide ninguna página cuyo contenido no lea después ningún módulo.
+  - `PORTAL_TIMEOUT_MS` (`config.portal.timeoutMs`) — default `8000`.
+  - `SYLLABUS_BASE_URL` (`config.syllabus.baseUrl`) — default `https://cactus.ulima.edu.pe`. **Allowlist propia y separada** (`cactus.ulima.edu.pe`, `isAllowedSyllabusBaseUrl`), NO la misma variable que `PORTAL_BASE_URL`: dos variables, cada una fija a un solo host, para que ninguna de las dos pueda apuntarse al sistema de la otra (anti-SSRF). Decisión del owner, 2026-09-02.
+    `[@test] ../../../test/HU31_jeff/env.portal-allowlist.test.ts`
+- Las rutas de las páginas son **constantes del módulo**. Lo único interpolado en una URL es el `COCICLO` (`^\d{5}$`) y, para sílabos, además el `courseCode` (`^\d{4,6}$`), ambos validados antes de usarse. Ningún otro valor del HTML entra en una URL. Solo se descargan `matricula` y `record` del portal: no se pide ninguna página cuyo contenido no lea después ningún módulo.
   `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
 - Envía las cookies recibidas en la cabecera `Cookie` y un `User-Agent` de navegador. **No sigue redirecciones**: un 302 a `inicio.jsp` es sesión inválida.
 - Decodifica el cuerpo con el charset del `Content-Type` (default ISO-8859-1).
 - **Presupuesto de ejecución**: las 2 descargas de datos (`matricula`, `record`) se hacen **en paralelo** tras resolver el `COCICLO` (que requiere `layout.jsp` primero). Presupuesto total ≈ 2 × `PORTAL_TIMEOUT_MS` ≈ 16 s. Requiere `maxDuration` explícito en `vercel.json`; ese cambio pertenece a `platform-runtime.spec.md` y es **prerrequisito de despliegue** de esta feature.
 - Nunca registra cookies, cuerpos HTML ni datos personales; solo URL, status y tamaño. El `errorHandler` global no debe recibir excepciones que lleven HTML del portal en el mensaje: el cliente envuelve todo fallo en `HttpError` con mensaje fijo.
 - Llama a `CustomLogoutServlet` en `finally`, siempre.
+- `fetchSyllabus(cociclo, courseCode, cookies)` — sílabo de un curso (§Sílabos). Reutiliza la MISMA sesión (cookies del portal, ver §SSO), pero apunta a `config.syllabus.baseUrl`, no a `config.portal.baseUrl`. A diferencia de `fetchPage`/`fetchAll`, un sílabo es un dato adicional, no el propósito de la importación: cualquier fallo que NO sea sesión inválida (timeout, error de red, status inesperado) se degrada a `null` en vez de lanzar. Una redirección sigue lanzando el mismo `409 PORTAL_SESSION_INVALID` que `fetchPage` (no existe, a diferencia de `inicio.jsp`/`solicitarValidarToken` en `webaloe`, un marcador conocido de "página de login" de Domino, así que solo la redirección — señal de sesión muerta verificable en HTTP — se trata como tal). Decodifica SIEMPRE como UTF-8 (§Sílabos, gotcha de charset).
+  `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
 
 ### Parsers (`parsers/*.ts`, funciones puras HTML → DTO)
 
@@ -135,8 +164,10 @@ Regla común de normalización, obligatoria antes de comparar o guardar cualquie
   `[@test] ../../../test/HU31_jeff/parsers.info.test.ts`
 - `parseImpedimentos(html)` → `{ hasImpediment, hasDebt, text }`.
   `[@test] ../../../test/HU31_jeff/parsers.info.test.ts`
-- Cada parser devuelve `{ ok: true, data } | { ok: false, reason }`. Un parser que falla **no aborta** la importación (excepto el de identidad): el bloque se omite y se reporta en `warnings`.
-- Fixtures en `test/HU31_jeff/fixtures/`. **Anonimización obligatoria antes de commitear**: sustituir nombre, código de alumno, DNI, carné, brevete, dirección, celular, correo, fecha de nacimiento y placa por valores ficticios. El fixture de `layout.jsp` debe conservarse además en **bytes ISO-8859-1 crudos** para ejercitar la decodificación; guardar solo el UTF-8 ya decodificado no prueba nada de esa ruta.
+- `parseSyllabusEntry(json)` → `{ unid, fileName, url } | null` (§Sílabos). **NO** sigue el patrón `{ ok, data|reason }` de arriba: a diferencia de los parsers de HTML del portal, acá "este curso no tiene sílabo" es un resultado legítimo y frecuente, no un fallo, de ahí `null` directo en vez de `reason`. Guarda de longitud antes de devolver: `fileName` (futuro `title`) ≤ 150 y la URL construida ≤ 255 (`syllabus.title`/`drive_file_url`); si excede, `null` — mejor sin sílabo que una fila que la BD rechace y haga rollback de toda la importación.
+  `[@test] ../../../test/HU31_jeff/parsers.silabo.test.ts`
+- Cada parser devuelve `{ ok: true, data } | { ok: false, reason }` (excepto `parseSyllabusEntry`, ver arriba). Un parser que falla **no aborta** la importación (excepto el de identidad): el bloque se omite y se reporta en `warnings`.
+- Fixtures en `test/HU31_jeff/fixtures/`. **Anonimización obligatoria antes de commitear**: sustituir nombre, código de alumno, DNI, carné, brevete, dirección, celular, correo, fecha de nacimiento y placa por valores ficticios. El fixture de `layout.jsp` debe conservarse además en **bytes ISO-8859-1 crudos** para ejercitar la decodificación; guardar solo el UTF-8 ya decodificado no prueba nada de esa ruta. `test/HU31_jeff/fixtures/silabo.json` es una respuesta real de Domino sin datos personales (comprobado antes de commitear).
 
 ### Sincronización (`portal-sync.repository.ts`)
 
@@ -177,6 +208,15 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
 10. **Progreso** — `student_course_progress` por `uq_student_course_progress (student_id, curriculum_course_id)`, con `curriculum_id` (`NOT NULL`) = `student.curriculum_id`. Se resuelve `curriculum_course` por `course.code` dentro de la malla del alumno; si el curso no está en la malla la fila se omite y se cuenta en `warnings.progressSkipped` (convalidaciones, cursos de otra facultad, códigos legados). Estado: `approved` si `grade >= 11`, `failed` si `grade < 11`, `in_progress` si no hay nota y la fila es del período activo. Filas de ciclos pasados sin nota numérica se omiten y se reportan. Con varias filas del mismo curso (columna `VEZ`) gana la de **mayor `VEZ`**; a igual `VEZ`, la de ciclo más reciente.
     `[@test] ../../../test/HU31_jeff/repository.student.test.ts`
 11. **Impedimentos** — si hay deuda o impedimento se hace upsert de **una sola** `alert` por alumno y período, con `type = 'academic_risk'`, `title` (`NOT NULL`) = `"Impedimento de matrícula"` y `message` = el texto del portal. Idempotente: si ya existe una alerta de ese alumno con ese título y mensaje, **no se crea otra aunque esté leída**; solo se actualiza el mensaje si cambió.
+12. **Sílabos** — `syllabus` por `uq_syllabus_course_offering (course_offering_id)`. Los sílabos de todos los cursos importados se buscan **en paralelo** (§Sílabos, §Cliente del portal) DESPUÉS de resolver la identidad y ANTES de abrir la transacción (misma razón que matrícula/récord: son peticiones de red, no deben mantener la conexión de BD abierta), y se resuelven por **curso**, no por fila: dos secciones del mismo curso comparten una sola oferta y un solo sílabo. Dentro de la transacción, cada sílabo se upsertea justo después de que su `course_offering` existe (`upsertOffering`, paso 7), que es la clave que exige `syllabus.course_offering_id`.
+    - **Columnas históricas, decisión del owner (2026-09-02)**: `syllabus.drive_file_id` recibe el UNID de Domino y `syllabus.drive_file_url` la URL de `vSyllabusXCicloAV`. Las columnas conservan sus nombres actuales (`drive_file_id`/`drive_file_url`) SIN migración ni rename, aunque ya no signifiquen solo Google Drive — hoy también guardan la referencia al documento Domino. Comentario en el código donde se escriben, dejando constancia de que el nombre es histórico.
+    - `drive_file_id` tiene ADEMÁS un unique de columna propio (`syllabus_drive_file_id_unique`), aparte de `uq_syllabus_course_offering`. Un UNID de Domino es único por documento y un sílabo pertenece a un curso en un ciclo, así que una colisión entre dos `course_offering_id` distintos **no debería ocurrir**; no se cubre con manejo especial (evaluado y descartado, no es el conflict target del upsert).
+    - Que un curso no tenga sílabo es normal y **no** genera advertencia por curso. Si NINGÚN curso del ciclo trajo sílabo se agrega una única advertencia `SYLLABUS_UNAVAILABLE`. Se cuenta en `summary.syllabiUpserted`.
+    - **Un fallo de sílabo (red, sesión, parseo o al guardar) nunca aborta el resto de la importación**: los datos académicos del alumno importan; la referencia al PDF es un extra.
+    - **Limitación conocida, no resuelta acá** (ver §Decisiones pendientes): la URL guardada apunta a un documento Domino protegido por sesión. El visor de sílabos embebido de la app Flutter, que hoy abre URLs de Google Drive, **no podrá abrir esta URL sin una sesión de Domino**. Queda para que el owner decida.
+    `[@test] ../../../test/HU31_jeff/parsers.silabo.test.ts`
+    `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
+    `[@test] ../../../test/HU31_jeff/service.import.test.ts`
 
 ### Fuera de alcance explícito
 
@@ -195,6 +235,7 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
 
 - Toda la escritura ocurre en una transacción; si una regla lanza un error no controlado no queda nada a medias.
 - Los errores por bloque parseable se degradan a `warnings`; identidad, sesión inválida, portal caído y timeout abortan con los códigos indicados.
+- **Excepción**: un fallo al buscar el sílabo de un curso — incluida una sesión inválida detectada en `cactus.ulima.edu.pe` (`fetchSyllabus` lanzando el mismo `409` que `fetchPage`) — **nunca aborta la importación** (§Sincronización paso 12). Se captura por curso, fuera de la transacción, y se degrada a "sin sílabo para ese curso".
 - Un `23505` sobre `uq_academic_period_single_active` es un **bug de orden en el repository**, no un error del portal: el test debe cubrir "BD con `2026-1` activo + portal en `2026-2`".
 
 ### DTO validation
@@ -211,6 +252,8 @@ Aprobadas por el owner del proyecto el 2026-09-02:
 | 1 | Nota final oficial | **APROBADA**: se agrega `enrollment.final_grade decimal(4,2) NULL` con migración Drizzle. La nota del récord se guarda ahí además de derivar `approved`/`failed`. `[@test] ../../../test/HU31_jeff/schema.final-grade.test.ts` |
 | 3 | Cambio global de ciclo | **APROBADA**: la primera importación de un ciclo nuevo, cuya fecha de inicio ya llegó, activa ese `academic_period` para todos los alumnos, con la guarda de que solo avanza y nunca retrocede, y de que no activa antes de que el ciclo en verdad empiece (`PERIOD_NOT_ACTIVATED_YET` si se crea antes de esa fecha). |
 | 4 | Docente placeholder | **APROBADA**: se permite `teacher_code = 'PORTAL:SIN-DOCENTE'` como dato sintético, única excepción a la regla de no inventar datos, porque `section.teacher_id` es `NOT NULL`. |
+| 8 | Reutilizar columnas de sílabo para Domino | **APROBADA**: `syllabus.drive_file_id`/`syllabus.drive_file_url` guardan el UNID y la URL de Domino. Se mantienen sus nombres actuales, SIN migración ni rename, aunque el nombre ya no describa solo Google Drive (§Sincronización paso 12). |
+| 9 | Allowlist de dos hosts para las peticiones salientes | **APROBADA**: se agrega `cactus.ulima.edu.pe` junto a `webaloe.ulima.edu.pe`, cada uno con su propia variable de entorno y su propio predicado de allowlist (`SYLLABUS_BASE_URL`/`isAllowedSyllabusBaseUrl`), no una sola variable aceptando ambos. Fija en código; ningún llamador puede influirla. |
 
 Resueltas por diseño, sin cambio de BD:
 
@@ -225,11 +268,15 @@ Pendiente, no bloquea el desarrollo:
 | # | Decisión | Por qué importa |
 | --- | --- | --- |
 | 7 | Procedimiento de borrado de los datos importados a pedido del alumno | Requisito de la Ley 29733. Debe existir antes de publicar la feature, no antes de implementarla. |
+| 10 | El visor de sílabos de la app Flutter no puede abrir la URL de Domino guardada | La URL de `syllabus.drive_file_url` apunta a un documento **protegido por sesión** en Domino (§Sílabos, §SSO), a diferencia de las URLs de Google Drive que el visor in-app maneja hoy: sin una sesión de Domino, el visor no podrá abrirla directamente. No se resuelve en esta feature; queda documentado para que el owner decida (¿proxear la descarga por el backend con la sesión del alumno? ¿abrir en navegador externo? ¿otra cosa?). |
 
 ## Verification
 
-- `bun test test/HU31_jeff/` cubre cada parser contra fixtures reales anonimizados, incluido un fixture en bytes ISO-8859-1 crudos. Los 13 archivos de test y qué verifica cada uno están enlazados inline junto a cada regla en §Rules; `[@test]` arriba.
+- `bun test test/HU31_jeff/` cubre cada parser contra fixtures reales anonimizados, incluido un fixture en bytes ISO-8859-1 crudos y otro (`silabo.json`) en la respuesta JSON real de Domino sin datos personales. Los 14 archivos de test y qué verifica cada uno están enlazados inline junto a cada regla en §Rules; `[@test]` arriba.
 - Casos de servicio cubiertos con repository y cliente fake (sin BD real): identidad no verificable (`403`/`422`) y no escribe nada; retiro que dejaría cero matrículas activas se omite y advierte; el logout del portal ocurre siempre, incluso si la importación falla; dos filas del consolidado con el mismo curso y distinta sección (`GR.`) llegan ambas al `keep` del retiro. `[@test] ../../../test/HU31_jeff/service.import.test.ts`
+- Sílabos, a nivel de servicio: se cuenta un sílabo por curso cuando el portal los devuelve; una única `SYLLABUS_UNAVAILABLE` cuando ninguno trae sílabo (caso por defecto); un sílabo parcial no advierte por curso; un fallo del cliente (excepción de red) al buscar el sílabo NO aborta el resto de la importación ni cambia el resto del `summary`; dos secciones del mismo curso comparten oferta y el sílabo se upsertea UNA sola vez. `[@test] ../../../test/HU31_jeff/service.import.test.ts`
+- Sílabos, a nivel de parser: UNID, filename y URL armada contra el fixture real (incluidos sus escapes JSON inválidos, `\!`/`\>`); `viewentry` vacío y JSON malformado degradan a `null`; guardas de longitud de `title`(150)/`drive_file_url`(255). `[@test] ../../../test/HU31_jeff/parsers.silabo.test.ts`
+- Sílabos, a nivel de cliente: URL armada contra `cactus.ulima.edu.pe` con `COCICLO_courseCode`; decodificación SIEMPRE UTF-8 pese a un `Content-Type` distinto; redirección ⇒ `409`; status inesperado y error de red ⇒ `null`; `cociclo`/`courseCode` con formato inválido ⇒ `null` sin llegar a pedir la red. `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
 - Casos de repository cubiertos como funciones puras: avance de ciclo `2026-1` → `2026-2` sin retroceder (`[@test] ../../../test/HU31_jeff/repository.period.test.ts`); la decisión de activación (`periodHasStarted`/`shouldActivatePeriod`) contra fecha de inicio pasada/futura, con y sin período activo previo, y código más viejo que nunca activa aunque su fecha ya haya llegado (`[@test] ../../../test/HU31_jeff/repository.period.test.ts`); sesión de portal inválida vía `inicio.jsp`/`solicitarValidarToken` (`[@test] ../../../test/HU31_jeff/portal.client.test.ts`).
 - A nivel de servicio: se cubre tanto el camino donde el período activa normalmente (fecha de inicio ya llegada, sin advertencia) como el que crea el período pero lo deja inactivo por la guarda de fecha, reportando `PERIOD_NOT_ACTIVATED_YET` (`[@test] ../../../test/HU31_jeff/service.import.test.ts`).
 - Pendientes de una base de datos real (no cubiertos por los tests unitarios anteriores, que usan fakes): importar dos veces deja el mismo estado; segundo alumno en la misma sección no crea sección nueva; el `23505` de `uq_academic_period_single_active` no ocurre en la primera importación de un ciclo nuevo.
