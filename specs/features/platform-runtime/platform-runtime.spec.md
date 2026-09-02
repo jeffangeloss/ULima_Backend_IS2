@@ -90,6 +90,20 @@ No cambia reglas de negocio, modulos funcionales, base de datos, autenticacion n
 - El gestor canónico es **Bun** (`vercel.json` usa `bun install` / `bun run build`); el lockfile versionado es `bun.lock`.
 - `package-lock.json` no se versiona (está en `.gitignore`) para evitar lockfiles en conflicto y builds no reproducibles.
 
+### BR-PLATFORM-10: Region fija, pegada a la base de datos
+
+- `vercel.json` declara `regions: ["iad1"]`, la region del PostgreSQL de Neon (us-east-1).
+- Hoy `iad1` ya es el default del proyecto (`functionDefaultRegions`), asi que declararlo no cambia nada: lo que hace es **impedir que cambie sin pasar por el repo**. Un cambio de region desde el panel no rompe nada de forma visible, solo multiplica la latencia, y eso no se detecta mirando logs de error.
+- Por que importa tanto: `POST /portal-sync/import` emite ~115 consultas **secuenciales** dentro de una sola transaccion, asi que el tiempo del endpoint es basicamente ese numero por el RTT a la base. Medido el 2026-09-02: ~150 ms por consulta desde Lima (~17 s en total) contra decimas de segundo desde `iad1`. Alejar la funcion de Neon multiplicaria el tiempo del endpoint por un factor grande y en silencio.
+
+### BR-PLATFORM-11: `maxDuration` NO se declara, y esa es la decision
+
+- `vercel.json` **no** declara `maxDuration`. No es un olvido: es deliberado y hay que dejarlo asi salvo evidencia nueva.
+- Motivo: con Fluid compute (activo en este proyecto) el plan Hobby da **300 s por defecto, que es tambien su tope**. Verificado el 2026-09-02 contra la API: `defaultResourceConfig.functionDefaultTimeout = 300` y `resourceConfig.fluid = true`. Declarar cualquier numero solo puede **bajar** ese techo; no existe un valor que lo suba.
+- Cuidado con la documentacion vieja y con la memoria: los limites de 10 s / 15 s / 60 s son del modelo anterior a Fluid compute. Vercel los subio el 2025-06-25. Un `maxDuration: 60` "por prudencia" convertiria un no-problema en un corte real.
+- No existe `maxDuration` a nivel raiz del archivo: el esquema oficial solo lo acepta dentro de `functions.<glob>`. Y Vercel **no documenta** con que glob se identifica la funcion que genera el preset Hono; si el glob no coincide, la entrada se ignora **en silencio**, sin error. O sea que declararlo mal se ve igual que no declararlo.
+- Referencia de dimensionamiento, por si alguna vez hay que declararlo: el endpoint mas lento es `POST /portal-sync/import`. Medido contra el portal real el 2026-09-02, con el backend corriendo en Lima: **40.7 s** la primera importacion y **47.7 s** la segunda. La segunda hizo menos trabajo (todo updates, cero creates) y tardo mas, o sea que domina la latencia por viaje y no el computo. De esos tiempos, ~17 s son RTT a Neon desde Lima y desaparecen al correr en `iad1`. Si alguna vez se declara un numero, se calcula sobre una medicion **desde la funcion desplegada**, nunca desde una corrida local.
+
 ## Implementation Plan
 
 ### src/server.ts
@@ -121,6 +135,7 @@ No cambia reglas de negocio, modulos funcionales, base de datos, autenticacion n
 
 - Agregarlo solo si es necesario para explicitar configuracion de despliegue.
 - No introducir rewrites que cambien el path publico de los endpoints existentes.
+- Declarar `regions` (ver BR-PLATFORM-10). No declarar `maxDuration` (ver BR-PLATFORM-11).
 
 ### tsconfig.json
 
@@ -136,6 +151,8 @@ No cambia reglas de negocio, modulos funcionales, base de datos, autenticacion n
 - No requiere cambio en `docs/specs/api-contracts.md` porque no cambia endpoints, auth, payloads ni errores.
 
 ## Acceptance Criteria
+
+- `vercel.json` declara `regions: ["iad1"]` y NO declara `maxDuration`.
 
 - `src/server.ts` exporta `default app`.
 - No existe `Bun.serve()`, `serve(...)`, `app.listen(...)` ni export `{ port, fetch }` en el runtime HTTP.
