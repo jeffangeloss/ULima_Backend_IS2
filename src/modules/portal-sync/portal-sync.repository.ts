@@ -48,6 +48,30 @@ export const pickBestRecordRow = (rows: RecordRow[]): RecordRow | null => {
 };
 
 /**
+ * Ciclo del alumno a partir de los niveles de sus cursos matriculados.
+ *
+ * NO es el máximo: un alumno de ciclo 9 puede arrastrar un curso de ciclo 6 y
+ * adelantar uno de ciclo 10, y el máximo lo declararía de ciclo 10. Se toma el
+ * nivel MODAL (el que más se repite), y a igualdad de frecuencia el más alto.
+ */
+export const studentLevelFromRows = (levels: number[]): number | null => {
+  const counts = new Map<number, number>();
+  for (const l of levels) {
+    if (Number.isInteger(l) && l > 0) counts.set(l, (counts.get(l) ?? 0) + 1);
+  }
+  if (counts.size === 0) return null;
+  let best = 0;
+  let bestCount = 0;
+  for (const [level, count] of counts) {
+    if (count > bestCount || (count === bestCount && level > best)) {
+      best = level;
+      bestCount = count;
+    }
+  }
+  return best;
+};
+
+/**
  * ¿Retirar `toWithdraw` matrículas dejaría al alumno sin ninguna activa?
  *
  * Ambos caminos de login exigen una matrícula activa, así que dejarlo en cero

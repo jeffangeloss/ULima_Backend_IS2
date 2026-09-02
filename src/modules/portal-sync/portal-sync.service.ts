@@ -1,7 +1,7 @@
 import { HttpError } from "../../shared/errors/http-error.js";
 import type { PortalClient } from "../../services/portal.client.js";
 import {
-  PortalSyncRepository, periodCodeIsNewer, pickBestRecordRow, progressStatusFor, teacherCodeFor,
+  PortalSyncRepository, periodCodeIsNewer, pickBestRecordRow, progressStatusFor, studentLevelFromRows, teacherCodeFor,
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
@@ -175,7 +175,7 @@ export class PortalSyncService {
       }
 
       // Nivel del alumno, del consolidado del ciclo importado.
-      const level = Math.max(0, ...mat.data.rows.map((r) => r.level));
+      const level = studentLevelFromRows(mat.data.rows.map((r) => r.level)) ?? 0;
       if (level >= 1 && level <= 10) {
         await this.repository.updateStudentLevel(tx, studentId, level);
       } else if (level > 10) {

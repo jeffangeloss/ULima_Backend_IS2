@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { pickBestRecordRow, progressStatusFor, withdrawalWouldLockOut } from "../../src/modules/portal-sync/portal-sync.repository.js";
+import {
+  pickBestRecordRow, progressStatusFor, studentLevelFromRows, withdrawalWouldLockOut,
+} from "../../src/modules/portal-sync/portal-sync.repository.js";
 
 describe("progressStatusFor", () => {
   test("11 o mas aprueba", () => {
@@ -35,6 +37,24 @@ describe("pickBestRecordRow", () => {
   });
   test("lista vacia devuelve null", () => {
     expect(pickBestRecordRow([])).toBeNull();
+  });
+});
+
+describe("studentLevelFromRows", () => {
+  test("fixture del alumno de ciclo 9 con un curso arrastrado y uno adelantado: gana el modal, no el maximo", () => {
+    expect(studentLevelFromRows([9, 9, 9, 6, 10])).toBe(9);
+  });
+  test("empate de frecuencia: gana el nivel mas alto", () => {
+    expect(studentLevelFromRows([7, 7, 8, 8])).toBe(8);
+  });
+  test("un solo nivel devuelve ese nivel", () => {
+    expect(studentLevelFromRows([5])).toBe(5);
+  });
+  test("lista vacia devuelve null", () => {
+    expect(studentLevelFromRows([])).toBeNull();
+  });
+  test("ignora valores no positivos o no enteros", () => {
+    expect(studentLevelFromRows([0, -1, 3.5, 4, 4])).toBe(4);
   });
 });
 
