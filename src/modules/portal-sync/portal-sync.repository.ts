@@ -47,6 +47,17 @@ export const pickBestRecordRow = (rows: RecordRow[]): RecordRow | null => {
   return [...rows].sort((a, b) => b.attempt - a.attempt || b.periodCode.localeCompare(a.periodCode))[0];
 };
 
+/**
+ * ¿Retirar `toWithdraw` matrículas dejaría al alumno sin ninguna activa?
+ *
+ * Ambos caminos de login exigen una matrícula activa, así que dejarlo en cero
+ * lo deja fuera de la app SIN forma de volver a entrar — y por tanto sin forma
+ * de volver a importar, que es lo único que lo arreglaría. Ante la duda no se
+ * retira nada.
+ */
+export const withdrawalWouldLockOut = (activeCount: number, toWithdraw: number): boolean =>
+  activeCount - toWithdraw <= 0;
+
 export class PortalSyncRepository {
   constructor(readonly database: typeof db) {}
 
@@ -244,7 +255,7 @@ export class PortalSyncRepository {
     if (!candidates.length) return 0;
 
     const active = await this.countActiveEnrollments(tx, studentId);
-    if (active - candidates.length <= 0) return -1;   // -1 = se omitió para no bloquear el login
+    if (withdrawalWouldLockOut(active, candidates.length)) return -1;   // -1 = se omitió para no bloquear el login
 
     const ids = candidates.map((r) => Number(r.id));
     await tx.execute(sql`update enrollment set status = 'withdrawn' where id = any(${ids})`);

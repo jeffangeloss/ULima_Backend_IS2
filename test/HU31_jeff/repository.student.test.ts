@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { pickBestRecordRow, progressStatusFor } from "../../src/modules/portal-sync/portal-sync.repository.js";
+import { pickBestRecordRow, progressStatusFor, withdrawalWouldLockOut } from "../../src/modules/portal-sync/portal-sync.repository.js";
 
 describe("progressStatusFor", () => {
   test("11 o mas aprueba", () => {
@@ -35,5 +35,27 @@ describe("pickBestRecordRow", () => {
   });
   test("lista vacia devuelve null", () => {
     expect(pickBestRecordRow([])).toBeNull();
+  });
+});
+
+describe("withdrawalWouldLockOut", () => {
+  test("retirar todas las matriculas activas bloquearia al alumno", () => {
+    expect(withdrawalWouldLockOut(5, 5)).toBe(true);
+  });
+
+  test("retirar algunas pero no todas es seguro", () => {
+    expect(withdrawalWouldLockOut(5, 4)).toBe(false);
+  });
+
+  test("no retirar nada es seguro", () => {
+    expect(withdrawalWouldLockOut(5, 0)).toBe(false);
+  });
+
+  test("un alumno sin matriculas activas no puede perder mas", () => {
+    expect(withdrawalWouldLockOut(0, 0)).toBe(true);
+  });
+
+  test("retirar mas de las que hay tambien bloquearia", () => {
+    expect(withdrawalWouldLockOut(3, 4)).toBe(true);
   });
 });
