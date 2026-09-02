@@ -149,7 +149,16 @@ export class PortalClient {
    * sesión muerta verificable en HTTP; no existe, a diferencia de
    * `inicio.jsp`/`solicitarValidarToken` en `webaloe`, un marcador conocido
    * de "página de login" de Domino — sigue lanzando el mismo 409 que
-   * `fetchPage`, para que quien llama sepa que la sesión murió.
+   * `fetchPage`.
+   *
+   * OJO: hoy ese 409 no lo consume nadie. El único llamador
+   * (`portal-sync.service.ts`, §3.5) lo atrapa junto con cualquier otra
+   * excepción y lo degrada a "sin sílabo para este curso", como la spec exige
+   * (§Manejo de errores): un fallo de sílabo nunca aborta la importación. Se
+   * lanza igual, en vez de devolver `null` acá, para que la señal quede
+   * disponible si un llamador futuro quiere distinguirla — p. ej. dejar de
+   * pedir los sílabos restantes cuando la sesión ya murió, que ahorraría N-1
+   * peticiones. El llamador de hoy la descarta a propósito.
    *
    * Se decodifica SIEMPRE como UTF-8: Cactus declara un charset en el
    * `Content-Type` que no coincide con el cuerpo real (comprobado en el
