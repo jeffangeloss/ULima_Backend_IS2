@@ -60,4 +60,21 @@ describe("parseHorario", () => {
   test("parseHorario falla con ok:false sin tabla de horario", () => {
     expect(parseHorario("<html>nada</html>").ok).toBe(false);
   });
+
+  test("celda de clase sin </small>: el aula se recorta a 100 caracteres en vez de tomar la celda completa", () => {
+    // schedule_session.classroom es varchar(100): sin el recorte, split(...).pop()
+    // en una celda sin </small> devuelve la celda ENTERA como "aula" y una nota
+    // asi de larga aborta el import completo con un error de base de datos.
+    const longText = "AULA-DESBORDADA-".repeat(10); // 160 caracteres, sin <small>
+    const freeCell = '<td align="left" width="15%" bgcolor="#EFEFEF"><font face="Arial" size="1" title></font></td>';
+    const overflowCell = `<td align="left" width="15%" bgcolor="#EFEFEF"><font face="Arial" size="1" title="650033 PLAN.ESTR">${longText}<br>N-405</font></td>`;
+    const row = `<tr align="center"><td width="10%"><font size="1">7-8</font></td>${overflowCell}${freeCell}${freeCell}${freeCell}${freeCell}${freeCell}</tr>`;
+
+    const r = parseHorario(row);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.data).toHaveLength(1);
+    expect(r.data[0].classroom).not.toBeNull();
+    expect(r.data[0].classroom!.length).toBeLessThanOrEqual(100);
+  });
 });

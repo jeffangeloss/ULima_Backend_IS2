@@ -29,8 +29,12 @@ export const parseHorario = (html: string): ParseResult<HorarioSession[]> => {
       const cm = t.match(/^(\d{4,6})\s+\S/);
       if (!cm) continue;
       // El aula es la última línea de la celda, tras el <br> que sigue al </small>.
+      // Si la celda no trae </small> (marcado inesperado del portal), split()
+      // no encuentra nada que cortar y .pop() devuelve la celda COMPLETA: se
+      // recorta a 100 (schedule_session.classroom es varchar(100)) para que un
+      // valor así nunca aborte el import entero con un error de base de datos.
       const afterSmall = tds[d].split(/<\/small>/i).pop() ?? "";
-      const classroom = clean(stripTags(afterSmall)) || null;
+      const classroom = clean(stripTags(afterSmall)).slice(0, 100) || null;
       cells.push({ courseCode: cm[1], dayOfWeek: d, hour, classroom });
     }
   }
