@@ -1,6 +1,8 @@
 /** Resultado uniforme de todo parser: nunca lanza, devuelve el motivo del fallo. */
 export type ParseResult<T> = { ok: true; data: T } | { ok: false; reason: string };
 
+/** Allowlist de entidades nombradas derivada de los fixtures comprometidos.
+ *  Una entidad que no aparece aquí se pasa sin decodificar. */
 const NAMED: Record<string, string> = {
   nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'",
   Ntilde: "Ñ", ntilde: "ñ", Ccedil: "Ç", ccedil: "ç",
@@ -16,8 +18,8 @@ export const decodeEntities = (s: string): string =>
     .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
     .replace(/&([A-Za-z]+);/g, (m, name) => NAMED[name] ?? m);
 
-/** Quita etiquetas conservando el texto. */
-export const stripTags = (s: string): string => s.replace(/<[^>]*>/g, "");
+/** Quita etiquetas conservando el texto. Reemplaza etiquetas con espacio para que textos adyacentes queden separados. */
+export const stripTags = (s: string): string => s.replace(/<[^>]*>/g, " ");
 
 /** Normalización obligatoria antes de comparar o guardar cualquier texto del portal. */
 export const clean = (s: string): string =>
