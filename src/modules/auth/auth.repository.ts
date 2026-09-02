@@ -457,6 +457,10 @@ export class AuthRepository {
     ];
     const names = splitName(row.full_name);
     const currentLevel = row.current_level == null ? null : Number(row.current_level);
+    // Sin matrícula en el ciclo activo (p. ej. antes de importar el ciclo nuevo
+    // desde el portal), currentCycle cae al código del período activo en vez
+    // de un ciclo hardcodeado; si tampoco hay período activo, null.
+    const currentCycle = currentCourses[0]?.period_code ?? await this.findActivePeriodCode();
 
     return {
       id: Number(row.id),
@@ -472,7 +476,7 @@ export class AuthRepository {
       career_id: Number(row.career_id),
       curriculumId: Number(row.curriculum_id),
       currentLevel,
-      currentCycle: currentCourses[0]?.period_code ?? "2026-1",
+      currentCycle,
       setupComplete: Boolean(row.specialty_setup_completed),
       specialtySetupCompleted: Boolean(row.specialty_setup_completed),
       especialidad_principal: primary,
@@ -519,7 +523,7 @@ export class AuthRepository {
       from enrollment e
       join section sec on sec.id = e.section_id
       join course_offering co on co.id = sec.course_offering_id
-      join academic_period ap on ap.id = co.academic_period_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       left join curriculum_course cc on cc.course_id = c.id and cc.curriculum_id = ${curriculumId}
       where e.student_id = ${studentId}
@@ -535,5 +539,13 @@ export class AuthRepository {
       nombre: course.course_name,
       period_code: course.period_code,
     }));
+  }
+
+  /** Código del período activo, o `null` si no hay ninguno. Nunca un ciclo hardcodeado. */
+  private async findActivePeriodCode(): Promise<string | null> {
+    const rows = await this.database.execute(sql`
+      select code from academic_period where is_active = true limit 1
+    `) as unknown as Array<{ code: string }>;
+    return rows[0]?.code ?? null;
   }
 }

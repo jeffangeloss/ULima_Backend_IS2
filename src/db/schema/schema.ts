@@ -308,6 +308,10 @@ export const enrollment = pgTable("enrollment", {
   attendedHours: decimal("attended_hours", { precision: 5, scale: 2 }).notNull().default("0"),
   absentHours: decimal("absent_hours", { precision: 5, scale: 2 }).notNull().default("0"),
   totalHours: decimal("total_hours", { precision: 5, scale: 2 }).notNull().default("0"),
+  // Nota final OFICIAL del curso, tal como la publica el récord académico del
+  // portal (portal-sync). Nullable: los ciclos en curso no tienen nota todavía.
+  // No sustituye a student_score (nota por evaluación) ni a simulated_grades.
+  finalGrade: decimal("final_grade", { precision: 4, scale: 2 }),
 }, (t) => ({
   uqEnrollmentStudentSection: unique("uq_enrollment_student_section").on(t.studentId, t.sectionId),
   uqEnrollmentIdSection: unique("uq_enrollment_id_section").on(t.id, t.sectionId),
@@ -315,6 +319,10 @@ export const enrollment = pgTable("enrollment", {
   chkEnrollmentAbsentHours: check("chk_enrollment_absent_hours", sql`${t.absentHours} >= 0`),
   chkEnrollmentTotalHours: check("chk_enrollment_total_hours", sql`${t.totalHours} >= 0`),
   chkEnrollmentAttendanceHours: check("chk_enrollment_attendance_hours", sql`${t.attendedHours} + ${t.absentHours} <= ${t.totalHours}`),
+  chkEnrollmentFinalGrade: check(
+    "chk_enrollment_final_grade",
+    sql`${t.finalGrade} IS NULL OR ${t.finalGrade} BETWEEN 0 AND 20`,
+  ),
   idxEnrollmentStudent: index("idx_enrollment_student").on(t.studentId),
 }));
 

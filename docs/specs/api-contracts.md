@@ -92,6 +92,8 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
 
 Errores de login con código: `401 USER_NOT_FOUND`, `401 INVALID_PASSWORD`, `403 NOT_ENROLLED`. Errores adicionales de Google: `401 INVALID_TOKEN`, `403 INVALID_DOMAIN`.
 
+`User.currentCycle` es `string | null`: el `period_code` del curso actual del alumno si tiene matrícula en el período activo; si no tiene (p. ej. antes de importar el ciclo nuevo desde el portal), cae al código del período activo igual; `null` solo si no hay ningún período activo. Nunca un ciclo hardcodeado.
+
 ## Academic Profile
 
 ### GET /academic-profile/me
@@ -217,7 +219,7 @@ Devuelve cursos + evaluaciones del sílabo con sus pesos, para la calculadora de
         "id": "1",
         "nombre": "INGENIERÍA DE SOFTWARE II",
         "ciclo": "2026-1",
-        "silaboUrl": "https://drive.google.com/...",
+        "silaboUrl": "https://drive.google.com/... | https://cactus.ulima.edu.pe/ac/ac_bd001.nsf/vSyllabusXCicloAV/...",
         "secciones": [
           { "idSeccion": "1", "codigoSeccion": "856" }
         ]
@@ -240,6 +242,7 @@ Devuelve cursos + evaluaciones del sílabo con sus pesos, para la calculadora de
     ]
   }
   ```
+- **`silaboUrl`**: sale de `syllabus.drive_file_url` y **no siempre es un enlace de Google Drive**. Las ofertas con sílabo ya cargado conservan su enlace de Drive; una oferta que NO tenía fila `syllabus` puede recibirla desde `POST /portal-sync/import`, y entonces la URL apunta a la base Domino de sílabos (`cactus.ulima.edu.pe/ac/ac_bd001.nsf/vSyllabusXCicloAV/...`). Esa URL está **protegida por sesión de Domino**: el visor in-app no puede abrirla como abre las de Drive (limitación conocida y abierta, ver `specs/features/portal-sync/portal-sync.spec.md` §Decisiones pendientes #10). La importación **nunca reemplaza** una `silaboUrl` existente, así que un enlace de Drive que hoy funciona sigue funcionando.
 
 ### POST /grades/me/calculate
 
@@ -438,8 +441,9 @@ Retorna la carga académica por semana para el periodo académico activo, identi
 
 Notas:
 
-- Horario usa `schedule_session` de secciones con enrollment activo.
+- Horario usa `schedule_session` de secciones con enrollment activo, acotadas al **período académico activo** (`academic_period.is_active = true`); igual para evaluaciones, carga semanal y el horario/evaluaciones del docente (`GET /schedule/teacher/*`). Sin este filtro, un alumno o docente con datos en dos ciclos a la vez vería ambos superpuestos.
 - Evaluaciones usan `assessment.week_number` mapeado dinámicamente a fechas reales de la clase en esa semana académica.
+- Las semanas académicas (`weekText`, `WeekX.startDate` de la ecuación de fecha, y la respuesta de `GET /schedule/me/load`) salen del período académico activo en base de datos (`academic_week`, o si no tiene filas, derivadas de las fechas propias del período), nunca de un calendario fijo en código. Ver `specs/features/schedule/schedule.spec.md` BR-SCH-04.
 - Alta carga es 3+ evaluaciones en una misma semana académica.
 
 - `GET /schedule/me/sessions` expone `schedule_session.classroom` por sesiÃ³n como `aula`/`salon`; `color` puede venir como nombre legacy o como hexadecimal desde `schedule_session.color_hex`.
@@ -563,3 +567,34 @@ Inteligencia artificial conversacional (Cohere) integrada como asistente académ
 - Rate limit: 20 preguntas/hora/alumno (configurable via `CHATBOT_RATE_LIMIT`).
 - Timeout Cohere Chat: 8 segundos. Errores Cohere retornan 503 con mensaje genérico.
 - Requiere `COHERE_API_KEY` en variables de entorno.
+
+## Portal Sync (carga de ciclo desde miUlima) — Implementado
+
+Importa los datos oficiales del alumno desde el portal miUlima usando la **sesión del portal que el alumno abrió en un WebView de la app**. El backend nunca recibe contraseña ni código TOTP. Ver `specs/features/portal-sync/portal-sync.spec.md`.
+
+Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el código del alumno se lee de `app_user` por `userId`, no del JWT):
+
+- `GET /portal-sync/status`
+  - Response: `{ "activePeriod": { "id": number, "code": "2026-2" } | null, "enrollmentsInActivePeriod": number, "needsImport": boolean }`
+  - `needsImport` = no hay período activo o el alumno no tiene `enrollment` activa en él.
+- `POST /portal-sync/import`
+  - Body: `{ "cookies": { "JSESSIONID": string, "LtpaToken2": string, "LtpaToken": string|null } }` (cookies de `webaloe.ulima.edu.pe`; nunca se persisten ni se registran en logs)
+  - Response `200`:
+    ```json
+    {
+      "period": { "id": 12, "code": "2026-2", "created": false },
+      "identity": { "portalCode": "20235218", "fullName": "string", "career": "INGENIERÍA DE SISTEMAS" },
+      "summary": {
+        "coursesCreated": 0, "teachersCreated": 0, "sectionsCreated": 0, "sectionsUpdated": 5,
+        "sessionsUpserted": 12, "enrollmentsUpserted": 5, "enrollmentsWithdrawn": 0,
+        "progressUpserted": 53, "progressSkipped": 4, "alertsCreated": 1, "syllabiUpserted": 3
+      },
+      "warnings": [ { "code": "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE" | "SYLLABUS_UNAVAILABLE", "block": "string", "message": "string" } ]
+    }
+    ```
+  - Errores: **`409 PORTAL_SESSION_INVALID`** (el portal devolvió `inicio.jsp` o pidió passcode — es 409 y no 401 a propósito: `ApiClient` del frontend trata todo 401 como expiración del JWT y cerraría la sesión del usuario), `403 PORTAL_IDENTITY_MISMATCH` (código del portal ≠ `app_user.code`), `422 PORTAL_IDENTITY_UNVERIFIABLE` (no se pudo leer el código del portal), `502 PORTAL_UNAVAILABLE`, `504 PORTAL_TIMEOUT`, `429 TOO_MANY_REQUESTS` (máx. 5 importaciones por alumno por hora).
+  - La verificación de identidad ocurre ANTES de cualquier escritura y no se degrada a `warnings`.
+  - Idempotente: repetir la importación deja el mismo estado (todos los upsert usan `ON CONFLICT` sobre constraints existentes). No toca `simulated_grades`, simulación de malla, especialidades, anuncios, asesorías, representantes, chat, networking, `schedule_session.color_hex` ni las horas de asistencia.
+  - **La primera importación de un ciclo nuevo activa ese `academic_period` para TODOS los alumnos** (`is_active` es único global). Solo avanza el ciclo, nunca lo retrocede, y solo activa si la fecha de inicio del ciclo ya llegó (la Universidad publica el calendario días antes de que empiecen las clases). Si el período se crea antes de esa fecha, queda inactivo y la respuesta trae el warning `PERIOD_NOT_ACTIVATED_YET`; una importación posterior en o después de esa fecha lo activa.
+  - **Sílabos**: además de matrícula y récord, la importación busca en paralelo el sílabo de cada curso importado en la base Domino de sílabos (`cactus.ulima.edu.pe`, host separado y con su propia allowlist — ver `specs/features/portal-sync/portal-sync.spec.md` §SSO). `summary.syllabiUpserted` cuenta las filas **efectivamente escritas**. Que un curso no tenga sílabo publicado es normal y no genera advertencia por curso; solo si NINGÚN curso del ciclo trae sílabo se agrega una única advertencia `SYLLABUS_UNAVAILABLE` (esa advertencia se decide con el resultado de la descarga, no con el contador, y su mensaje no afirma que el portal no publicó nada: desde el backend no se distingue eso de un fallo de red o de sesión). Un fallo al buscar o guardar un sílabo nunca aborta la importación ni afecta el resto del `summary`: la búsqueda se degrada por curso y la escritura usa `on conflict do nothing` sin conflict target, que cubre las dos restricciones únicas de la tabla y por eso no puede levantar un `23505`.
+  - **La importación NO pisa sílabos existentes**: si la oferta ya tenía fila `syllabus` (sembrada o de una importación anterior), se conserva tal cual — incluido su `silaboUrl` de Google Drive, que `GET /grades/me/courses` sirve a todos los alumnos de la oferta. La contrapartida aceptada es que **un sílabo republicado no se actualiza** al re-importar el mismo ciclo.

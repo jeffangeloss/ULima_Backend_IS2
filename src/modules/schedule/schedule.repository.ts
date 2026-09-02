@@ -42,6 +42,56 @@ export type RawWeekRow = {
   end_date: string;
 };
 
+export type RawPeriodDatesRow = {
+  start_date: string;
+  end_date: string;
+};
+
+const toUTCDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split("-").map((part) => parseInt(part, 10));
+  return new Date(Date.UTC(year, month - 1, day));
+};
+
+const formatUTCDate = (date: Date): string =>
+  `${date.getUTCFullYear()}-${(date.getUTCMonth() + 1).toString().padStart(2, "0")}-${date.getUTCDate().toString().padStart(2, "0")}`;
+
+/**
+ * Deriva semanas académicas de 7 días a partir de las fechas propias del
+ * período (`academic_period.start_date`/`end_date`) para cuando `academic_week`
+ * todavía no tiene filas para él — p. ej. un período que portal-sync creó con
+ * fechas por defecto antes de que se le carguen sus semanas reales, o uno
+ * cargado a mano sin ese paso.
+ *
+ * Mismo criterio que `academicWeekCount`/`ensureAcademicWeeks` en
+ * `portal-sync.repository.ts` (reimplementado aquí para no acoplar los dos
+ * módulos): la cantidad de semanas es `ceil((endDate - startDate) / 7)`,
+ * mínimo 1, así que la última semana generada no empieza después de
+ * `endDate`. Con el calendario publicado de 2026-2 (24-ago a 14-dic, span
+ * exacto de 112 días = 16 × 7) da exactamente 16 semanas, igual que
+ * `academicWeekCount("2026-08-24", "2026-12-14")`.
+ */
+export const deriveWeeksFromPeriodDates = (startDate: string, endDate: string): RawWeekRow[] => {
+  const start = toUTCDate(startDate);
+  const end = toUTCDate(endDate);
+  const spanDays = (end.getTime() - start.getTime()) / 86_400_000;
+  const weekCount = Math.max(1, Math.ceil(spanDays / 7));
+
+  const weeks: RawWeekRow[] = [];
+  for (let i = 0; i < weekCount; i++) {
+    const weekStart = new Date(start);
+    weekStart.setUTCDate(weekStart.getUTCDate() + i * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
+    weeks.push({
+      week_number: i + 1,
+      start_date: formatUTCDate(weekStart),
+      end_date: formatUTCDate(weekEnd),
+    });
+  }
+
+  return weeks;
+};
+
 // Sin catch de rescate: un fallo de BD se propaga (500 real) en vez de simular
 // horarios/notas/conteos vacíos con 200. Ver docs/AUDITORIA_TECNICA.md §6.1.
 export class ScheduleRepository {
@@ -68,6 +118,7 @@ export class ScheduleRepository {
       join section sec on sec.id = e.section_id
       join teacher t on t.id = sec.teacher_id
       join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       left join schedule_session ss on ss.section_id = sec.id
       where e.student_id = ${studentId}
@@ -97,6 +148,7 @@ export class ScheduleRepository {
       from enrollment e
       join section sec on sec.id = e.section_id
       join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       join syllabus sy on sy.course_offering_id = co.id
       join assessment a on a.syllabus_id = sy.id
@@ -121,6 +173,17 @@ export class ScheduleRepository {
     `)) as unknown as RawWeekRow[];
   }
 
+  /** Fechas propias del período activo, para derivar semanas cuando `academic_week` no tiene filas (ver `deriveWeeksFromPeriodDates`). */
+  async findActivePeriodDates(): Promise<RawPeriodDatesRow | null> {
+    const rows = (await this.database.execute(sql`
+      select start_date::text as start_date, end_date::text as end_date
+      from academic_period
+      where is_active = true
+      limit 1
+    `)) as unknown as RawPeriodDatesRow[];
+    return rows[0] ?? null;
+  }
+
   async findTeacherSessionsWithClasses(teacherId: number): Promise<RawSessionRow[]> {
     return (await this.database.execute(sql`
       select
@@ -141,6 +204,7 @@ export class ScheduleRepository {
       from section sec
       join teacher t on t.id = sec.teacher_id
       join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       left join schedule_session ss on ss.section_id = sec.id
       where sec.teacher_id = ${teacherId} or sec.jp_id = ${teacherId}
@@ -207,6 +271,7 @@ export class ScheduleRepository {
         ss.color_hex
       from section sec
       join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       join syllabus sy on sy.course_offering_id = co.id
       join assessment a on a.syllabus_id = sy.id

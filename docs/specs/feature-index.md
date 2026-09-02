@@ -17,6 +17,7 @@ This index connects real user stories, product requirements, backend modules, an
 | 10 | Chat en vivo por sección | `specs/features/chat/chat.spec.md` | HU23 | Puente auth Firebase, espejo de membresía, derivación de rol | `src/modules/chat`, `src/services/firebase.service.ts` | Implementado (reglas RTDB vía Emulator pendientes) |
 | 11 | Carnet de networking | `specs/features/networking/networking.spec.md` | HU27 | Carnet opt-in con redes sociales (alumnos+docentes), visible en contactos, compartible en chat | `src/modules/networking`, `schema.ts` | **Diseñada — BD lista (migración 0001), pendiente de implementar (meltiruiz)** |
 | 12 | Chatbot Asistente Académico | `specs/features/chatbot/chatbot.spec.md` | HU-CHATBOT-01, HU-CHATBOT-02 | Chatbot con IA (Cohere) que responde preguntas sobre notas, horario, malla, anuncios, compañeros, alertas y chat de sección | `src/modules/chatbot`, `src/services/cohere.client.ts`, `src/services/firebase.service.ts`, `src/db/schema/schema.ts`, `src/shared/middleware/rate-limit.ts` | **Diseñada — pendiente de implementar** |
+| 13 | Portal Sync (carga de ciclo desde miUlima) | `specs/features/portal-sync/portal-sync.spec.md` | HU-SYNC-01, HU-SYNC-02 | Importación idempotente por alumno desde miUlima vía sesión de WebView; sin contraseñas en backend | `src/modules/portal-sync`, `src/config/app-config.ts` | Implementado (backend) — **pendiente la verificación manual end-to-end contra el portal real** |
 
 ## Workflow
 

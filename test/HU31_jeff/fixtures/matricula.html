@@ -1,0 +1,947 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
+
+
+<HTML>
+<HEAD>
+	<META HTTP-EQUIV="Cache-Control" CONTENT="no-cache">
+	<META HTTP-EQUIV="Expires" CONTENT="Tue, 16 Aug 1995 00:00:00 GMT">
+	<META HTTP-EQUIV="Pragma" CONTENT="no-cache">
+
+	<TITLE> Universidad de Lima - Matrícula - Consolidado de Matrícula </TITLE>
+	<LINK REL=stylesheet TYPE="text/css" HREF="../aplicConsMatricula/horariosMatricula.css">
+
+
+	<SCRIPT language="JavaScript" src="../aplicConsMatricula/arrayUtils.js"></SCRIPT>
+	<SCRIPT language="JavaScript" src="../../JavaScript/blockApp.js"></SCRIPT>
+	<SCRIPT language="JavaScript">
+
+	function cursoHabMatPropsObj(){
+		this.cD=new Array();
+		this.cM=new Array();
+	}
+
+function ULEspecialidadObj(){
+	this.sCoEspc=null;
+	this.sNoCmpEspc=null;
+	this.sNoAbrEspc=null;
+	this.sCoTipEspc=null;
+}
+
+function SeccionPreObj(){
+	this.bAutzCruce=null;
+	this.sFgCtlVactSecc=null;
+	this.sAula=null;
+	this.sFgBloqMatr=null;
+	this.sFgSeccIngr=null;
+	this.sCoSecc=null;
+	this.sCoGpo=null;
+	this.sNoProf=null;
+	this.nHorario=null;
+	this.sFgCtlVactSecc=null;
+	this.sNoPatDcte=null;
+	this.sNoMatDcte=null;
+	this.sNoNomDcte=null;
+	this.available=null;
+	this.vacantes=null;
+	this.selected=null;
+	this.pref=null;
+	this.GUIstate=null;
+	this.disabledByList=new cursoHabMatPropsObj();
+	this.availableByList=new cursoHabMatPropsObj();
+}
+
+function CursosMatPreObj(){
+	this.nCoTipMatr=null;
+	this.nCoEspcCurs=null;
+	this.nNuCrVlz=null;
+	this.sCoTipVlz=null;
+	this.oSeccion=null;
+	this.nNuMatr=null;
+	this.sCoTipEspc=null;
+	this.nNuVez=null;
+	this.nCoEspcMatr=null;
+	this.sFgMatr=null;
+	this.nNuNiv=null;
+	this.sCoCurs=null;
+	this.sNoCmpCurs=null;
+	this.sNoAbrCurs=null;
+	this.sCoCrcCurs=null;
+	this.nNuCr=null;
+	this.oEspc=null;
+}
+
+
+		
+		//-------------------------------  CURSOS MATRICULADOS  -------------------------------//
+		var cursosMat=new Array();
+
+	cursosMat[0]=new CursosMatPreObj();
+with(cursosMat[0]){
+nCoTipMatr=5.0;
+nCoEspcCurs=6500.0;
+nNuCrVlz=3.0;
+sCoTipVlz="002";
+oSeccion=new SeccionPreObj();
+with(oSeccion){
+bAutzCruce=false;
+sFgCtlVactSecc="0";
+sAula=new Array();
+sAula[0]=[];
+sAula[1]=["N-405","N-405"];
+sAula[2]=[];
+sAula[3]=["VIRTUAL 1","VIRTUAL 1"];
+sAula[4]=[];
+sAula[5]=[];
+
+sFgBloqMatr="0";
+sFgSeccIngr=null;
+sCoSecc="952";
+sCoGpo="";
+sNoProf="DIEZ QUIÑONES PANDURO PERCY";
+nHorario=new Array();
+nHorario[0]=[];
+nHorario[1]=[7.0,8.0];
+nHorario[2]=[];
+nHorario[3]=[7.0,8.0];
+nHorario[4]=[];
+nHorario[5]=[];
+
+sFgCtlVactSecc="0";
+sNoPatDcte=null;
+sNoMatDcte=null;
+sNoNomDcte=null;
+}
+
+nNuMatr=17.0;
+sCoTipEspc="001";
+nNuVez=1.0;
+nCoEspcMatr=6500.0;
+sFgMatr="1";
+nNuNiv=9.0;
+sCoCurs="650033";
+sNoCmpCurs="PLANEAMIENTO ESTRATÉGICO";
+sNoAbrCurs="PLAN.ESTRÁT.";
+sCoCrcCurs="O";
+nNuCr=3.0;
+oEspc=null;
+}
+
+cursosMat[1]=new CursosMatPreObj();
+with(cursosMat[1]){
+nCoTipMatr=5.0;
+nCoEspcCurs=6500.0;
+nNuCrVlz=4.0;
+sCoTipVlz="002";
+oSeccion=new SeccionPreObj();
+with(oSeccion){
+bAutzCruce=false;
+sFgCtlVactSecc="0";
+sAula=new Array();
+sAula[0]=["L3-302","L3-302"];
+sAula[1]=["VIRTUAL 23","VIRTUAL 23"];
+sAula[2]=[];
+sAula[3]=["VIRTUAL 59","VIRTUAL 59"];
+sAula[4]=[];
+sAula[5]=[];
+
+sFgBloqMatr="0";
+sFgSeccIngr=null;
+sCoSecc="958";
+sCoGpo="";
+sNoProf="MORE SANCHEZ JAVIER";
+nHorario=new Array();
+nHorario[0]=[20.0,21.0];
+nHorario[1]=[20.0,21.0];
+nHorario[2]=[];
+nHorario[3]=[20.0,21.0];
+nHorario[4]=[];
+nHorario[5]=[];
+
+sFgCtlVactSecc="0";
+sNoPatDcte=null;
+sNoMatDcte=null;
+sNoNomDcte=null;
+}
+
+nNuMatr=17.0;
+sCoTipEspc="001";
+nNuVez=1.0;
+nCoEspcMatr=6500.0;
+sFgMatr="1";
+nNuNiv=9.0;
+sCoCurs="650035";
+sNoCmpCurs="SEMINARIO DE INVESTIGACIÓN I";
+sNoAbrCurs="SEM.INVES.I";
+sCoCrcCurs="O";
+nNuCr=4.0;
+oEspc=null;
+}
+
+cursosMat[2]=new CursosMatPreObj();
+with(cursosMat[2]){
+nCoTipMatr=5.0;
+nCoEspcCurs=6500.0;
+nNuCrVlz=4.0;
+sCoTipVlz="002";
+oSeccion=new SeccionPreObj();
+with(oSeccion){
+bAutzCruce=false;
+sFgCtlVactSecc="0";
+sAula=new Array();
+sAula[0]=[];
+sAula[1]=[];
+sAula[2]=["H-404","H-404"];
+sAula[3]=[];
+sAula[4]=["H-404","H-404","H-404"];
+sAula[5]=[];
+
+sFgBloqMatr="0";
+sFgSeccIngr=null;
+sCoSecc="952";
+sCoGpo="";
+sNoProf="DIAZ PARRA JOSE RAUL";
+nHorario=new Array();
+nHorario[0]=[];
+nHorario[1]=[];
+nHorario[2]=[7.0,8.0];
+nHorario[3]=[];
+nHorario[4]=[7.0,8.0,9.0];
+nHorario[5]=[];
+
+sFgCtlVactSecc="0";
+sNoPatDcte=null;
+sNoMatDcte=null;
+sNoNomDcte=null;
+}
+
+nNuMatr=17.0;
+sCoTipEspc="001";
+nNuVez=1.0;
+nCoEspcMatr=6500.0;
+sFgMatr="1";
+nNuNiv=9.0;
+sCoCurs="650067";
+sNoCmpCurs="SEGURIDAD DE SISTEMAS";
+sNoAbrCurs="SEGURIDAD DE SISTEMA";
+sCoCrcCurs="O";
+nNuCr=4.0;
+oEspc=null;
+}
+
+cursosMat[3]=new CursosMatPreObj();
+with(cursosMat[3]){
+nCoTipMatr=5.0;
+nCoEspcCurs=6500.0;
+nNuCrVlz=3.0;
+sCoTipVlz="002";
+oSeccion=new SeccionPreObj();
+with(oSeccion){
+bAutzCruce=false;
+sFgCtlVactSecc="0";
+sAula=new Array();
+sAula[0]=[];
+sAula[1]=["L3-402","L3-402"];
+sAula[2]=[];
+sAula[3]=[];
+sAula[4]=["L3-402","L3-402","L3-402"];
+sAula[5]=[];
+
+sFgBloqMatr="0";
+sFgSeccIngr=null;
+sCoSecc="654";
+sCoGpo="";
+sNoProf="MAYHUA QUISPE ANGELA GABRIELA";
+nHorario=new Array();
+nHorario[0]=[];
+nHorario[1]=[11.0,12.0];
+nHorario[2]=[];
+nHorario[3]=[];
+nHorario[4]=[10.0,11.0,12.0];
+nHorario[5]=[];
+
+sFgCtlVactSecc="0";
+sNoPatDcte=null;
+sNoMatDcte=null;
+sNoNomDcte=null;
+}
+
+nNuMatr=17.0;
+sCoTipEspc="001";
+nNuVez=1.0;
+nCoEspcMatr=6500.0;
+sFgMatr="1";
+nNuNiv=6.0;
+sCoCurs="650070";
+sNoCmpCurs="PARADIGMAS DE PROGRAMACIÓN";
+sNoAbrCurs="PARADIG. PROGRAMACIÓ";
+sCoCrcCurs="E";
+nNuCr=3.0;
+oEspc=null;
+}
+
+cursosMat[4]=new CursosMatPreObj();
+with(cursosMat[4]){
+nCoTipMatr=5.0;
+nCoEspcCurs=6500.0;
+nNuCrVlz=3.0;
+sCoTipVlz="002";
+oSeccion=new SeccionPreObj();
+with(oSeccion){
+bAutzCruce=false;
+sFgCtlVactSecc="0";
+sAula=new Array();
+sAula[0]=[];
+sAula[1]=[];
+sAula[2]=["I1-306","I1-306"];
+sAula[3]=[];
+sAula[4]=[];
+sAula[5]=["I1-306","I1-306"];
+
+sFgBloqMatr="0";
+sFgSeccIngr=null;
+sCoSecc="1051";
+sCoGpo="";
+sNoProf="WONG URQUIZA HENRY JOE";
+nHorario=new Array();
+nHorario[0]=[];
+nHorario[1]=[];
+nHorario[2]=[20.0,21.0];
+nHorario[3]=[];
+nHorario[4]=[];
+nHorario[5]=[7.0,8.0];
+
+sFgCtlVactSecc="0";
+sNoPatDcte=null;
+sNoMatDcte=null;
+sNoNomDcte=null;
+}
+
+nNuMatr=17.0;
+sCoTipEspc="001";
+nNuVez=1.0;
+nCoEspcMatr=6500.0;
+sFgMatr="1";
+nNuNiv=10.0;
+sCoCurs="650084";
+sNoCmpCurs="DEVOPS";
+sNoAbrCurs="DEVOPS";
+sCoCrcCurs="E";
+nNuCr=3.0;
+oEspc=null;
+}
+
+		
+
+	</SCRIPT>
+
+	<SCRIPT language="JavaScript">
+		
+		var matDate;
+
+		//---- INFORMACION HORA DE MATRICULA ----
+		
+		matDate=new Date();
+		matDate.setDate(1);
+		matDate.setMonth(8);
+		matDate.setYear(2026);
+		matDate.setHours(17);
+		matDate.setMinutes(52);
+		matDate.setSeconds(21);
+
+		function initLocal(){
+			windowTargets=new Array();
+			windowTargets[20]=window;
+			initCursosMatriculadosConsMatricula();
+		}
+
+	</SCRIPT>
+	<SCRIPT language="JavaScript" src="../aplicConsMatricula/consUtils.js"></SCRIPT>
+
+</HEAD>
+<BODY BGCOLOR=white topmargin=0 leftmargin=10 onload="initLocal()">
+<p align=left>
+<TABLE border=0 width=500 cellpadding=2>
+<TR>
+	<TD align=right valign=top>
+		<span class=periodoConsolidado>MA-02-DUSAR-R-001</span>
+	</TD>
+</TR>
+</TABLE>
+<TABLE border=0 width=500 cellpadding=2>
+<TR>
+	<TD width=50 align=left valign=top>
+		<TABLE border=0 cellpadding=2>
+		<TR>
+			<TD align=center>
+				<nobr><img src="https://contenidos.ulima.edu.pe/portalUL/images/logo/logoVertical.png" alt="Universidad de Lima, https://www.ulima.edu.pe/" border="0"><br><br></nobr>
+			</TD>
+		</TR>
+		</TABLE>
+	</TD>
+	<TD align=center>
+		<span class=tituloConsolidado>CONSOLIDADO DE MATRÍCULA</span>
+	</TD>
+	<TD width=80 align=right valign=bottom>
+		<span class=periodoConsolidado>Período</span>
+		<br>
+		<span class=periodoConsolidado>2026-2</span>
+		<br><br>
+		<span class=periodoConsolidado>01/09/2026 17:52:20</span>
+		<br><br>
+	</TD>
+</TR>
+</TABLE>
+
+		<TABLE border=0 cellpadding=2 width=500>
+		<TR>
+			<TD align=right>
+				<!--<a href="javascript:enviamail()" onmouseover="window.status=''; return true"><img src="../images/enviarcorreo.gif" border=0 align=absmiddle></a>-->
+				&nbsp;&nbsp;&nbsp;
+				<a href="javascript:print()" onmouseover="window.status=''; return true"><img src="../images/imprimirHG.gif" border=0></a>
+			</TD>
+		</TR>
+		</TABLE>
+
+<TABLE border=1 bordercolor=656565 cellspacing=0 cellpadding=1 width=500>
+<TR bgcolor="e5e5e5">
+	<TD align=center><span class=defaultTxtBold>CÓDIGO</span></TD>
+	<TD align=center><span class=defaultTxtBold>NOMBRES Y APELLIDOS</span></TD>
+	<TD align=center><span class=defaultTxtBold>CARRERA</span></TD>
+</TR>
+<TR bgcolor="white">
+	<TD align=center><span class=defaultTxt>20201234</span></TD>
+	<TD align=center><span class=defaultTxt>JUAN CARLOS PEREZ RAMIREZ</span></TD>
+	<TD align=center><span class=defaultTxt>INGENIERÍA DE SISTEMAS</span></TD>
+</TR>
+</TABLE>
+
+<BR><BR>
+
+
+	<!-- Cursos Matriculados -->
+		<form name=cursosMatriculados4>
+		<table border=0 cellpadding=1 cellspacing=2 width=500>
+		<tr bgcolor=e5e5e5>
+			<td align=center><span class=defaultTxtBold>CAR.</span></td>
+			<td align=center><span class=defaultTxtBold>COD</span></td>
+			<td align=center><span class=defaultTxtBold>SEC.</span></td>
+			<td align=center><span class=defaultTxtBold>GR.</span></td>
+			<td><span class=defaultTxtBold>&nbsp;NOMBRE ASIGNATURA</span></td>
+			<td align=center><span class=defaultTxtBold>Nv.</span></td>
+			<td align=center><span class=defaultTxtBold>CRD.</span></td>
+			<td align=center><span class=defaultTxtBold>VEZ</span></td>
+		</tr>
+
+
+		<tr class=cursosMatRow id=cMatrow0>
+			<td align=center width=30>
+				<span class=defaultTxt> 6500  </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 650033 </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 952  </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt>  </span>
+			</td>
+			<td>
+				<span class=defaultTxt> PLANEAMIENTO ESTRATÉGICO </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 9
+ </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 3.0 </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 1 </span>
+			</td>
+		</tr>
+
+
+		<tr class=cursosMatRow id=cMatrow1>
+			<td align=center width=30>
+				<span class=defaultTxt> 6500  </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 650035 </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 958  </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt>  </span>
+			</td>
+			<td>
+				<span class=defaultTxt> SEMINARIO DE INVESTIGACIÓN I </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 9
+ </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 4.0 </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 1 </span>
+			</td>
+		</tr>
+
+
+		<tr class=cursosMatRow id=cMatrow2>
+			<td align=center width=30>
+				<span class=defaultTxt> 6500  </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 650067 </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 952  </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt>  </span>
+			</td>
+			<td>
+				<span class=defaultTxt> SEGURIDAD DE SISTEMAS </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 9
+ </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 4.0 </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 1 </span>
+			</td>
+		</tr>
+
+
+		<tr class=cursosMatRow id=cMatrow3>
+			<td align=center width=30>
+				<span class=defaultTxt> 6500  </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 650070 </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 654  </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt>  </span>
+			</td>
+			<td>
+				<span class=defaultTxt> PARADIGMAS DE PROGRAMACIÓN </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 6
+ </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 3.0 </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 1 </span>
+			</td>
+		</tr>
+
+
+		<tr class=cursosMatRow id=cMatrow4>
+			<td align=center width=30>
+				<span class=defaultTxt> 6500  </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 650084 </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 1051  </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt>  </span>
+			</td>
+			<td>
+				<span class=defaultTxt> DEVOPS </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 10
+ </span>
+			</td>
+			<td align=center width=30>
+				<span class=defaultTxt> 3.0 </span>
+			</td>
+			<td align=center width=20>
+				<span class=defaultTxt> 1 </span>
+			</td>
+		</tr>
+
+
+		</table>
+
+		</form>
+
+<BR><BR>
+
+<table border=0 width=500 cellpadding=0 cellspacing=0>
+<tr>
+	<td valign=center align=center>
+
+<!-- Horario Principal -->
+
+	<table border=1 cellpadding=0 cellspacing=0 bordercolorlight=d5d5d5 bordercolordark=white bordercolor=d5d5d5>
+		<tr bgcolor=e5e5e5>
+			<td align=center width=50><span class=defaultTxtBold>HORA</span></td>	
+
+			<td align=center width=70><span class=defaultTxtBold>LUN</span></td>
+
+			<td align=center width=70><span class=defaultTxtBold>MAR</span></td>
+
+			<td align=center width=70><span class=defaultTxtBold>MIE</span></td>
+
+			<td align=center width=70><span class=defaultTxtBold>JUE</span></td>
+
+			<td align=center width=70><span class=defaultTxtBold>VIE</span></td>
+
+			<td align=center width=70><span class=defaultTxtBold>SAB</span></td>
+
+		</tr>
+
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>7-8</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour0>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour0>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour0>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour0>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour0>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour0>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>8-9</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour1>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour1>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour1>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour1>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour1>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour1>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>9-10</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour2>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour2>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour2>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour2>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour2>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour2>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>10-11</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour3>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour3>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour3>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour3>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour3>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour3>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>11-12</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour4>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour4>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour4>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour4>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour4>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour4>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>12-13</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour5>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour5>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour5>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour5>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour5>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour5>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>13-14</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour6>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour6>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour6>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour6>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour6>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour6>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>14-15</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour7>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour7>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour7>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour7>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour7>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour7>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>15-16</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour8>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour8>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour8>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour8>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour8>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour8>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>16-17</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour9>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour9>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour9>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour9>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour9>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour9>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>17-18</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour10>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour10>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour10>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour10>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour10>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour10>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>18-19</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour11>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour11>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour11>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour11>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour11>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour11>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>19-20</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour12>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour12>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour12>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour12>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour12>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour12>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>20-21</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour13>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour13>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour13>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour13>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour13>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour13>&nbsp;</div></span></td>
+
+		</tr>
+
+		<tr bgcolor=white>
+			<td align=center width=50><span class=defaultTxt>21-22</span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day0hour14>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day1hour14>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day2hour14>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day3hour14>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day4hour14>&nbsp;</div></span></td>
+
+			<td align=center width=70><span class=defaultTxt><div id=sch4day5hour14>&nbsp;</div></span></td>
+
+		</tr>
+
+	</table>
+
+<BR><BR>
+<div align=center>
+
+	<table border=1 cellpadding=0 cellspacing=0 bordercolorlight=d5d5d5 bordercolordark=white bordercolor=d5d5d5>
+		<tr bgcolor=e5e5e5>
+			<td align=center width=80><span class=defaultTxtBold>Carrera</span></td>	
+			<td align=center width=70><span class=defaultTxtBold>Asignaturas</span></td>
+			<td align=center width=70><span class=defaultTxtBold>Créditos</span></td>
+		</tr>
+
+
+
+		<!-- Especialidad Principal -->
+		<tr bgcolor=white>
+			<td align=center width=80><span class=defaultTxt>6500</span></td>
+			<td align=center width=70><span class=defaultTxt>5</span></td>
+			<td align=center width=70><span class=defaultTxt>17.0</span></td>
+
+		</tr>	
+	
+
+
+
+
+		<!-- Totales -->
+		<tr bgcolor=f5f5f5>
+			<td align=center width=80><span class=defaultTxt>Total</span></td>
+			<td align=center width=70><span class=defaultTxt>5</span></td>
+			<td align=center width=70><span class=defaultTxt>17.0</span></td>
+
+		</tr>	
+
+	
+	</table>
+
+</div>
+	</td>
+</tr>
+</table>
+
+<p> &nbsp; </p>
+<p> &nbsp; </p>
+
+<SCRIPT language=Javascript>
+		function loadDatosEmail(){ 
+			llenarDatosEmail('20201234',"JUAN CARLOS PEREZ RAMIREZ",'6500 | 952  |     | PLANEAMIENTO ESTRATÉGICO              | O   | 9   | 3.0,6500 | 958  |     | SEMINARIO DE INVESTIGACIÓN I          | O   | 9   | 4.0,6500 | 952  |     | SEGURIDAD DE SISTEMAS                 | O   | 9   | 4.0,6500 | 654  |     | PARADIGMAS DE PROGRAMACIÓN            | E   | 6   | 3.0,6500 | 1051 |     | DEVOPS                                | E   | 10  | 3.0,');
+		}
+</SCRIPT>
+
+
+</BODY>
+</HTML>
+
