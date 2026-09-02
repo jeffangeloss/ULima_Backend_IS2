@@ -31,6 +31,10 @@ export const config = {
     cohereApiKey: env.COHERE_API_KEY,
     rateLimit: env.CHATBOT_RATE_LIMIT,
   },
+  portal: {
+    baseUrl: env.PORTAL_BASE_URL,
+    timeoutMs: env.PORTAL_TIMEOUT_MS,
+  },
 } as const;
 
 export type AppConfig = typeof config;

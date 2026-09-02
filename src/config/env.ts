@@ -45,6 +45,14 @@ const envSchema = z.object({
     const n = parseInt(v ?? "20", 10);
     return Number.isInteger(n) && n > 0 ? n : 20;
   }),
+  // portal-sync (miUlima). Host FIJO por seguridad: si se cambia, debe seguir
+  // siendo webaloe.ulima.edu.pe; cualquier otro valor es rechazado (anti-SSRF).
+  PORTAL_BASE_URL: z.string().url().optional().default("https://webaloe.ulima.edu.pe")
+    .refine((v) => new URL(v).host === "webaloe.ulima.edu.pe", "PORTAL_BASE_URL debe apuntar a webaloe.ulima.edu.pe"),
+  PORTAL_TIMEOUT_MS: z.string().optional().transform((v) => {
+    const n = parseInt(v ?? "8000", 10);
+    return Number.isInteger(n) && n > 0 ? n : 8000;
+  }),
 });
 
 const parsed = envSchema.safeParse(process.env);
