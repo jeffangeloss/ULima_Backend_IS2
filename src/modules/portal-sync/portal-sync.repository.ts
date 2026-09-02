@@ -5,12 +5,28 @@ import type { RecordRow } from "./portal-sync.types.js";
 /** Transacción de Drizzle/postgres-js; se tipa laxo para no acoplar a la versión. */
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+/**
+ * Adelanta una fecha `AAAA-MM-DD` al lunes siguiente; si ya es lunes, la deja
+ * igual. `ensureAcademicWeeks` genera cada semana como `start_date + (n-1)*7`,
+ * así que si `start_date` no cae en lunes TODAS las semanas del período quedan
+ * corridas (p. ej. sábado a viernes en vez de lunes a domingo), y de ese mismo
+ * `start_date` leen su aritmética de semana el chatbot y el módulo de alertas.
+ */
+export const snapToNextMonday = (dateStr: string): string => {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const dayOfWeek = date.getUTCDay();              // 0 = domingo … 6 = sábado
+  const daysUntilMonday = (8 - dayOfWeek) % 7;      // lunes (1) => 0
+  date.setUTCDate(date.getUTCDate() + daysUntilMonday);
+  return date.toISOString().slice(0, 10);
+};
+
 /** Fechas por defecto de un período que el portal no tiene documentado. */
 export const defaultPeriodDates = (code: string): { start: string; end: string } => {
   const [year, n] = code.split("-");
-  if (n === "1") return { start: `${year}-03-15`, end: `${year}-07-31` };
-  if (n === "2") return { start: `${year}-08-01`, end: `${year}-12-20` };
-  return { start: `${year}-01-05`, end: `${year}-02-28` };
+  if (n === "1") return { start: snapToNextMonday(`${year}-03-15`), end: `${year}-07-31` };
+  if (n === "2") return { start: snapToNextMonday(`${year}-08-01`), end: `${year}-12-20` };
+  return { start: snapToNextMonday(`${year}-01-05`), end: `${year}-02-28` };
 };
 
 /** El ciclo global solo AVANZA: nunca se retrocede por la importación de un alumno. */
