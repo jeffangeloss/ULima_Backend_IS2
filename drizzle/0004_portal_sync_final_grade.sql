@@ -1,0 +1,2 @@
+ALTER TABLE "enrollment" ADD COLUMN "final_grade" numeric(4, 2);--> statement-breakpoint
+ALTER TABLE "enrollment" ADD CONSTRAINT "chk_enrollment_final_grade" CHECK ("enrollment"."final_grade" IS NULL OR "enrollment"."final_grade" BETWEEN 0 AND 20);
