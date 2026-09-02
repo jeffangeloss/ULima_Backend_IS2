@@ -96,6 +96,47 @@ describe("PortalSyncService.importFromPortal", () => {
     await svc.importFromPortal(3, 7, cookies).catch(() => {});
     expect(logouts).toBe(1);
   });
+
+  test("dos filas del consolidado con el mismo curso y distinta seccion (GR.) llegan AMBAS al keep del retiro", async () => {
+    // sectionIdByCourse es un Map por courseCode: si el retiro usara sus .values()
+    // perdería una de las dos secciones y la retiraría por error en la misma
+    // transacción que la creó. keepSectionIds no debe colapsar por curso.
+    const row0 = matricula.match(/<tr class=cursosMatRow id=cMatrow0>[\s\S]*?<\/tr>/)?.[0];
+    if (!row0) throw new Error("fixture sin cMatrow0");
+    const dupRow = row0.replace("id=cMatrow0", "id=cMatrowDup").replace("952", "953");
+    const matriculaConDosSecciones = matricula.replace(row0, row0 + "\n" + dupRow);
+
+    // upsertCourse/upsertOffering hacen eco del código de curso como id, para
+    // poder distinguir en upsertSection las DOS secciones de 650033 de una
+    // sección de otro curso que por casualidad comparta el mismo código de
+    // sección literal ("952" se repite en el fixture para otro curso).
+    let keptSectionIds: number[] = [];
+    let sectionCallCounter = 0;
+    const idsFor650033: number[] = [];
+    const repo = fakeRepo({
+      upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
+      upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      upsertSection: async (_tx, offeringId: number) => {
+        const id = 1000 + (sectionCallCounter += 1);
+        if (offeringId === 650033) idsFor650033.push(id);
+        return { id, created: true };
+      },
+      withdrawMissingEnrollments: async (_tx, _studentId, _periodId, keep: number[]) => {
+        keptSectionIds = keep;
+        return 0;
+      },
+    } as never);
+    const client = fakeClient({
+      fetchAll: async () => ({ matricula: matriculaConDosSecciones, record, datosPersonales: "<html></html>" }),
+    } as Partial<PortalClient>);
+
+    const svc = new PortalSyncService(repo, client);
+    await svc.importFromPortal(3, 7, cookies);
+
+    // Sanity: el fixture editado en verdad generó dos secciones para 650033.
+    expect(idsFor650033).toHaveLength(2);
+    for (const id of idsFor650033) expect(keptSectionIds).toContain(id);
+  });
 });
 
 describe("PortalSyncService.getStatus", () => {

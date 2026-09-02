@@ -100,7 +100,13 @@ export class PortalSyncService {
         });
       }
 
+      // sectionIdByCourse resuelve el horario, que solo trae courseCode: dos filas
+      // de matrícula con el mismo curso y distinta sección (columna GR.) colapsan
+      // ahí a propósito. keepSectionIds NO debe colapsar: es la lista de todas las
+      // secciones tocadas en esta importación, y de ella depende qué matrícula NO
+      // se retira; perder una acá la retira por error dentro de la misma transacción.
       const sectionIdByCourse = new Map<string, number>();
+      const keepSectionIds: number[] = [];
       for (const row of mat.data.rows) {
         const teacherName = teacherByCourse.get(row.courseCode) ?? "";
         const t = await this.repository.upsertTeacher(tx, teacherName);
@@ -120,6 +126,7 @@ export class PortalSyncService {
         const sec = await this.repository.upsertSection(tx, off.id, row.sectionCode, t.id);
         if (sec.created) summary.sectionsCreated++; else summary.sectionsUpdated++;
         sectionIdByCourse.set(row.courseCode, sec.id);
+        keepSectionIds.push(sec.id);
 
         // Nota final del récord para ESTE curso y ciclo, si ya existe.
         const finalGrade = rec.ok
@@ -139,7 +146,7 @@ export class PortalSyncService {
       }
 
       const withdrawn = await this.repository.withdrawMissingEnrollments(
-        tx, studentId, p.id, [...sectionIdByCourse.values()],
+        tx, studentId, p.id, keepSectionIds,
       );
       if (withdrawn === -1) {
         warnings.push({
