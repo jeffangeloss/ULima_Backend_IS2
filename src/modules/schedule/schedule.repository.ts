@@ -118,6 +118,7 @@ export class ScheduleRepository {
       join section sec on sec.id = e.section_id
       join teacher t on t.id = sec.teacher_id
       join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
       join course c on c.id = co.course_id
       left join schedule_session ss on ss.section_id = sec.id
       where e.student_id = ${studentId}

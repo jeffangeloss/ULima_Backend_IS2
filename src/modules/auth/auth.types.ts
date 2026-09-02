@@ -58,7 +58,12 @@ export type AuthUser = {
   career_id: number;
   curriculumId: number;
   currentLevel: number | null;
-  currentCycle: string;
+  // Código del período activo cuando no hay matrícula en el ciclo vigente
+  // (ver auth.repository.ts buildUser); null cuando tampoco hay período
+  // activo. El cliente Flutter (lib/models/user_model.dart) ya defiende con
+  // `json['currentCycle'] as String? ?? '2026-1'` al parsear, así que un
+  // valor null es seguro de recibir.
+  currentCycle: string | null;
   setupComplete: boolean;
   specialtySetupCompleted: boolean;
   especialidad_principal: number | null;
