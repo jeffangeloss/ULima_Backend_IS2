@@ -74,6 +74,37 @@ export const periodCodeIsNewer = (incoming: string, current: string | null): boo
   current === null || incoming >= current;
 
 /**
+ * ¿Ya llegó la fecha de inicio de un período? Compara en UTC solo por fecha
+ * de calendario (año/mes/día), no por hora, igual que el resto de este
+ * módulo (ver `academicWeekCount`). `now` se pasa explícito (normalmente
+ * `new Date()`) en vez de leerse del reloj adentro, para poder testear sin
+ * mockear el reloj real.
+ */
+export const periodHasStarted = (startDate: string, now: Date): boolean => {
+  const [year, month, day] = startDate.split("-").map(Number);
+  const startUTC = Date.UTC(year, month - 1, day);
+  const nowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return startUTC <= nowUTC;
+};
+
+/**
+ * Decide si una importación debe activar el período que trae del portal.
+ *
+ * La Universidad publica el calendario de un ciclo (y por tanto lo deja
+ * disponible para importar) días ANTES de que empiecen las clases. Sin esta
+ * guarda, el primer alumno en importar movería el ciclo activo de los 201
+ * alumnos antes de que el ciclo nuevo en verdad empezara: activar exige
+ * además de no retroceder (`periodCodeIsNewer`) que la fecha de inicio ya
+ * haya llegado.
+ */
+export const shouldActivatePeriod = (
+  incomingCode: string,
+  currentCode: string | null,
+  startDate: string,
+  now: Date,
+): boolean => periodCodeIsNewer(incomingCode, currentCode) && periodHasStarted(startDate, now);
+
+/**
  * `teacher` NO tiene UNIQUE sobre full_name, así que no admite ON CONFLICT por
  * nombre. Se deriva una clave natural sintética sobre teacher_code (que sí es
  * unique) para poder hacer upsert atómico y no duplicar docentes cuando dos

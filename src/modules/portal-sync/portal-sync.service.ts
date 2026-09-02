@@ -1,8 +1,8 @@
 import { HttpError } from "../../shared/errors/http-error.js";
 import type { PortalClient } from "../../services/portal.client.js";
 import {
-  PortalSyncRepository, hasPublishedCalendar, periodCodeIsNewer, pickBestRecordRow, progressStatusFor,
-  teacherCodeFor,
+  PortalSyncRepository, defaultPeriodDates, hasPublishedCalendar, pickBestRecordRow, progressStatusFor,
+  shouldActivatePeriod, teacherCodeFor,
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
@@ -98,8 +98,14 @@ export class PortalSyncService {
     // carrera (haría falta un advisory lock) pero saca de en medio la segunda
     // conexión y la lectura obsoleta dentro de la propia transacción.
     const activeBeforeTx = await this.repository.findActivePeriod();
+    // La fecha de inicio del período entrante se conoce ANTES del upsert (sale
+    // de KNOWN_PERIOD_CALENDARS/defaultPeriodDates, no de la BD): la misma
+    // fuente que upsertPeriod usa internamente para las fechas que inserta.
+    const { start: incomingStartDate } = defaultPeriodDates(ciclo.data.periodCode);
+    const activate = shouldActivatePeriod(
+      ciclo.data.periodCode, activeBeforeTx?.code ?? null, incomingStartDate, new Date(),
+    );
     const period = await this.repository.runInTransaction(async (tx) => {
-      const activate = periodCodeIsNewer(ciclo.data.periodCode, activeBeforeTx?.code ?? null);
       const p = await this.repository.upsertPeriod(tx, ciclo.data.periodCode, activate);
       if (p.created) {
         await this.repository.ensureAcademicWeeks(tx, p.id, p.startDate, p.endDate);
@@ -107,6 +113,17 @@ export class PortalSyncService {
           warnings.push({
             code: "PERIOD_DATES_DEFAULTED", block: "periodo",
             message: `Se creó el período ${p.code} con fechas por defecto; Sistemas debe corregirlas.`,
+          });
+        }
+        if (!activate) {
+          // Consecuencia deliberada: un período creado antes de su fecha de
+          // inicio queda inactivo hasta que una importación POSTERIOR corra
+          // en o después de esa fecha (misma lógica de activación, evaluada
+          // de nuevo en ese momento). Es aceptable: esta advertencia lo hace
+          // visible en vez de dejarlo escondido para Sistemas/soporte.
+          warnings.push({
+            code: "PERIOD_NOT_ACTIVATED_YET", block: "periodo",
+            message: `Se creó el período ${p.code} pero su fecha de inicio (${p.startDate}) aún no llega; seguirá inactivo hasta una importación posterior en o después de esa fecha.`,
           });
         }
       }

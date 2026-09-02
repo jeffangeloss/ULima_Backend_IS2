@@ -76,6 +76,41 @@ describe("PortalSyncService.importFromPortal", () => {
     expect(r.warnings.some((w) => w.code === "PERIOD_DATES_DEFAULTED")).toBe(true);
   });
 
+  test("no advierte PERIOD_NOT_ACTIVATED_YET cuando el periodo activa normalmente (fecha de inicio ya llegada)", async () => {
+    // El fixture trae "2026-2" con calendario publicado (24-ago-2026), ya
+    // pasado respecto a la fecha real de ejecucion de los tests: activa sin
+    // advertencia.
+    const svc = new PortalSyncService(fakeRepo(), fakeClient());
+    const r = await svc.importFromPortal(3, 7, cookies);
+    expect(r.warnings.some((w) => w.code === "PERIOD_NOT_ACTIVATED_YET")).toBe(false);
+  });
+
+  test("crea el periodo pero NO lo activa si su fecha de inicio aun no llega, y advierte PERIOD_NOT_ACTIVATED_YET", async () => {
+    // Se reescribe el layout para que el ciclo detectado sea uno SIN
+    // calendario publicado y muy en el futuro (2099-2, via el mismo cociclo
+    // en las dos fuentes que usa parseCicloActivo: RestrictToCategory y el
+    // rotulo "CICLO: "): su fecha de inicio aproximada (defaultPeriodDates)
+    // cae muy despues de "ahora", asi que aunque el codigo sea mas nuevo que
+    // el periodo activo, la guarda de fecha debe impedir la activacion.
+    const layoutCicloFuturo = layout.replaceAll("2026-2", "2099-2").replaceAll("20262", "20992");
+    const client = fakeClient({ fetchPage: async () => layoutCicloFuturo } as Partial<PortalClient>);
+
+    const activateSeen: boolean[] = [];
+    const repo = fakeRepo({
+      upsertPeriod: async (_tx, code: string, activate: boolean) => {
+        activateSeen.push(activate);
+        return { id: 99, code, created: true, datesDefaulted: true, startDate: "2099-08-03", endDate: "2099-12-20" };
+      },
+    } as never);
+
+    const svc = new PortalSyncService(repo, client);
+    const r = await svc.importFromPortal(3, 7, cookies);
+
+    expect(activateSeen).toEqual([false]);
+    expect(r.period.code).toBe("2099-2");
+    expect(r.warnings.some((w) => w.code === "PERIOD_NOT_ACTIVATED_YET")).toBe(true);
+  });
+
   test("403 si el codigo del portal no es el del alumno autenticado", async () => {
     const svc = new PortalSyncService(fakeRepo({ findUserCode: async () => "99999999" }), fakeClient());
     await expect(svc.importFromPortal(3, 7, cookies)).rejects.toMatchObject({

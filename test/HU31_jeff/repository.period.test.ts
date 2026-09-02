@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  academicWeekCount, defaultPeriodDates, hasPublishedCalendar, periodCodeIsNewer, snapToNextMonday,
+  academicWeekCount, defaultPeriodDates, hasPublishedCalendar, periodCodeIsNewer, periodHasStarted,
+  shouldActivatePeriod, snapToNextMonday,
 } from "../../src/modules/portal-sync/portal-sync.repository.js";
 
 /** getUTCDay(): 0 = domingo … 6 = sábado. Solo lunes (1) es válido como inicio de semana. */
@@ -90,5 +91,56 @@ describe("periodCodeIsNewer", () => {
   });
   test("sin periodo activo previo siempre activa", () => {
     expect(periodCodeIsNewer("2026-2", null)).toBe(true);
+  });
+});
+
+describe("periodHasStarted", () => {
+  test("fecha de inicio en el pasado ya empezo", () => {
+    expect(periodHasStarted("2026-08-24", new Date(Date.UTC(2026, 8, 2)))).toBe(true); // 2026-09-02
+  });
+  test("fecha de inicio HOY (mismo dia UTC) cuenta como ya empezada", () => {
+    expect(periodHasStarted("2026-08-24", new Date(Date.UTC(2026, 7, 24, 23, 59, 59)))).toBe(true);
+  });
+  test("fecha de inicio en el futuro NO ha empezado", () => {
+    expect(periodHasStarted("2026-08-24", new Date(Date.UTC(2026, 7, 23)))).toBe(false);
+  });
+  test("compara solo la fecha de calendario en UTC, no la hora", () => {
+    // "now" es 23:00 UTC del dia anterior al inicio: sigue sin haber empezado.
+    expect(periodHasStarted("2026-08-24", new Date(Date.UTC(2026, 7, 23, 23, 0, 0)))).toBe(false);
+    // "now" es 00:01 UTC del dia de inicio: ya empezo.
+    expect(periodHasStarted("2026-08-24", new Date(Date.UTC(2026, 7, 24, 0, 1, 0)))).toBe(true);
+  });
+});
+
+describe("shouldActivatePeriod", () => {
+  // Calendario publicado real de 2026-2 (owner, 2026-09-02): inicio 24-ago-2026.
+  const START_2026_2 = "2026-08-24";
+
+  test("codigo mas nuevo pero fecha de inicio en el futuro: NO activa", () => {
+    const now = new Date(Date.UTC(2026, 7, 23)); // 2026-08-23, un dia antes del inicio
+    expect(shouldActivatePeriod("2026-2", "2026-1", START_2026_2, now)).toBe(false);
+  });
+
+  test("codigo mas nuevo y fecha de inicio ya llegada: activa", () => {
+    const now = new Date(Date.UTC(2026, 8, 2)); // 2026-09-02, hoy segun el enunciado del bug
+    expect(shouldActivatePeriod("2026-2", "2026-1", START_2026_2, now)).toBe(true);
+  });
+
+  test("codigo mas viejo nunca activa, aunque su fecha de inicio ya haya llegado", () => {
+    const now = new Date(Date.UTC(2026, 8, 2));
+    expect(shouldActivatePeriod("2025-2", "2026-1", "2025-08-01", now)).toBe(false);
+  });
+
+  test("sin periodo activo previo, con fecha de inicio en el futuro: NO activa", () => {
+    // Un alumno que importa ANTES de que empiece el primer ciclo que carga el
+    // sistema tampoco debe activarlo: la guarda de fecha aplica igual cuando
+    // no hay currentCode previo.
+    const now = new Date(Date.UTC(2026, 7, 23));
+    expect(shouldActivatePeriod("2026-2", null, START_2026_2, now)).toBe(false);
+  });
+
+  test("sin periodo activo previo, con fecha de inicio ya llegada: activa", () => {
+    const now = new Date(Date.UTC(2026, 8, 2));
+    expect(shouldActivatePeriod("2026-2", null, START_2026_2, now)).toBe(true);
   });
 });

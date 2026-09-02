@@ -25,8 +25,8 @@ export interface InfoAcademica { careerName: string | null }
 export interface Impedimentos { hasImpediment: boolean; hasDebt: boolean; text: string }
 
 export type WarningCode =
-  | "PERIOD_DATES_DEFAULTED" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH"
-  | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE";
+  | "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED"
+  | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE";
 export interface SyncWarning { code: WarningCode; block: string; message: string }
 
 export interface ImportSummary {
