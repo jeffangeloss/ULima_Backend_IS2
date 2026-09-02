@@ -33,6 +33,17 @@ const respuestaConCuerpoColgado = (init?: RequestInit): Response =>
 
 /** Espera `p` con un tope propio: si la promesa NUNCA resuelve (justo el bug
  *  que se cubre) devuelve "colgada" en vez de dejar colgado el runner. */
+/** Captura la cabecera `Cookie` que se manda en la petición. */
+const clienteQueCapturaCookie = (capturar: (cookie: string) => void) =>
+  new PortalClient(
+    "https://webaloe.ulima.edu.pe", 8000,
+    ((_url: string, init?: RequestInit) => {
+      capturar(String((init?.headers as Record<string, string> | undefined)?.Cookie ?? ""));
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    }) as unknown as typeof fetch,
+    "https://cactus.ulima.edu.pe",
+  );
+
 const conTope = async <T>(p: Promise<T>, ms = 800): Promise<T | Error | "colgada"> =>
   Promise.race([
     p.catch((e: Error) => e),
@@ -180,4 +191,24 @@ describe("PortalClient.fetchSyllabus", () => {
     expect(r).not.toBe("colgada");
     expect(r).toBeNull();
   }, 5000);
+  test("a cactus se le mandan SOLO las cookies LTPA, nunca el JSESSIONID de webaloe", async () => {
+    // JSESSIONID es la sesión de WebSphere atada a webaloe; según la §SSO de
+    // la spec solo el LTPA autentica Domino, y un navegador jamás mandaría esa
+    // cookie cross-host. Mandarla dejaba el identificador de sesión vivo del
+    // alumno en los logs de un segundo servidor, sin necesidad.
+    let cookie = "";
+    const c = clienteQueCapturaCookie((v) => { cookie = v; });
+    await c.fetchSyllabus("20262", "650033", { JSESSIONID: "sesion-viva", LtpaToken2: "b", LtpaToken: "c" });
+    expect(cookie).not.toContain("JSESSIONID");
+    expect(cookie).toContain("LtpaToken2=b");
+    expect(cookie).toContain("LtpaToken=c");
+  });
+
+  test("a webaloe (fetchPage) se le siguen mandando las tres cookies", async () => {
+    let cookie = "";
+    const c = clienteQueCapturaCookie((v) => { cookie = v; });
+    await c.fetchPage("layout.jsp", { JSESSIONID: "sesion-viva", LtpaToken2: "b", LtpaToken: "c" });
+    expect(cookie).toContain("JSESSIONID=sesion-viva");
+    expect(cookie).toContain("LtpaToken2=b");
+  });
 });

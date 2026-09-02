@@ -40,12 +40,26 @@ export class PortalClient {
     readonly syllabusBaseUrl: string = config.syllabus.baseUrl,
   ) {}
 
+  /** Cookies para `webaloe`: las tres, tal como las mandaría el navegador. */
   private cookieHeader(c: PortalCookies): string {
     const parts = [`JSESSIONID=${c.JSESSIONID}`, `LtpaToken2=${c.LtpaToken2}`];
     if (c.LtpaToken) parts.push(`LtpaToken=${c.LtpaToken}`);
     return parts.join("; ");
   }
 
+  /**
+   * Cookies para el host de sílabos: SOLO el token LTPA. Según la §SSO de la
+   * spec, lo que autentica Domino es el LTPA (`Domain=.ulima.edu.pe`);
+   * `JSESSIONID` es la sesión de WebSphere atada a `webaloe`, y un navegador
+   * nunca la mandaría a otro host. Enviarla dejaba el identificador de sesión
+   * vivo del alumno en los logs de acceso, proxies o errores de un segundo
+   * servidor, sin ninguna necesidad.
+   */
+  private ltpaCookieHeader(c: PortalCookies): string {
+    const parts = [`LtpaToken2=${c.LtpaToken2}`];
+    if (c.LtpaToken) parts.push(`LtpaToken=${c.LtpaToken}`);
+    return parts.join("; ");
+  }
 
   /**
    * El `clearTimeout` va en un `finally` que envuelve TAMBIÉN la lectura del
@@ -158,7 +172,7 @@ export class PortalClient {
           redirect: "manual",
           signal: ac.signal,
           headers: {
-            Cookie: this.cookieHeader(cookies), "User-Agent": UA, Accept: "application/json,*/*;q=0.8",
+            Cookie: this.ltpaCookieHeader(cookies), "User-Agent": UA, Accept: "application/json,*/*;q=0.8",
           },
         });
       } catch {
