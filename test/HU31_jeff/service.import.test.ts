@@ -50,8 +50,14 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     upsertEnrollment: async () => ({ id: 50, created: true }),
     withdrawMissingEnrollments: async () => 0,
     countActiveEnrollments: async () => 5,
-    findCurriculumCourseId: async () => 60,
-    upsertProgress: async () => {},
+    // El progreso se resuelve en lote: una consulta para todos los codigos y
+    // una sentencia para todas las filas. El doble le da un id distinto a cada
+    // codigo (60, 61, 62...) para que dos cursos no colapsen en la misma clave.
+    findCurriculumCourseIds: async (_tx: unknown, _cid: number, codes: string[]) =>
+      new Map(codes.map((c, i) => [c, 60 + i])),
+    upsertProgressBatch: async (
+      _tx: unknown, _sid: number, _cid: number, items: unknown[],
+    ) => items.length,
     upsertImpedimentAlert: async () => true,
     // Sin obligatorios: levelFromCoverage devuelve null y no se toca el nivel.
     findCycleCoverage: async () => [],

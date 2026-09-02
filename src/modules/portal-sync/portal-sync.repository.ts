@@ -465,24 +465,80 @@ export class PortalSyncRepository {
     return ids.length;
   }
 
-  async findCurriculumCourseId(tx: Tx, curriculumId: number, courseCode: string): Promise<number | null> {
+  /**
+   * Resuelve TODOS los códigos de curso de una vez, en UNA consulta.
+   *
+   * Antes se resolvía de a uno dentro del bucle de progreso, junto con un
+   * upsert también de a uno: dos viajes por curso. Con el récord académico
+   * completo eso eran ~90 de los ~115 viajes secuenciales de la importación,
+   * todos dentro de la misma transacción. No es tanto un problema de velocidad
+   * (la función corre en `iad1`, pegada a Neon, donde cada viaje cuesta
+   * décimas de milisegundo) como de cuánto tiempo se mantiene abierta esa
+   * transacción: al inicio de un ciclo muchos alumnos importan a la vez.
+   *
+   * Los códigos van como JSON y no como lista separada por comas: un código de
+   * curso hoy es numérico, pero `string_to_array` se rompería en silencio si
+   * alguna vez trajera una coma, y acá el dato viene del portal.
+   *
+   * Devuelve un Map código -> id. Los códigos que no están en la malla
+   * simplemente no aparecen, que es lo mismo que devolvía `null` antes.
+   */
+  async findCurriculumCourseIds(
+    tx: Tx, curriculumId: number, courseCodes: string[],
+  ): Promise<Map<string, number>> {
+    const codigos = [...new Set(courseCodes)];
+    if (!codigos.length) return new Map();
     const rows = (await tx.execute(sql`
-      select cc.id from curriculum_course cc
+      select c.code as "code", min(cc.id)::int as "id"
+      from curriculum_course cc
       join course c on c.id = cc.course_id
-      where cc.curriculum_id = ${curriculumId} and c.code = ${courseCode}
-      limit 1
-    `)) as unknown as Array<{ id: number }>;
-    return rows[0] ? Number(rows[0].id) : null;
+      where cc.curriculum_id = ${curriculumId}
+        and c.code = any(select json_array_elements_text(${JSON.stringify(codigos)}::json))
+      group by c.code
+    `)) as unknown as Array<{ code: string; id: number }>;
+    // `min(cc.id)` replica el `limit 1` de la versión de a uno: si una malla
+    // llegara a tener el mismo curso dos veces, antes se quedaba con una fila
+    // arbitraria y ahora con la de menor id, que al menos es determinista.
+    return new Map(rows.map((r) => [String(r.code), Number(r.id)]));
   }
 
-  async upsertProgress(
-    tx: Tx, studentId: number, curriculumId: number, curriculumCourseId: number, status: ProgressStatus,
-  ): Promise<void> {
-    await tx.execute(sql`
+  /**
+   * Escribe TODO el progreso en UNA sentencia (ver `findCurriculumCourseIds`).
+   *
+   * Mantiene exactamente la semántica de la versión de a uno: mismo conflict
+   * target `uq_student_course_progress (student_id, curriculum_course_id)` y
+   * mismo `do update set status`.
+   *
+   * Las filas viajan como JSON y se expanden con `json_array_elements`, en vez
+   * de armar un `values` con N tuplas: así el número de parámetros no crece con
+   * el récord del alumno y la consulta que llega a Postgres es siempre la
+   * misma, con un solo parámetro variable.
+   *
+   * `distinct on (curriculum_course_id)` no es decorativo: `ON CONFLICT` falla
+   * con 21000 ("ON CONFLICT DO UPDATE command cannot affect row a second time")
+   * si la MISMA sentencia trae dos filas con la misma clave. De a uno eso no
+   * podía pasar; en lote sí, y bastaría un curso repetido para tumbar la
+   * importación entera. El llamador ya agrupa por curso, así que es una
+   * defensa, no la regla.
+   */
+  async upsertProgressBatch(
+    tx: Tx, studentId: number, curriculumId: number,
+    items: Array<{ curriculumCourseId: number; status: ProgressStatus }>,
+  ): Promise<number> {
+    if (!items.length) return 0;
+    const payload = JSON.stringify(
+      items.map((i) => ({ ccId: Number(i.curriculumCourseId), status: i.status })),
+    );
+    const rows = (await tx.execute(sql`
       insert into student_course_progress (student_id, curriculum_id, curriculum_course_id, status)
-      values (${studentId}, ${curriculumId}, ${curriculumCourseId}, ${status}::student_course_status)
+      select distinct on ((x->>'ccId')::int)
+             ${studentId}, ${curriculumId}, (x->>'ccId')::int,
+             (x->>'status')::student_course_status
+        from json_array_elements(${payload}::json) as x
       on conflict (student_id, curriculum_course_id) do update set status = excluded.status
-    `);
+      returning id
+    `)) as unknown as Array<{ id: number }>;
+    return rows.length;
   }
 
   /** Idempotente: no crea otra alerta aunque la anterior ya esté leída. */

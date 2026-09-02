@@ -4,6 +4,7 @@ import {
   PortalSyncRepository, defaultPeriodDates, hasPublishedCalendar, pickBestRecordRow, progressStatusFor,
   shouldActivatePeriod, teacherCodeFor,
   levelFromCoverage, levelNeverGoesDown,
+  type ProgressStatus,
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
@@ -261,16 +262,39 @@ export class PortalSyncService {
         for (const r of rec.data) {
           byCourse.set(r.courseCode, [...(byCourse.get(r.courseCode) ?? []), r]);
         }
+        // En tres fases, para no hacer dos viajes a la base por cada curso del
+        // récord. Con el récord completo eso eran ~90 de los ~115 viajes
+        // secuenciales de la importación, todos manteniendo abierta la misma
+        // transacción. Los conteos de `progressUpserted`/`progressSkipped` y
+        // las razones para omitir son exactamente los de antes.
+
+        // 1. Sin tocar la base: decidir el estado de cada curso.
+        const conEstado: Array<{ code: string; status: ProgressStatus }> = [];
         for (const [code, rows] of byCourse) {
           const best = pickBestRecordRow(rows);
           if (!best) continue;
           const status = progressStatusFor(best.grade, best.periodCode === p.code);
           if (!status) { summary.progressSkipped++; continue; }
-          const ccId = await this.repository.findCurriculumCourseId(tx, student.curriculumId, code);
-          if (!ccId) { summary.progressSkipped++; continue; }
-          await this.repository.upsertProgress(tx, studentId, student.curriculumId, ccId, status);
-          summary.progressUpserted++;
+          conEstado.push({ code, status });
         }
+
+        // 2. UNA consulta: todos los códigos contra la malla de una vez.
+        const ccIdPorCodigo = await this.repository.findCurriculumCourseIds(
+          tx, student.curriculumId, conEstado.map((x) => x.code),
+        );
+
+        // 3. UNA sentencia: todo el progreso. Un curso del récord que no está
+        // en la malla (convalidación, código antiguo) se omite igual que antes.
+        const aEscribir: Array<{ curriculumCourseId: number; status: ProgressStatus }> = [];
+        for (const { code, status } of conEstado) {
+          const ccId = ccIdPorCodigo.get(code);
+          if (!ccId) { summary.progressSkipped++; continue; }
+          aEscribir.push({ curriculumCourseId: ccId, status });
+        }
+        // Se cuenta lo que la base dice haber escrito, no lo que se intentó.
+        summary.progressUpserted += await this.repository.upsertProgressBatch(
+          tx, studentId, student.curriculumId, aEscribir,
+        );
         if (summary.progressSkipped > 0) {
           warnings.push({
             code: "PROGRESS_SKIPPED", block: "record",
