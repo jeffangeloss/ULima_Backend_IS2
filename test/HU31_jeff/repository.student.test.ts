@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  pickBestRecordRow, progressStatusFor, studentLevelFromRows, withdrawalWouldLockOut,
+  minOutstandingCycle, pickBestRecordRow, progressStatusFor, withdrawalWouldLockOut,
 } from "../../src/modules/portal-sync/portal-sync.repository.js";
 
 describe("progressStatusFor", () => {
@@ -40,21 +40,18 @@ describe("pickBestRecordRow", () => {
   });
 });
 
-describe("studentLevelFromRows", () => {
-  test("fixture del alumno de ciclo 9 con un curso arrastrado y uno adelantado: gana el modal, no el maximo", () => {
-    expect(studentLevelFromRows([9, 9, 9, 6, 10])).toBe(9);
+describe("minOutstandingCycle", () => {
+  test("varios cursos pendientes: gana el ciclo mas bajo", () => {
+    expect(minOutstandingCycle([{ cycle: 9 }, { cycle: 6 }, { cycle: 10 }])).toBe(6);
   });
-  test("empate de frecuencia: gana el nivel mas alto", () => {
-    expect(studentLevelFromRows([7, 7, 8, 8])).toBe(8);
+  test("lista vacia devuelve null: ya aprobo todos los obligatorios", () => {
+    expect(minOutstandingCycle([])).toBeNull();
   });
-  test("un solo nivel devuelve ese nivel", () => {
-    expect(studentLevelFromRows([5])).toBe(5);
+  test("una sola fila devuelve su propio ciclo", () => {
+    expect(minOutstandingCycle([{ cycle: 5 }])).toBe(5);
   });
-  test("lista vacia devuelve null", () => {
-    expect(studentLevelFromRows([])).toBeNull();
-  });
-  test("ignora valores no positivos o no enteros", () => {
-    expect(studentLevelFromRows([0, -1, 3.5, 4, 4])).toBe(4);
+  test("entrada desordenada: sigue ganando el mas bajo", () => {
+    expect(minOutstandingCycle([{ cycle: 8 }, { cycle: 3 }, { cycle: 7 }, { cycle: 4 }])).toBe(3);
   });
 });
 

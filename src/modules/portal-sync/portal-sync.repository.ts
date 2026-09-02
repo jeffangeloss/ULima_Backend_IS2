@@ -64,28 +64,12 @@ export const pickBestRecordRow = (rows: RecordRow[]): RecordRow | null => {
 };
 
 /**
- * Ciclo del alumno a partir de los niveles de sus cursos matriculados.
- *
- * NO es el máximo: un alumno de ciclo 9 puede arrastrar un curso de ciclo 6 y
- * adelantar uno de ciclo 10, y el máximo lo declararía de ciclo 10. Se toma el
- * nivel MODAL (el que más se repite), y a igualdad de frecuencia el más alto.
+ * De una lista de cursos obligatorios pendientes, el nivel del alumno es el
+ * ciclo MÍNIMO entre ellos (el owner: "el nivel del curso obligatorio más
+ * bajo que todavía le falta"). Lista vacía => ya aprobó todo lo obligatorio.
  */
-export const studentLevelFromRows = (levels: number[]): number | null => {
-  const counts = new Map<number, number>();
-  for (const l of levels) {
-    if (Number.isInteger(l) && l > 0) counts.set(l, (counts.get(l) ?? 0) + 1);
-  }
-  if (counts.size === 0) return null;
-  let best = 0;
-  let bestCount = 0;
-  for (const [level, count] of counts) {
-    if (count > bestCount || (count === bestCount && level > best)) {
-      best = level;
-      bestCount = count;
-    }
-  }
-  return best;
-};
+export const minOutstandingCycle = (rows: Array<{ cycle: number }>): number | null =>
+  rows.length ? Math.min(...rows.map((r) => r.cycle)) : null;
 
 /**
  * ¿Retirar `toWithdraw` matrículas dejaría al alumno sin ninguna activa?
@@ -247,6 +231,31 @@ export class PortalSyncRepository {
       update app_user set full_name = ${fullName}
       where id = ${userId} and (full_name is null or btrim(full_name) = '')
     `);
+  }
+
+  /**
+   * Ciclo del alumno: el nivel del curso OBLIGATORIO más bajo que todavía le
+   * falta, esté pendiente o cursándolo. Definición dada por el owner.
+   *
+   * No se deriva del consolidado de matrícula: ese solo lista lo que el alumno
+   * lleva ESTE ciclo, no dice si un curso es obligatorio, y no incluye los
+   * cursos que aún no ha llevado — que son justamente los que definen el ciclo.
+   *
+   * Obligatorio = category <> 'elective'. Pendiente = sin fila de progreso o
+   * con estado distinto de 'approved' (in_progress, failed y withdrawn siguen
+   * faltando). Devuelve null si ya aprobó todos los obligatorios.
+   */
+  async findStudentLevel(tx: Tx, studentId: number, curriculumId: number): Promise<number | null> {
+    const rows = (await tx.execute(sql`
+      select cc.cycle as "cycle"
+      from curriculum_course cc
+      left join student_course_progress scp
+        on scp.curriculum_course_id = cc.id and scp.student_id = ${studentId}
+      where cc.curriculum_id = ${curriculumId}
+        and cc.category <> 'elective'
+        and (scp.status is null or scp.status <> 'approved')
+    `)) as unknown as Array<{ cycle: number }>;
+    return minOutstandingCycle(rows.map((r) => ({ cycle: Number(r.cycle) })));
   }
 
   async updateStudentLevel(tx: Tx, studentId: number, level: number): Promise<void> {

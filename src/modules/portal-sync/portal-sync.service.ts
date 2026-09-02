@@ -1,7 +1,7 @@
 import { HttpError } from "../../shared/errors/http-error.js";
 import type { PortalClient } from "../../services/portal.client.js";
 import {
-  PortalSyncRepository, periodCodeIsNewer, pickBestRecordRow, progressStatusFor, studentLevelFromRows, teacherCodeFor,
+  PortalSyncRepository, periodCodeIsNewer, pickBestRecordRow, progressStatusFor, teacherCodeFor,
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
@@ -189,15 +189,20 @@ export class PortalSyncService {
         }
       }
 
-      // Nivel del alumno, del consolidado del ciclo importado.
-      const level = studentLevelFromRows(mat.data.rows.map((r) => r.level)) ?? 0;
-      if (level >= 1 && level <= 10) {
-        await this.repository.updateStudentLevel(tx, studentId, level);
-      } else if (level > 10) {
-        warnings.push({
-          code: "LEVEL_OUT_OF_RANGE", block: "matricula",
-          message: `El portal reporta nivel ${level}, fuera del rango 1..10; no se actualizó.`,
-        });
+      // Nivel del alumno: el ciclo del curso obligatorio más bajo que aún le
+      // falta (pendiente o cursándolo). Se calcula DESPUÉS del loop de progreso
+      // de arriba para ver el progreso que esta misma importación acaba de
+      // escribir. null = ya aprobó todos los obligatorios; no se toca nada.
+      const level = await this.repository.findStudentLevel(tx, studentId, student.curriculumId);
+      if (level !== null) {
+        if (level >= 1 && level <= 10) {
+          await this.repository.updateStudentLevel(tx, studentId, level);
+        } else if (level > 10) {
+          warnings.push({
+            code: "LEVEL_OUT_OF_RANGE", block: "matricula",
+            message: `El portal reporta nivel ${level}, fuera del rango 1..10; no se actualizó.`,
+          });
+        }
       }
 
       // Nombre: solo se completa si app_user.full_name está vacío (nunca el correo).

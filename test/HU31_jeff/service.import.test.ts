@@ -39,6 +39,7 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     findCurriculumCourseId: async () => 60,
     upsertProgress: async () => {},
     upsertImpedimentAlert: async () => true,
+    findStudentLevel: async () => null,
     updateStudentLevel: async () => {},
     fillFullNameIfEmpty: async () => {},
     ...over,
@@ -178,6 +179,35 @@ describe("PortalSyncService.importFromPortal", () => {
     // Sanity: el fixture editado en verdad generó dos secciones para 650033.
     expect(idsFor650033).toHaveLength(2);
     for (const id of idsFor650033) expect(keptSectionIds).toContain(id);
+  });
+
+  test("el nivel del alumno se escribe con lo que devuelve findStudentLevel", async () => {
+    // findStudentLevel ya resuelve el ciclo obligatorio pendiente mas bajo
+    // consultando curriculum_course + student_course_progress; el service
+    // solo debe pasar ese valor a updateStudentLevel tal cual.
+    const updates: Array<{ studentId: number; level: number }> = [];
+    const repo = fakeRepo({
+      findStudentLevel: async () => 6,
+      updateStudentLevel: async (_tx, studentId: number, level: number) => {
+        updates.push({ studentId, level });
+      },
+    } as never);
+    const svc = new PortalSyncService(repo, fakeClient());
+    await svc.importFromPortal(3, 7, cookies);
+
+    expect(updates).toEqual([{ studentId: 7, level: 6 }]);
+  });
+
+  test("no escribe el nivel cuando findStudentLevel devuelve null (aprobo todo lo obligatorio)", async () => {
+    let updateCalls = 0;
+    const repo = fakeRepo({
+      findStudentLevel: async () => null,
+      updateStudentLevel: async () => { updateCalls++; },
+    });
+    const svc = new PortalSyncService(repo, fakeClient());
+    await svc.importFromPortal(3, 7, cookies);
+
+    expect(updateCalls).toBe(0);
   });
 });
 
