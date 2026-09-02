@@ -40,6 +40,10 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     ensureAcademicWeeks: async () => {},
     upsertTeacher: async () => ({ id: 10, created: true }),
     upsertCourse: async () => ({ id: 20, created: true }),
+    // OJO: devuelve la MISMA oferta (30) para todos los cursos. Un test que
+    // dependa de una oferta por curso — cualquiera que toque sílabos — debe
+    // sobreescribir upsertCourse/upsertOffering para que hagan eco del código,
+    // o ejercitará sin querer el camino de deduplicación por oferta.
     upsertOffering: async () => ({ id: 30, created: true }),
     upsertSection: async () => ({ id: 40, created: true }),
     upsertScheduleSession: async () => {},

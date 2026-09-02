@@ -123,7 +123,7 @@ export class PortalSyncService {
     //
     // El mensaje no afirma que el portal no publicó nada: desde el backend no
     // se distingue "no hay sílabo publicado" de "cactus caído", "sesión de
-    // Domino muerta" (el 409 que §3.5 traga) o "todas las peticiones
+    // Domino muerta" (el 409 que traga el catch de arriba) o "todas las peticiones
     // expiraron". Dar por buena una causa mandaría a soporte a descartar un
     // problema de infraestructura.
     //
