@@ -1,0 +1,49 @@
+export interface PortalCookies { JSESSIONID: string; LtpaToken2: string; LtpaToken?: string }
+
+export interface CicloActivo { cocicloUrl: string; periodCode: string }
+
+export interface MatriculaRow {
+  carCode: string; courseCode: string; sectionCode: string; groupCode: string;
+  courseName: string; level: number; credits: number; attempt: number;
+}
+export interface Matricula {
+  studentCode: string; studentName: string; careerName: string; periodCode: string; rows: MatriculaRow[];
+}
+
+export interface AulaVirtualRow { courseCode: string; courseName: string; sectionCode: string; teacherName: string }
+
+export interface HorarioSession {
+  courseCode: string; dayOfWeek: number; startTime: string; endTime: string; classroom: string | null;
+}
+
+export interface RecordRow {
+  periodCode: string; courseCode: string; courseName: string;
+  attempt: number; credits: number; grade: number | null; sectionCode: string;
+}
+
+export interface InfoAcademica { careerName: string | null; lastPeriodLevel: number | null }
+export interface Impedimentos { hasImpediment: boolean; hasDebt: boolean; text: string }
+
+export type WarningCode =
+  | "PERIOD_DATES_DEFAULTED" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH"
+  | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE" | "GRADE_NOT_NUMERIC";
+export interface SyncWarning { code: WarningCode; block: string; message: string }
+
+export interface ImportSummary {
+  coursesCreated: number; teachersCreated: number; sectionsCreated: number; sectionsUpdated: number;
+  sessionsUpserted: number; enrollmentsUpserted: number; enrollmentsWithdrawn: number;
+  progressUpserted: number; progressSkipped: number; alertsCreated: number;
+}
+
+export interface ImportResult {
+  period: { id: number; code: string; created: boolean };
+  identity: { portalCode: string; fullName: string; career: string };
+  summary: ImportSummary;
+  warnings: SyncWarning[];
+}
+
+export interface SyncStatus {
+  activePeriod: { id: number; code: string } | null;
+  enrollmentsInActivePeriod: number;
+  needsImport: boolean;
+}
