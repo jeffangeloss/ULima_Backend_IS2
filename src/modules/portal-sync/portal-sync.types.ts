@@ -26,7 +26,7 @@ export interface Impedimentos { hasImpediment: boolean; hasDebt: boolean; text: 
 
 export type WarningCode =
   | "PERIOD_DATES_DEFAULTED" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH"
-  | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE" | "GRADE_NOT_NUMERIC";
+  | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE";
 export interface SyncWarning { code: WarningCode; block: string; message: string }
 
 export interface ImportSummary {
