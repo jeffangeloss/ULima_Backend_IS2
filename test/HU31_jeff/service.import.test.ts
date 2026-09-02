@@ -20,6 +20,9 @@ const fakeClient = (over: Partial<PortalClient> = {}): PortalClient =>
     // Por defecto el portal no publica sílabo para ningún curso: es el caso
     // más común (no todo curso lo publica) y no debe romper nada.
     fetchSyllabus: async () => null,
+    // Base del host de sílabos: el service se la pasa al parser para armar la
+    // URL que se persiste (misma base con la que se descargó).
+    syllabusBaseUrl: "https://cactus.ulima.edu.pe",
     logout: async () => {},
     ...over,
   }) as unknown as PortalClient;
@@ -330,6 +333,29 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     expect(r.summary.enrollmentsUpserted).toBe(5);
     expect(r.summary.syllabiUpserted).toBe(0);
     expect(r.warnings.some((w) => w.code === "SYLLABUS_UNAVAILABLE")).toBe(true);
+  });
+
+  test("la URL persistida se arma con la base del cliente que descargó, no con la global", async () => {
+    // El parser leía `config.syllabus.baseUrl`: un cliente construido con otra
+    // base descargaba de un host y persistía la URL de otro.
+    const urls: string[] = [];
+    const repo = fakeRepo({
+      upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
+      upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      upsertSyllabus: async (_tx, _offeringId: number, entry: { url: string }) => {
+        urls.push(entry.url);
+        return { id: 1, created: true };
+      },
+    } as never);
+    const client = fakeClient({
+      fetchSyllabus: async () => silabo,
+      syllabusBaseUrl: "https://cactus-replica.ulima.edu.pe",
+    } as unknown as Partial<PortalClient>);
+
+    await new PortalSyncService(repo, client).importFromPortal(3, 7, cookies);
+
+    expect(urls).not.toHaveLength(0);
+    for (const u of urls) expect(u.startsWith("https://cactus-replica.ulima.edu.pe/ac/")).toBe(true);
   });
 
   test("dos secciones del mismo curso comparten oferta: el sílabo se upsertea UNA sola vez", async () => {

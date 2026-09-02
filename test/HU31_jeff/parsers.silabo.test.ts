@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { parseSyllabusEntry } from "../../src/modules/portal-sync/parsers/silabo.js";
-import { config } from "../../src/config/app-config.js";
 
 const silabo = await Bun.file("test/HU31_jeff/fixtures/silabo.json").text();
+
+/** La base la inyecta el service (la MISMA que usó el cliente para
+ *  descargar): el parser ya no lee `config` global. */
+const BASE = "https://cactus.ulima.edu.pe";
 
 /** Una `viewentry` de la vista. Con `fileName === null` el documento se lista
  *  SIN snippet `AbreArchivo` utilizable (caso real: un documento sin adjunto).
@@ -49,12 +52,12 @@ const emptyViewJson = JSON.stringify({ "@timestamp": "20260902T193518,00Z", "@to
 
 describe("parseSyllabusEntry", () => {
   test("extrae UNID, filename y arma la URL contra el fixture real", () => {
-    const r = parseSyllabusEntry(silabo);
+    const r = parseSyllabusEntry(silabo, BASE);
     expect(r).not.toBeNull();
     expect(r?.unid).toBe("E86886A81087A25805258E4F00502E2C");
     expect(r?.fileName).toBe("2026-2 SIL PLANEAMIENTO ESTRATÉGICO.pdf");
     expect(r?.url).toBe(
-      `${config.syllabus.baseUrl}/ac/ac_bd001.nsf/vSyllabusXCicloAV/E86886A81087A25805258E4F00502E2C/$File/` +
+      `${BASE}/ac/ac_bd001.nsf/vSyllabusXCicloAV/E86886A81087A25805258E4F00502E2C/$File/` +
       `${encodeURIComponent("2026-2 SIL PLANEAMIENTO ESTRATÉGICO.pdf")}`,
     );
   });
@@ -64,32 +67,40 @@ describe("parseSyllabusEntry", () => {
     // cierto, la normalización de sanitizeJson dejó de ser necesaria y el
     // comentario en silabo.ts debe revisarse.
     expect(() => JSON.parse(silabo)).toThrow();
-    expect(parseSyllabusEntry(silabo)).not.toBeNull();
+    expect(parseSyllabusEntry(silabo, BASE)).not.toBeNull();
   });
 
   test("respuesta con viewentry vacío (sin sílabo para el curso) => null, no falla", () => {
-    expect(parseSyllabusEntry(emptyViewJson)).toBeNull();
+    expect(parseSyllabusEntry(emptyViewJson, BASE)).toBeNull();
   });
 
   test("JSON malformado => null, no lanza", () => {
-    expect(parseSyllabusEntry("{ esto no es json")).toBeNull();
-    expect(parseSyllabusEntry("")).toBeNull();
+    expect(parseSyllabusEntry("{ esto no es json", BASE)).toBeNull();
+    expect(parseSyllabusEntry("", BASE)).toBeNull();
   });
 
   test("sin snippet AbreArchivo reconocible => null", () => {
     const json = JSON.stringify({
       viewentry: [{ "@unid": "ABC123", entrydata: [{ text: { "0": "sin nada util aqui" } }] }],
     });
-    expect(parseSyllabusEntry(json)).toBeNull();
+    expect(parseSyllabusEntry(json, BASE)).toBeNull();
   });
 
   test("construye bien con un unid y filename simples (caso feliz sintético)", () => {
-    const r = parseSyllabusEntry(makeSilaboJson("1A2B3C", "2026-1 SIL BASE DE DATOS.pdf"));
+    const r = parseSyllabusEntry(makeSilaboJson("1A2B3C", "2026-1 SIL BASE DE DATOS.pdf"), BASE);
     expect(r).toEqual({
       unid: "1A2B3C",
       fileName: "2026-1 SIL BASE DE DATOS.pdf",
-      url: `${config.syllabus.baseUrl}/ac/ac_bd001.nsf/vSyllabusXCicloAV/1A2B3C/$File/2026-1%20SIL%20BASE%20DE%20DATOS.pdf`,
+      url: `${BASE}/ac/ac_bd001.nsf/vSyllabusXCicloAV/1A2B3C/$File/2026-1%20SIL%20BASE%20DE%20DATOS.pdf`,
     });
+  });
+
+  test("la URL se arma con la base que recibe, no con una global: el parser es puro", () => {
+    // El cliente recibe `syllabusBaseUrl` inyectado, pero el parser armaba la
+    // URL con `config.syllabus.baseUrl`: se podía descargar de un host y
+    // persistir la URL de otro, sin que nada avisara.
+    const r = parseSyllabusEntry(makeSilaboJson("AB12CD", "SIL X.pdf"), "https://otra-base.ejemplo");
+    expect(r?.url).toBe("https://otra-base.ejemplo/ac/ac_bd001.nsf/vSyllabusXCicloAV/AB12CD/$File/SIL%20X.pdf");
   });
 
   describe("normalización de escapes de Domino (sanitizeJson)", () => {
@@ -98,13 +109,13 @@ describe("parseSyllabusEntry", () => {
       // en JSON estricto. La barra sobrante debe ELIMINARSE, no duplicarse:
       // duplicándola quedaba literal en `syllabus.title` y percent-codificada
       // (%5C) en `drive_file_url`, apuntando a un adjunto que no existe.
-      const r = parseSyllabusEntry(makeSilaboCrudo("AB12CD", "2026-2 SIL SISTEMAS \\<PARTE 1\\>.pdf"));
+      const r = parseSyllabusEntry(makeSilaboCrudo("AB12CD", "2026-2 SIL SISTEMAS \\<PARTE 1\\>.pdf"), BASE);
       expect(r).not.toBeNull();
       expect(r?.fileName).toBe("2026-2 SIL SISTEMAS <PARTE 1>.pdf");
       expect(r?.fileName).not.toContain("\\");
       expect(r?.url).not.toContain("%5C");
       expect(r?.url).toBe(
-        `${config.syllabus.baseUrl}/ac/ac_bd001.nsf/vSyllabusXCicloAV/AB12CD/$File/` +
+        `${BASE}/ac/ac_bd001.nsf/vSyllabusXCicloAV/AB12CD/$File/` +
         `${encodeURIComponent("2026-2 SIL SISTEMAS <PARTE 1>.pdf")}`,
       );
     });
@@ -115,7 +126,7 @@ describe("parseSyllabusEntry", () => {
       // JSON que ya no parsea, y el sílabo se perdía por completo.
       const json = makeSilaboJson("AB34EF", "2026-2 SIL A\\!B.pdf");
       expect(() => JSON.parse(json)).not.toThrow();
-      const r = parseSyllabusEntry(json);
+      const r = parseSyllabusEntry(json, BASE);
       expect(r?.fileName).toBe("2026-2 SIL A\\!B.pdf");
     });
 
@@ -123,7 +134,7 @@ describe("parseSyllabusEntry", () => {
       // `\\usuarios` no es `\\uXXXX`: la barra debe descartarse igual que
       // cualquier otro escape inválido, en vez de dejarse pasar como si el
       // escape fuera válido (con lo que JSON.parse fallaba y no había sílabo).
-      const r = parseSyllabusEntry(makeSilaboCrudo("AB56AB", "C:\\usuarios SIL.pdf"));
+      const r = parseSyllabusEntry(makeSilaboCrudo("AB56AB", "C:\\usuarios SIL.pdf"), BASE);
       expect(r?.fileName).toBe("C:usuarios SIL.pdf");
     });
   });
@@ -135,15 +146,15 @@ describe("parseSyllabusEntry", () => {
       // validación del @unid, el parser devolvía una URL con `../` y con el
       // path cortado por `?`/`#`.
       const json = makeSilaboJson("../../../otra.nsf/vX?x=1#", "x.pdf", "AB12CD");
-      expect(parseSyllabusEntry(json)).toBeNull();
+      expect(parseSyllabusEntry(json, BASE)).toBeNull();
     });
 
     test("un @unid con caracteres fuera de [0-9A-Fa-f] => null", () => {
-      expect(parseSyllabusEntry(makeSilaboJson("ZZZZ", "x.pdf", "AB12CD"))).toBeNull();
+      expect(parseSyllabusEntry(makeSilaboJson("ZZZZ", "x.pdf", "AB12CD"), BASE)).toBeNull();
     });
 
     test("un @unid vacío => null", () => {
-      expect(parseSyllabusEntry(makeSilaboJson("", "x.pdf", "AB12CD"))).toBeNull();
+      expect(parseSyllabusEntry(makeSilaboJson("", "x.pdf", "AB12CD"), BASE)).toBeNull();
     });
 
     test("si la primera entrada no trae snippet AbreArchivo usable, se sigue con la siguiente", () => {
@@ -152,7 +163,7 @@ describe("parseSyllabusEntry", () => {
       // adjunto listado primero). Quedarse solo con viewentry[0] perdía el
       // sílabo aunque estuviera publicado.
       const json = makeSilaboJsonVarias(makeEntry("AA11BB", null), makeEntry("CC22DD", "2026-2 SIL REDES.pdf"));
-      const r = parseSyllabusEntry(json);
+      const r = parseSyllabusEntry(json, BASE);
       expect(r?.unid).toBe("CC22DD");
       expect(r?.fileName).toBe("2026-2 SIL REDES.pdf");
     });
@@ -162,18 +173,18 @@ describe("parseSyllabusEntry", () => {
         makeEntry("no-hex", "2026-2 SIL VIEJO.pdf", "AB12CD"),
         makeEntry("CC22DD", "2026-2 SIL REDES.pdf"),
       );
-      expect(parseSyllabusEntry(json)?.unid).toBe("CC22DD");
+      expect(parseSyllabusEntry(json, BASE)?.unid).toBe("CC22DD");
     });
 
     test("si NINGUNA entrada es usable => null", () => {
       const json = makeSilaboJsonVarias(makeEntry("AA11BB", null), makeEntry("CC22DD", null));
-      expect(parseSyllabusEntry(json)).toBeNull();
+      expect(parseSyllabusEntry(json, BASE)).toBeNull();
     });
   });
 
   describe("filename con apóstrofo", () => {
     test("un filename con apóstrofo (O'BRIEN.pdf) se lee completo, no se pierde el sílabo", () => {
-      const r = parseSyllabusEntry(makeSilaboJson("AB12CD", "2026-2 SIL O'BRIEN.pdf"));
+      const r = parseSyllabusEntry(makeSilaboJson("AB12CD", "2026-2 SIL O'BRIEN.pdf"), BASE);
       expect(r?.fileName).toBe("2026-2 SIL O'BRIEN.pdf");
       expect(r?.url).toContain(encodeURIComponent("2026-2 SIL O'BRIEN.pdf"));
     });
@@ -181,7 +192,7 @@ describe("parseSyllabusEntry", () => {
     test("el mismo filename con el apóstrofo escapado por Domino (\\') también se lee", () => {
       // Domino escapa la comilla simple dentro del snippet JS; ese `\'` no es
       // un escape JSON válido, así que la normalización lo deja como `'`.
-      const r = parseSyllabusEntry(makeSilaboCrudo("AB12CD", "2026-2 SIL O\\'BRIEN.pdf"));
+      const r = parseSyllabusEntry(makeSilaboCrudo("AB12CD", "2026-2 SIL O\\'BRIEN.pdf"), BASE);
       expect(r?.fileName).toBe("2026-2 SIL O'BRIEN.pdf");
     });
   });
@@ -194,7 +205,7 @@ describe("parseSyllabusEntry", () => {
     // longitud que estas pruebas quieren ejercitar.
     test("filename de mas de 150 caracteres => null (excede title)", () => {
       const largo = "A".repeat(151) + ".pdf";
-      expect(parseSyllabusEntry(makeSilaboJson("AB1234", largo))).toBeNull();
+      expect(parseSyllabusEntry(makeSilaboJson("AB1234", largo), BASE)).toBeNull();
     });
 
     test("filename bajo 150 caracteres pero cuya URL codificada excede 255 => null", () => {
@@ -202,12 +213,12 @@ describe("parseSyllabusEntry", () => {
       // (%C3%A1): 600 caracteres solo de nombre, muy por encima de 255.
       const conAcentos = "á".repeat(100) + ".pdf";
       expect(conAcentos.length).toBeLessThanOrEqual(150);
-      expect(parseSyllabusEntry(makeSilaboJson("AB5678", conAcentos))).toBeNull();
+      expect(parseSyllabusEntry(makeSilaboJson("AB5678", conAcentos), BASE)).toBeNull();
     });
 
     test("un filename dentro de ambos topes se acepta normalmente", () => {
       const normal = "2026-2 SIL SISTEMAS DE INFORMACIÓN.pdf";
-      expect(parseSyllabusEntry(makeSilaboJson("AB9ABC", normal))).not.toBeNull();
+      expect(parseSyllabusEntry(makeSilaboJson("AB9ABC", normal), BASE)).not.toBeNull();
     });
 
     test("un unid de mas de 120 caracteres => null (excede drive_file_id)", () => {
@@ -217,13 +228,13 @@ describe("parseSyllabusEntry", () => {
       // sílabo, abortaría la importación entera.
       const unidLargo = "AB".repeat(61); // 122 caracteres, hex válido
       expect(unidLargo.length).toBeGreaterThan(120);
-      expect(parseSyllabusEntry(makeSilaboJson(unidLargo, "corto.pdf"))).toBeNull();
+      expect(parseSyllabusEntry(makeSilaboJson(unidLargo, "corto.pdf"), BASE)).toBeNull();
     });
 
     test("un unid de 120 caracteres justos se acepta", () => {
       const unidTope = "AB".repeat(60); // exactamente 120
       expect(unidTope.length).toBe(120);
-      expect(parseSyllabusEntry(makeSilaboJson(unidTope, "corto.pdf"))).not.toBeNull();
+      expect(parseSyllabusEntry(makeSilaboJson(unidTope, "corto.pdf"), BASE)).not.toBeNull();
     });
   });
 });

@@ -25,7 +25,9 @@ export class PortalClient {
     private readonly baseUrl: string = config.portal.baseUrl,
     private readonly timeoutMs: number = config.portal.timeoutMs,
     private readonly fetchImpl: typeof fetch = fetch,
-    private readonly syllabusBaseUrl: string = config.syllabus.baseUrl,
+    /** Público a propósito: el parser del sílabo arma la URL que se persiste
+     *  con ESTA base, la misma con la que se descargó (ver `parseSyllabusEntry`). */
+    readonly syllabusBaseUrl: string = config.syllabus.baseUrl,
   ) {}
 
   private cookieHeader(c: PortalCookies): string {

@@ -1,4 +1,3 @@
-import { config } from "../../../config/app-config.js";
 import type { SyllabusEntry } from "../portal-sync.types.js";
 
 const TITLE_MAX_LENGTH = 150;   // syllabus.title varchar(150)
@@ -84,6 +83,13 @@ interface RawSyllabusView { viewentry?: RawViewEntry[] }
  * `AbreArchivo` legible y filename/URL dentro de los topes de la BD. Mirar
  * solo la primera entrada perdía el sílabo aunque estuviera publicado.
  *
+ * `baseUrl` es la base del host de sílabos y llega por parámetro, no de
+ * `config`: los parsers son funciones puras (§Parsers de la spec) y el
+ * service le pasa la MISMA base que el cliente usó para descargar. Leyendo la
+ * global, un cliente construido con otra base descargaba de un host y
+ * persistía la URL de otro; además, importar el parser arrastraba la
+ * validación de entorno completa.
+ *
  * Guardas de longitud: `syllabus.title` es `varchar(150)`,
  * `syllabus.drive_file_url` es `varchar(255)` y `syllabus.drive_file_id` es
  * `varchar(120)`. Los tres se validan ACÁ, antes de devolver el resultado:
@@ -94,7 +100,7 @@ interface RawSyllabusView { viewentry?: RawViewEntry[] }
  * "sin sílabo") que arriesgar eso por un dato que es un extra, no el
  * propósito de importar.
  */
-export const parseSyllabusEntry = (json: string): SyllabusEntry | null => {
+export const parseSyllabusEntry = (json: string, baseUrl: string): SyllabusEntry | null => {
   let data: RawSyllabusView;
   try {
     data = JSON.parse(sanitizeJson(json)) as RawSyllabusView;
@@ -115,7 +121,7 @@ export const parseSyllabusEntry = (json: string): SyllabusEntry | null => {
     const fileName = snippet.match(ABRE_ARCHIVO)?.[1];
     if (!fileName || fileName.length > TITLE_MAX_LENGTH) continue;
 
-    const url = `${config.syllabus.baseUrl}/ac/ac_bd001.nsf/vSyllabusXCicloAV/${unid}/$File/${encodeURIComponent(fileName)}`;
+    const url = `${baseUrl}/ac/ac_bd001.nsf/vSyllabusXCicloAV/${unid}/$File/${encodeURIComponent(fileName)}`;
     if (url.length > URL_MAX_LENGTH) continue;
 
     return { unid, fileName, url };

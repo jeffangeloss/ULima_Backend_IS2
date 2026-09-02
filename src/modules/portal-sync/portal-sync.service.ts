@@ -101,7 +101,10 @@ export class PortalSyncService {
       courseCodesToSync.map(async (courseCode) => {
         try {
           const json = await this.client.fetchSyllabus(ciclo.data.cocicloUrl, courseCode, cookies);
-          const parsed = json ? parseSyllabusEntry(json) : null;
+          // La base que se le pasa al parser es la MISMA con la que el
+          // cliente acaba de descargar: nunca se persiste la URL de un host
+          // distinto del que respondió.
+          const parsed = json ? parseSyllabusEntry(json, this.client.syllabusBaseUrl) : null;
           if (parsed) syllabusByCourse.set(courseCode, parsed);
         } catch {
           /* un sílabo perdido nunca aborta la importación */
