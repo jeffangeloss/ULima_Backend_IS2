@@ -424,43 +424,53 @@ export class PortalSyncRepository {
   }
 
   /**
-   * `syllabus` por `uq_syllabus_course_offering (course_offering_id)`. Un
-   * curso pertenece a un ciclo, y su sílabo se resuelve por curso+ciclo, así
-   * que ese conflict target (no `drive_file_id`) es el correcto para "el
-   * mismo curso, misma oferta, sílabo republicado" (re-sincronizar el mismo
-   * ciclo debe actualizar la fila, no duplicarla).
+   * Sílabo de una oferta. `on conflict do nothing`, **SIN conflict target**.
    *
-   * `drive_file_id`/`drive_file_url`: nombres HISTÓRICOS de cuando el
-   * sílabo solo podía vivir en Google Drive; ahora también guardan la
-   * referencia al documento Domino (UNID y URL de `vSyllabusXCicloAV`). Se
-   * mantienen tal cual — sin migración ni rename — por decisión del owner
-   * (2026-09-02, ver `portal-sync.spec.md`).
+   * Sin target, el `do nothing` cubre TODAS las restricciones únicas de la
+   * tabla, no solo `uq_syllabus_course_offering (course_offering_id)` sino
+   * también `syllabus_drive_file_id_unique (drive_file_id)`. Eso es lo que
+   * hace cierta la garantía de la spec (§Sincronización paso 12) de que un
+   * fallo de sílabo —incluido uno AL GUARDAR— nunca aborta el resto de la
+   * importación: un UNID repetido entre dos ofertas (un sílabo compartido por
+   * dos códigos de curso, que en una vista categorizada de Domino aparece bajo
+   * ambas categorías) ya no lanza `23505`, no envenena la transacción y no
+   * tumba la importación entera. Que la clave de consulta (`<COCICLO>_<curso>`)
+   * sea única no implica que el documento devuelto lo sea.
    *
-   * `drive_file_id` tiene ADEMÁS un unique de columna propio
-   * (`syllabus_drive_file_id_unique`). No se contempla acá: un UNID de
-   * Domino es único por documento y un sílabo pertenece a un curso en un
-   * ciclo, así que una colisión de `drive_file_id` entre dos
-   * `course_offering_id` distintos no debería ocurrir en la práctica. Si
-   * ocurriera, este INSERT fallaría con `23505` (conflicto no cubierto por
-   * `ON CONFLICT (course_offering_id)`) y el error se propagaría tal cual.
-   * OJO: la degradación a no-fatal del service cubre la DESCARGA del sílabo
-   * (§3.5), no esta escritura, que corre dentro de la transacción de la
-   * importación — un error acá la aborta entera. Por eso el parser
-   * (`parseSyllabusEntry`) descarta de antemano todo valor que la base de
-   * datos podría rechazar por longitud, y por eso este upsert se mantiene
-   * dentro de la transacción solo mientras la colisión siga siendo
-   * imposible en la práctica: el sílabo se pide por `<COCICLO>_<curso>` y
-   * la oferta es única por período+curso, así que UNID y oferta van 1:1.
+   * Tampoco se pisa nunca una fila existente. `syllabus` no es una tabla vacía
+   * que estrene esta feature: `src/db/seed/index.ts` la llena con enlaces de
+   * Google Drive que el visor de la app SÍ abre y que `grades.repository.ts`
+   * sirve como `silaboUrl` a TODOS los alumnos de la oferta. Reemplazarlos por
+   * una URL de Domino protegida por sesión (Decisión pendiente #10) rompía el
+   * sílabo para toda la sección por una importación de un solo alumno, y sin
+   * vuelta atrás desde la app. Es también la fila padre de `assessment`.
+   *
+   * **Consecuencia aceptada** (decisión del owner, 2026-09-02): re-importar el
+   * mismo ciclo NO actualiza un sílabo republicado. Es el precio correcto
+   * mientras la URL de Domino no sea abrible por el visor.
+   *
+   * `drive_file_id`/`drive_file_url`: nombres HISTÓRICOS de cuando el sílabo
+   * solo podía vivir en Google Drive; ahora también guardan la referencia al
+   * documento Domino (UNID y URL de `vSyllabusXCicloAV`). Se mantienen tal
+   * cual — sin migración ni rename — por decisión del owner (2026-09-02, ver
+   * `portal-sync.spec.md`).
+   *
+   * Devuelve `null` cuando el `do nothing` no escribió nada (`returning` sin
+   * filas): quien llama NUNCA debe leer `rows[0]` a ciegas. Cuando sí devuelve
+   * fila, esa fila es siempre un INSERT nuevo — con `do nothing` no hay otro
+   * camino que devuelva algo —, de ahí `created: true`.
    */
-  async upsertSyllabus(tx: Tx, courseOfferingId: number, entry: SyllabusEntry) {
+  async upsertSyllabus(
+    tx: Tx, courseOfferingId: number, entry: SyllabusEntry,
+  ): Promise<{ id: number; created: boolean } | null> {
     const rows = (await tx.execute(sql`
       insert into syllabus (course_offering_id, title, drive_file_id, drive_file_url)
       values (${courseOfferingId}, ${entry.fileName}, ${entry.unid}, ${entry.url})
-      on conflict (course_offering_id) do update
-        set title = excluded.title, drive_file_id = excluded.drive_file_id, drive_file_url = excluded.drive_file_url
-      returning id, (xmax = 0) as "created"
-    `)) as unknown as Array<{ id: number; created: boolean }>;
-    return { id: Number(rows[0].id), created: Boolean(rows[0].created) };
+      on conflict do nothing
+      returning id
+    `)) as unknown as Array<{ id: number }>;
+    const row = rows[0];
+    return row ? { id: Number(row.id), created: true } : null;
   }
 
   async findStudent(studentId: number) {

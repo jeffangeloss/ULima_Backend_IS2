@@ -335,6 +335,22 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     expect(r.warnings.some((w) => w.code === "SYLLABUS_UNAVAILABLE")).toBe(true);
   });
 
+  test("syllabiUpserted cuenta filas escritas: una oferta que ya tenía sílabo no suma", async () => {
+    // Con `on conflict do nothing` la escritura puede no escribir nada (fila
+    // sembrada con enlace de Drive, o importación anterior): el repository
+    // devuelve null y ese curso NO debe contarse como sílabo guardado.
+    const repo = fakeRepo({
+      upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
+      upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      upsertSyllabus: async (_tx, offeringId: number) => (offeringId === 650033 ? null : { id: 1, created: true }),
+    } as never);
+    const client = fakeClient({ fetchSyllabus: async () => silabo } as Partial<PortalClient>);
+    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, cookies);
+
+    // 5 cursos distintos en el fixture; 650033 ya tenía fila.
+    expect(r.summary.syllabiUpserted).toBe(4);
+  });
+
   test("la URL persistida se arma con la base del cliente que descargó, no con la global", async () => {
     // El parser leía `config.syllabus.baseUrl`: un cliente construido con otra
     // base descargaba de un host y persistía la URL de otro.

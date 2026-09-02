@@ -185,9 +185,14 @@ export class PortalSyncService {
         // `syllabus`.
         const syllabusEntry = syllabusByCourse.get(row.courseCode);
         if (syllabusEntry && !syllabusUpsertedOfferings.has(off.id)) {
-          await this.repository.upsertSyllabus(tx, off.id, syllabusEntry);
+          // `upsertSyllabus` devuelve null cuando su `on conflict do nothing`
+          // no escribió nada (la oferta YA tenía sílabo: sembrado o de una
+          // importación anterior). `syllabiUpserted` cuenta filas
+          // efectivamente escritas, no intentos. La oferta se marca igual como
+          // ya atendida: reintentarla daría el mismo null.
+          const saved = await this.repository.upsertSyllabus(tx, off.id, syllabusEntry);
           syllabusUpsertedOfferings.add(off.id);
-          summary.syllabiUpserted++;
+          if (saved) summary.syllabiUpserted++;
         }
 
         const sec = await this.repository.upsertSection(tx, off.id, row.sectionCode, t.id);
