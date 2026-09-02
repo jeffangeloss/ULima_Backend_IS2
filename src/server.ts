@@ -40,6 +40,7 @@ app.get("/", (c) => {
       "/alerts",
       "/section-management",
       "/advising",
+      "/portal-sync",
     ],
   });
 });
