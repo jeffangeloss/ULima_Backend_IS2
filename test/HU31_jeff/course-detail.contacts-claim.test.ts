@@ -63,7 +63,13 @@ const { config } = await import("../../src/config/app-config.js");
 // SECTION_FORBIDDEN saldría como 500 y la prueba mediría otra cosa.
 const app = new Hono();
 app.onError(errorHandler);
-app.route("/course-detail", createCourseDetailRoutes({} as never));
+// El controller es un doble mínimo: la guarda de pertenencia corre ANTES que
+// él, así que para el caso 403 nunca se lo llama; para el caso permitido basta
+// con que responda algo y así se distingue "pasó la guarda" de "reventó".
+const controllerDoble = {
+  getAnnouncements: (c: { json: (v: unknown) => unknown }) => c.json({ anuncios: [] }),
+} as never;
+app.route("/course-detail", createCourseDetailRoutes(controllerDoble));
 
 const DDL = `
   create table app_user (id integer primary key, code text, full_name text,
@@ -469,5 +475,35 @@ describe("RS-19: un claim no otorga permisos ni contamina alumnos[]", () => {
     const body = await (await contactos(SEC_A, tokenAlumno(U_ANA, U_ANA))).json() as Cuerpo;
     expect(body.alumnos).toHaveLength(2);
     expect(body.alumnos.filter((a) => a.user.code === "20200001")).toHaveLength(1);
+  });
+});
+
+describe("guarda de pertenencia en /announcements", () => {
+  // Esta ruta devuelve los anuncios CON los datos del autor: nombre, código,
+  // correo institucional y cargo. Hasta el 2026-09-04 solo exigía sesión
+  // iniciada, sin mirar si quien pregunta es de la sección, así que iterando
+  // `sectionId` se podía juntar el padrón de delegados de toda la universidad
+  // con sus correos. Es la misma guarda de /contacts, extraída a un helper.
+  const anuncios = (sectionId: number, token: string) =>
+    app.request(`/course-detail/sections/${sectionId}/announcements`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+  test("el alumno matriculado en la sección pasa", async () => {
+    const res = await anuncios(SEC_A, tokenAlumno(U_ANA, U_ANA));
+    expect(res.status).toBe(200);
+  });
+
+  test("el alumno de OTRA sección recibe 403 SECTION_FORBIDDEN", async () => {
+    // El caso que motiva la guarda.
+    const res = await anuncios(SEC_B, tokenAlumno(U_ANA, U_ANA));
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: { code: string } }).error.code)
+      .toBe("SECTION_FORBIDDEN");
+  });
+
+  test("una sección inexistente también se rechaza, no se filtra por error", async () => {
+    const res = await anuncios(999999, tokenAlumno(U_ANA, U_ANA));
+    expect(res.status).toBe(403);
   });
 });
