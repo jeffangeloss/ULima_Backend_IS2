@@ -238,13 +238,21 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
           }
         : null;
 
-    // Delegados que el portal publica pero que todavía no son usuarios.
+    // Lo que el PORTAL dice sobre quién representa a esta sección.
     //
-    // Se resuelve por COMPARACIÓN, no por existencia: un claim se emite solo si
-    // (1) no hay representante REAL activo para ese cargo —si lo hay, manda la
-    // tabla de permisos— y (2) esa persona no está ya matriculada con cuenta,
-    // porque entonces ya sale dentro de `alumnos[]` y marcarla como ausente
-    // sería mentira. Así nadie aparece dos veces.
+    // Se emite siempre que no haya un representante REAL activo para ese cargo:
+    // si lo hay, manda la tabla de permisos y el claim sobra.
+    //
+    // NO se filtra por "esa persona ya tiene cuenta". Se filtraba, y escondía
+    // justo el caso más común: alguien con cuenta —sembrada, o creada por otra
+    // vía— que nunca importó no tiene fila en `section_representative`, así que
+    // su `roleInSection` sale "estudiante" y el delegado quedaba INVISIBLE
+    // aunque el portal lo hubiera dicho. Detectado en producción el 2026-09-04.
+    //
+    // La razón de aquel filtro era no pintar a la misma persona dos veces, y
+    // eso se resuelve al pintar: la app cruza por `code` y, si el claim cae
+    // sobre alguien que ya está en `alumnos[]`, le aplica el badge a esa
+    // tarjeta en vez de agregar una nueva.
     const claimRows = (await db.execute(sql`
       select c.position, c.student_code, c.full_name
       from section_representative_claim c
@@ -254,12 +262,6 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
           where sr.section_id = c.section_id
             and sr.position = c.position
             and sr.is_active = true
-        )
-        and not exists (
-          select 1 from enrollment e
-          join student s on s.id = e.student_id
-          join app_user au on au.id = s.user_id
-          where e.section_id = c.section_id and au.code = c.student_code
         )
       order by c.position
     `)) as unknown as Array<{ position: string; student_code: string; full_name: string }>;

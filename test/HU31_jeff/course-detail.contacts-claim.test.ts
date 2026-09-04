@@ -326,16 +326,34 @@ describe("RS-20 caso (1): hay representante REAL activo", () => {
 });
 
 describe("RS-20 caso (2): la persona del claim ya tiene cuenta y matrícula", () => {
-  test("sale en alumnos[] y NO en representantesPendientes", async () => {
-    // Emitir la entrada acá sería una mentira doble: la persona aparecería dos
-    // veces en la misma pantalla y una de ellas marcada `contactable: false`,
-    // cuando sí se le puede escribir. El claim se resuelve por COMPARACIÓN
-    // (¿está este código matriculado?), no por existencia del claim.
+  test("REGRESIÓN: el claim se emite igual, porque tener cuenta no da el badge", async () => {
+    // Producción, 2026-09-04. Este endpoint filtraba los claims de quien ya
+    // estuviera matriculado con cuenta, dando por hecho que su `roleInSection`
+    // traería el cargo. No lo trae: `roleInSection` sale de
+    // `section_representative`, que SOLO se escribe cuando esa persona importa
+    // desde miUlima. Un compañero con cuenta sembrada que nunca sincronizó se
+    // pintaba como un alumno más y el delegado quedaba invisible, con el portal
+    // desmentido en pantalla.
+    //
+    // Ahora el backend dice lo que el portal dice y punto; evitar el duplicado
+    // es trabajo de la app, que cruza por `code` y le pone el badge a la
+    // tarjeta que ya existe en vez de agregar otra.
     claim(SEC_A, "delegate", COD_BRUNO, "QUISPE ROJAS BRUNO");
 
     const body = await (await contactos(SEC_A, tokenAlumno(U_ANA, U_ANA))).json() as Cuerpo;
-    expect(body.representantesPendientes).toEqual([]);
+    expect(body.representantesPendientes.map((r) => r.code)).toEqual([COD_BRUNO]);
+    // Y sigue saliendo UNA sola vez en alumnos: el backend no lo duplica.
     expect(body.alumnos.filter((a) => a.user.code === COD_BRUNO)).toHaveLength(1);
+  });
+
+  test("si esa persona SÍ tiene representante activo, el claim no se emite", async () => {
+    // Acá manda la tabla de permisos: `roleInSection` ya trae el cargo y el
+    // claim sobra. Es la única supresión que queda.
+    claim(SEC_A, "delegate", COD_BRUNO, "QUISPE ROJAS BRUNO");
+    representanteReal(SEC_A, E_BRUNO, "delegate");
+
+    const body = await (await contactos(SEC_A, tokenAlumno(U_ANA, U_ANA))).json() as Cuerpo;
+    expect(body.representantesPendientes).toEqual([]);
   });
 
   test("la comparación es por matrícula EN ESTA sección, no por tener cuenta", async () => {
