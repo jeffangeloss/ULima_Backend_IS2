@@ -167,6 +167,54 @@ export const careerNamesDiffer = (portal: string | null, local: string | null): 
   return normalizeCareerName(portal) !== normalizeCareerName(local);
 };
 
+/**
+ * Paleta de colores de curso. DOCE porque el techo realista son 9 cursos por
+ * ciclo (27 créditos) y con 8 el choque era matemáticamente inevitable.
+ *
+ * Los ocho primeros son los que ya usaba el frontend, en el mismo orden, para
+ * que nada de lo ya pintado cambie de color. Los cuatro últimos rellenan los
+ * tonos que faltaban (cian, lima, marrón, índigo) en vez de repetir vecinos.
+ */
+export const COURSE_COLOR_PALETTE = [
+  "#2F80ED", // azul
+  "#27AE60", // verde
+  "#EB5757", // rojo
+  "#9B51E0", // morado
+  "#EC4899", // rosa
+  "#F2994A", // naranja
+  "#00B8A9", // teal
+  "#F2C94C", // amarillo
+  "#00A2C7", // cian
+  "#7CB518", // lima
+  "#8B6D5C", // marrón
+  "#5B5BD6", // índigo
+] as const;
+
+/**
+ * Color estable de un curso, derivado de su CÓDIGO.
+ *
+ * Por código y no por `section_id` a propósito: el mismo curso se pinta igual
+ * para todos los alumnos y en todos los ciclos, así que dos compañeros pueden
+ * hablar del "curso azul". El id de la sección cambia cada ciclo y haría que el
+ * color bailara.
+ *
+ * Es un hash y no `código % 12`: los códigos de un ciclo son casi consecutivos
+ * (650033, 650035, 650067…) y el módulo los agruparía en franjas contiguas de la
+ * paleta, dando colores vecinos difíciles de distinguir entre sí.
+ *
+ * NO garantiza que dos cursos de un mismo alumno tengan colores distintos: eso
+ * no se puede resolver acá, porque esta fila la comparten todos los alumnos de
+ * la sección. El desempate lo hace el cliente sobre SU propio horario.
+ */
+export const courseColorHex = (courseCode: string): string => {
+  let h = 2166136261;                      // FNV-1a de 32 bits
+  for (const ch of String(courseCode ?? "")) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619);
+  }
+  return COURSE_COLOR_PALETTE[Math.abs(h) % COURSE_COLOR_PALETTE.length]!;
+};
+
 export const PLACEHOLDER_TEACHER = "DOCENTE POR ASIGNAR";
 
 export type ProgressStatus = "in_progress" | "approved" | "failed";
@@ -382,12 +430,14 @@ export class PortalSyncRepository {
     tx: Tx,
     sectionId: number,
     s: { dayOfWeek: number; startTime: string; endTime: string; classroom: string | null },
+    colorHex: string,
   ): Promise<void> {
     await tx.execute(sql`
-      insert into schedule_session (section_id, day_of_week, start_time, end_time, classroom)
-      values (${sectionId}, ${s.dayOfWeek}, ${s.startTime}::time, ${s.endTime}::time, ${s.classroom})
+      insert into schedule_session (section_id, day_of_week, start_time, end_time, classroom, color_hex)
+      values (${sectionId}, ${s.dayOfWeek}, ${s.startTime}::time, ${s.endTime}::time, ${s.classroom}, ${colorHex})
       on conflict (section_id, day_of_week, start_time) do update
-        set end_time = excluded.end_time, classroom = excluded.classroom
+        set end_time = excluded.end_time, classroom = excluded.classroom,
+            color_hex = excluded.color_hex
     `);
   }
 

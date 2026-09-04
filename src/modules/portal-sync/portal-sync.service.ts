@@ -6,6 +6,7 @@ import {
   levelFromCoverage, levelNeverGoesDown,
   type ProgressStatus,
   careerNamesDiffer,
+  courseColorHex,
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
@@ -264,7 +265,9 @@ export class PortalSyncService {
         for (const s of horario.data) {
           const sectionId = sectionIdByCourse.get(s.courseCode);
           if (!sectionId) continue;
-          await this.repository.upsertScheduleSession(tx, sectionId, s);
+          // El color va por CÓDIGO de curso, no por sección: así el mismo
+          // curso se pinta igual para todos y en todos los ciclos.
+          await this.repository.upsertScheduleSession(tx, sectionId, s, courseColorHex(s.courseCode));
           summary.sessionsUpserted++;
         }
       }
