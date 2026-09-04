@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import type { CourseDetailController } from "./course-detail.controller.js";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
@@ -46,6 +46,38 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
   // Nota: estas rutas usan SQL crudo (deuda reconocida en la auditoría). No
   // atrapan errores de BD: un fallo se propaga al errorHandler global (500 real)
   // en vez de devolver listas vacías con 200. Ver docs/AUDITORIA_TECNICA.md §6.1.
+  /**
+   * Pertenencia a la sección. Pasan el alumno matriculado y el docente o jefe
+   * de práctica de esa misma sección.
+   *
+   * Estas rutas exponen la nómina, el correo institucional y el cargo de cada
+   * persona. Sin la guarda, cualquier usuario autenticado puede iterar
+   * `sectionId` y armarse el padrón de delegados de toda la universidad.
+   *
+   * El `?? 0` es un centinela que nunca empata: los id son identity y arrancan
+   * en 1, y un alumno no trae teacherId ni un docente studentId.
+   */
+  const exigirPertenencia = async (c: Context, sectionId: number) => {
+    const studentId = c.get("studentId") as number | undefined;
+    const teacherId = c.get("teacherId") as number | undefined;
+    const allowed = (await db.execute(sql`
+      select 1 as ok from section sec
+      where sec.id = ${sectionId}
+        and (
+          sec.teacher_id = ${teacherId ?? 0}
+          or sec.jp_id = ${teacherId ?? 0}
+          or exists (
+            select 1 from enrollment e
+            where e.section_id = sec.id and e.student_id = ${studentId ?? 0}
+          )
+        )
+      limit 1
+    `)) as unknown as Array<{ ok: number }>;
+    if (!allowed.length) {
+      throw new HttpError(403, "No perteneces a esta sección.", "SECTION_FORBIDDEN");
+    }
+  };
+
   app.get("/sections", async (c) => {
     const rows = await db.execute(sql`
       select
@@ -133,40 +165,16 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
     return c.json({ section: data.secciones.find((section) => section.idSeccion === sectionId) ?? null });
   });
 
-  app.get("/sections/:sectionId/announcements", (c) => controller.getAnnouncements(c));
+  app.get("/sections/:sectionId/announcements", async (c) => {
+    await exigirPertenencia(c, Number(c.req.param("sectionId")));
+    return controller.getAnnouncements(c);
+  });
 
   app.get("/sections/:sectionId/contacts", async (c) => {
     const sectionId = Number(c.req.param("sectionId"));
 
-    // Pertenencia. Hasta acá la ruta solo exigía JWT + rol, sin ningún predicado
-    // sobre QUIÉN pregunta: cualquier usuario autenticado podía iterar
-    // `sectionId` y leerse la nómina de cualquier sección. Con los delegados
-    // pendientes eso se convertiría además en un padrón consultable de
-    // delegados de toda la universidad, así que la guarda es precondición del
-    // fallback de más abajo, no un extra.
-    //
-    // Pasan: el alumno matriculado en la sección, y el docente o jefe de
-    // práctica de esa misma sección. El `?? 0` es un centinela que nunca empata
-    // (los id son identity y arrancan en 1): un alumno no trae teacherId y un
-    // docente no trae studentId.
-    const studentId = c.get("studentId");
-    const teacherId = c.get("teacherId");
-    const allowed = (await db.execute(sql`
-      select 1 as ok from section sec
-      where sec.id = ${sectionId}
-        and (
-          sec.teacher_id = ${teacherId ?? 0}
-          or sec.jp_id = ${teacherId ?? 0}
-          or exists (
-            select 1 from enrollment e
-            where e.section_id = sec.id and e.student_id = ${studentId ?? 0}
-          )
-        )
-      limit 1
-    `)) as unknown as Array<{ ok: number }>;
-    if (!allowed.length) {
-      throw new HttpError(403, "No perteneces a esta sección.", "SECTION_FORBIDDEN");
-    }
+    await exigirPertenencia(c, sectionId);
+
     const teacherRows = await db.execute(sql`
       select
         t.teacher_code,

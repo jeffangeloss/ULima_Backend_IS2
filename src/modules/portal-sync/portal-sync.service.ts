@@ -39,7 +39,10 @@ export class PortalSyncService {
      * próximo login, que es la degradación aceptada.
      */
     private readonly auth?: {
-      reissueToken(userId: number, role: "delegate" | "subdelegate"): Promise<string | null>;
+      reissueToken(
+        userId: number,
+        role: "delegate" | "subdelegate" | "student",
+      ): Promise<string | null>;
     },
   ) {}
 
@@ -492,10 +495,14 @@ export class PortalSyncService {
     // El rol se relee de la BD ya confirmada, nunca se deriva del claim: quien
     // ya era delegado en otra sección no puede quedar degradado por haber sido
     // promovido a subdelegado en esta.
+    // Se re-firma SIEMPRE, no solo al promover. Al empezar un ciclo nuevo el
+    // ex delegado no promueve nada —`representativesPromoted` es 0— y con la
+    // condición vieja conservaba el token de delegado hasta que venciera. La
+    // degradación importa tanto como el ascenso.
     let token: string | null = null;
-    if (summary.representativesPromoted > 0 && this.auth) {
+    if (this.auth) {
       const position = await this.repository.findActiveRepresentativePosition(studentId);
-      if (position) token = await this.auth.reissueToken(userId, position);
+      token = await this.auth.reissueToken(userId, position ?? "student");
     }
 
     return {

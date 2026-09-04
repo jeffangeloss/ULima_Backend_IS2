@@ -242,9 +242,28 @@ export class AuthService {
   async me(userId: number, role: AppRole) {
     try {
       // HU18: los docentes tienen su propio shape (sin datos de alumno).
-      const user = role === "teacher"
-        ? await this.repository.findTeacherById(userId)
-        : await this.repository.findById(userId, role);
+      if (role === "teacher") {
+        const teacher = await this.repository.findTeacherById(userId);
+        if (!teacher) throw new HttpError(404, "Usuario no encontrado.", "USER_NOT_FOUND");
+        return { user: teacher };
+      }
+
+      // El cargo se RECALCULA, no se repite el claim del token.
+      //
+      // El rol viaja firmado y solo se computaba al iniciar sesión, así que un
+      // delegado del ciclo pasado seguía viéndose como delegado hasta que el
+      // JWT venciera (24 h por defecto). Como `findActiveRepresentation` ya
+      // filtra por período activo, basta con volver a preguntarle: la app
+      // llama a /auth/me al arrancar y tras sincronizar, así que la pestaña
+      // aparece y desaparece sola.
+      //
+      // Esto NO reemplaza al token: `requireRole` sigue leyendo el claim. Lo
+      // que corrige es lo que la app MUESTRA, que es donde se ve el problema.
+      const base = await this.repository.findById(userId, "student");
+      if (!base) throw new HttpError(404, "Usuario no encontrado.", "USER_NOT_FOUND");
+
+      const representacion = await this.repository.findActiveRepresentation(base.studentId);
+      const user = { ...base, role: representacion?.position ?? ("student" as AppRole) };
       if (!user) throw new HttpError(404, "Usuario no encontrado.", "USER_NOT_FOUND");
       return { user };
     } catch (e) {

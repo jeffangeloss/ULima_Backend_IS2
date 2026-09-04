@@ -701,17 +701,19 @@ describe("PortalSyncService — RS-13 y RS-18: promoción y token re-firmado", (
     expect(cap.reissues).toEqual([{ userId: 3, role: "delegate" }]);
   });
 
-  test("sin promoción el token es null y no se re-firma nada", async () => {
-    // El campo viaja siempre; `null` es el valor normal. Re-firmar de más
-    // gastaría un token nuevo por cada importación de cada alumno.
+  test("sin promoción se re-firma IGUAL, porque la degradación también importa", async () => {
+    // Antes solo se re-firmaba al promover, y eso dejaba fuera el caso que el
+    // usuario reportó el 2026-09-04: al empezar un ciclo nuevo el ex delegado
+    // no promueve nada, así que conservaba el token de delegado hasta que
+    // venciera (24 h). Perder el cargo tiene que viajar tan rápido como
+    // ganarlo, así que el token se re-firma con lo que diga la relectura.
     const { repo, cap } = conCapturas();
     const r = await new PortalSyncService(repo, fakeClient(), fakeAuth(cap))
       .importFromPortal(3, 7, { cookies });
 
     expect(r.summary.representativesPromoted).toBe(0);
-    expect(r.token).toBeNull();
-    expect(cap.reissues).toEqual([]);
-    expect(cap.relecturas).toBe(0);
+    expect(cap.reissues).toEqual([{ userId: 3, role: "student" }]);
+    expect(cap.relecturas).toBe(1);
   });
 
   test("RS-18: el rol del token nuevo sale de la relectura post-transacción, NO del claim promovido", async () => {
@@ -751,7 +753,11 @@ describe("PortalSyncService — RS-13 y RS-18: promoción y token re-firmado", (
     expect(r.summary.enrollmentsUpserted).toBe(5);
   });
 
-  test("promovido pero sin cargo activo al releer: no se firma un token con rol inventado", async () => {
+  test("promovido pero sin cargo activo al releer: se firma como student, no con el cargo promovido", async () => {
+    // Manda la relectura, no lo que esta importación creyó promover. Si al
+    // confirmar la transacción no queda cargo vigente —por ejemplo porque la
+    // sección es de un ciclo ya cerrado—, el token dice `student`. Firmar con
+    // el cargo promovido sería inventar un permiso que la BD no respalda.
     const { repo, cap } = conCapturas({
       promoteClaimIfAny: async (_tx: unknown, sectionId: number) => (
         sectionId === 1000 ? "delegate" : null
@@ -762,7 +768,7 @@ describe("PortalSyncService — RS-13 y RS-18: promoción y token re-firmado", (
     const r = await new PortalSyncService(repo, fakeClient(), fakeAuth(cap))
       .importFromPortal(3, 7, { cookies });
 
-    expect(r.token).toBeNull();
-    expect(cap.reissues).toEqual([]);
+    expect(cap.reissues).toEqual([{ userId: 3, role: "student" }]);
+    expect(r.token).toBe("tok");
   });
 });

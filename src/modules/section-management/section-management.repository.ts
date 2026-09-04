@@ -33,6 +33,13 @@ export class SectionManagementRepository {
         and sr.position in ('delegate', 'subdelegate')
         and e.student_id = ${studentId}
         and e.status = 'active'
+      -- El cargo vale SOLO en el ciclo vigente. La tabla de representantes no
+      -- tiene columna de período: el ciclo sale de la sección, y sin este join
+      -- un delegado de 2026-1 conserva el cargo para siempre.
+        and exists (
+          select 1 from academic_period ap
+          where ap.id = co.academic_period_id and ap.is_active = true
+        )
       group by sr.id, sr.enrollment_id, sr.position, sr.section_id, sec.code, c.id, c.name
       order by c.name, sec.code
     `)) as unknown as SectionRepresentativeRow[];
@@ -50,11 +57,18 @@ export class SectionManagementRepository {
         sr.position
       from section_representative sr
       join enrollment e on e.id = sr.enrollment_id
+      join section sec on sec.id = sr.section_id
+      join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id
       where sr.section_id = ${sectionId}
         and e.student_id = ${studentId}
         and e.status = 'active'
         and sr.is_active = true
         and sr.position in ('delegate', 'subdelegate')
+      -- El cargo vale SOLO en el ciclo vigente. La tabla de representantes no
+      -- tiene columna de período: el ciclo sale de la sección, y sin este join
+      -- un delegado de 2026-1 conserva el cargo para siempre.
+        and ap.is_active = true
       limit 1
     `)) as unknown as Array<{
       id: number;

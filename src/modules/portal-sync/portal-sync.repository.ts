@@ -325,7 +325,14 @@ export class PortalSyncRepository {
       select sr.position
       from section_representative sr
       join enrollment e on e.id = sr.enrollment_id
-      where e.student_id = ${studentId} and sr.is_active = true
+      join section sec on sec.id = sr.section_id
+      join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id
+      where e.student_id = ${studentId} and e.status = 'active' and sr.is_active = true
+      -- El cargo vale SOLO en el ciclo vigente. La tabla de representantes no
+      -- tiene columna de período: el ciclo sale de la sección, y sin este join
+      -- un delegado de 2026-1 conserva el cargo para siempre.
+        and ap.is_active = true
       order by case when sr.position = 'delegate' then 0 else 1 end
       limit 1
     `)) as unknown as Array<{ position: "delegate" | "subdelegate" }>;
