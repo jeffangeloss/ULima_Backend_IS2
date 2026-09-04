@@ -29,7 +29,7 @@ La **nota final** se define como el **promedio ponderado** de las evaluaciones (
   `[@test] ../../../test/official-grades.logic.test.ts`
 - Errores de pertenencia: `404 ENROLLMENT_NOT_IN_SECTION`, `404 ASSESSMENT_NOT_IN_SECTION`.
   `[@test] ../../../test/official-grades.logic.test.ts`
-- `GET /official-grades/me`: notas oficiales del alumno agrupadas por sección/curso, con `weight` y `value` (nullable) por evaluación, para que el cliente calcule la nota final.
+- `GET /official-grades/me`: notas oficiales del alumno **del período activo**, agrupadas por sección/curso, con `weight` y `value` (nullable) por evaluación, para que el cliente calcule la nota final. El acotado al período activo es obligatorio y estuvo ausente hasta el 2026-09-04: sin él la pantalla mezcla las evaluaciones de todos los ciclos que el alumno haya cursado, y el cliente calcula una "nota final" ponderando evaluaciones de ciclos distintos. El defecto quedó oculto mientras los sílabos del ciclo nuevo no tenían rúbrica cargada.
   `[@test] ../../../test/official-grades.logic.test.ts`
 
 ## API

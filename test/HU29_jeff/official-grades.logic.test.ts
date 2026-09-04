@@ -178,3 +178,29 @@ describe("OfficialGradesService.getMyOfficialCourses", () => {
     ]);
   });
 });
+
+describe("getMyOfficialCourses: acotado al período activo", () => {
+  // Defecto real, visto en la app el 2026-09-04: la pantalla de notas oficiales
+  // mostraba evaluaciones de 2026-1 junto a las de 2026-2. `enrollment` no
+  // tiene columna de período, así que la consulta lo resolvía por join con
+  // `course_offering` pero NO lo filtraba, y devolvía todos los ciclos que el
+  // alumno hubiera cursado. El cliente pondera Σ nota×peso, así que ademas de
+  // ensuciar la lista producia una "nota final" mezclando ciclos.
+  //
+  // Estuvo oculto mientras el ciclo nuevo no tenía rúbricas cargadas: hasta ese
+  // día solo había evaluaciones del ciclo viejo y la pantalla parecía correcta.
+  test("le pasa el período activo al repositorio, no solo el alumno", async () => {
+    const recibido: Array<{ studentId: number; periodId: number }> = [];
+    const repo = {
+      findActivePeriodId: async () => 7,
+      findStudentOfficialScores: async (studentId: number, periodId: number) => {
+        recibido.push({ studentId, periodId });
+        return [];
+      },
+    } as unknown as OfficialGradesRepository;
+
+    await new OfficialGradesService(repo, noopEvents).getMyOfficialCourses(42);
+
+    expect(recibido).toEqual([{ studentId: 42, periodId: 7 }]);
+  });
+});

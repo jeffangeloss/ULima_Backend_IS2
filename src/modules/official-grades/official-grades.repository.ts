@@ -114,7 +114,15 @@ export class OfficialGradesRepository {
   }
 
   // Notas oficiales del alumno (todas sus matrículas), con peso de cada evaluación.
-  async findStudentOfficialScores(studentId: number) {
+  /**
+   * Notas oficiales del alumno, SOLO del período que se le pasa.
+   *
+   * `enrollment` no tiene columna de período: se resuelve por el join con
+   * `course_offering`. Sin el filtro, la consulta devuelve las evaluaciones de
+   * todos los ciclos que el alumno haya cursado y el cliente pondera notas de
+   * ciclos distintos como si fueran un solo curso.
+   */
+  async findStudentOfficialScores(studentId: number, periodId: number) {
     return await this.database.execute(sql`
       select
         sec.id as "sectionId",
@@ -128,6 +136,7 @@ export class OfficialGradesRepository {
       from enrollment e
       join section sec on sec.id = e.section_id
       join course_offering co on co.id = sec.course_offering_id
+        and co.academic_period_id = ${periodId}
       join course c on c.id = co.course_id
       join syllabus sy on sy.course_offering_id = co.id
       join assessment a on a.syllabus_id = sy.id

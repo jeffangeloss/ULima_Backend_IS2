@@ -96,7 +96,8 @@ export class OfficialGradesService {
   // Notas oficiales del alumno agrupadas por curso/sección. La nota final la
   // calcula el cliente por ponderación (Σ nota×peso/100), igual que la calculadora.
   async getMyOfficialCourses(studentId: number): Promise<StudentOfficialCourse[]> {
-    const rows = await this.repository.findStudentOfficialScores(studentId);
+    const periodId = await this.repository.findActivePeriodId();
+    const rows = await this.repository.findStudentOfficialScores(studentId, periodId);
     const bySection = new Map<number, StudentOfficialCourse>();
     for (const r of rows) {
       const sectionId = Number(r.sectionId);
