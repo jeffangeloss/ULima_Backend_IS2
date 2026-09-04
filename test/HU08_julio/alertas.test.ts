@@ -535,3 +535,15 @@ describe("[REGRESIÓN] el buzón se acota al período activo", () => {
   });
 });
 
+describe("[REGRESIÓN] la alerta de impedimento no se muestra", () => {
+  test("la consulta del buzón la excluye por título", async () => {
+    // Se retiró el 2026-09-04. Excluirla al LEER —y no solo borrarla durante la
+    // importación— es lo que hace que desaparezca sin que cada alumno tenga que
+    // sincronizar. Se afirma sobre el SQL porque el repositorio habla con la BD.
+    const fuente = await Bun.file(
+      "src/modules/alerts/alerts.repository.ts",
+    ).text();
+    expect(fuente).toContain("al.title <> 'Impedimento de matrícula'");
+  });
+});
+

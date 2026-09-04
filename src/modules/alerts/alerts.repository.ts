@@ -83,6 +83,12 @@ export class AlertsRepository {
       from alert al
       where al.student_id = ${studentId}
         ${since ? sql`and al.created_at >= ${since.toISOString()}` : sql``}
+        -- "Impedimento de matrícula" se retiró el 2026-09-04 por no serle útil
+        -- a nadie. Se excluye acá y no solo al borrarla durante la importación:
+        -- el borrado obliga a cada alumno a sincronizar para dejar de verla, y
+        -- mientras tanto le sigue apareciendo. Con este predicado desaparece
+        -- para todos de inmediato. Cuando ya no queden filas, sobra.
+        and al.title <> 'Impedimento de matrícula'
         and (
           al.type != 'academic_risk'
           or (al.title not like 'Riesgo Académico: %' and al.title not like 'Alerta de inasistencias - %')
