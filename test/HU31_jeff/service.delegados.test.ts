@@ -112,7 +112,7 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     upsertProgressBatch: async (
       _tx: unknown, _sid: number, _cid: number, items: unknown[],
     ) => items.length,
-    upsertImpedimentAlert: async () => true,
+    deleteImpedimentAlert: async () => 0,
     findCycleCoverage: async () => [],
     updateStudentLevel: async () => {},
     fillFullNameIfEmpty: async () => {},

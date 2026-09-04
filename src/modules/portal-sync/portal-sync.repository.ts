@@ -802,23 +802,20 @@ export class PortalSyncRepository {
     return rows.length;
   }
 
-  /** Idempotente: no crea otra alerta aunque la anterior ya esté leída. */
-  async upsertImpedimentAlert(tx: Tx, studentId: number, message: string): Promise<boolean> {
+  /**
+   * Retira la alerta de "Impedimento de matrícula" del alumno que importa.
+   *
+   * Reemplaza a `upsertImpedimentAlert`: la alerta se descartó por no ser útil.
+   * Se borra —y no se marca como leída— porque no hay a qué volver: ya no se
+   * genera. Es idempotente y solo toca filas del propio alumno.
+   */
+  async deleteImpedimentAlert(tx: Tx, studentId: number): Promise<number> {
     const rows = (await tx.execute(sql`
-      insert into alert (student_id, type, title, message)
-      select ${studentId}, 'academic_risk', 'Impedimento de matrícula', ${message}
-      where not exists (
-        select 1 from alert
-        where student_id = ${studentId} and title = 'Impedimento de matrícula'
-      )
+      delete from alert
+      where student_id = ${studentId} and title = 'Impedimento de matrícula'
       returning id
     `)) as unknown as Array<{ id: number }>;
-    if (rows.length) return true;
-    await tx.execute(sql`
-      update alert set message = ${message}
-      where student_id = ${studentId} and title = 'Impedimento de matrícula' and message <> ${message}
-    `);
-    return false;
+    return rows.length;
   }
 
   /**

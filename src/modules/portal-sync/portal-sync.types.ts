@@ -69,6 +69,7 @@ export interface ImportSummary {
   sessionsUpserted: number; enrollmentsUpserted: number; enrollmentsWithdrawn: number;
   progressUpserted: number; progressSkipped: number; alertsCreated: number; syllabiUpserted: number;
   claimsUpserted: number; claimsDeleted: number; representativesPromoted: number;
+  alertsDeleted: number;
 }
 
 export interface ImportResult {

@@ -65,7 +65,7 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     upsertProgressBatch: async (
       _tx: unknown, _sid: number, _cid: number, items: unknown[],
     ) => items.length,
-    upsertImpedimentAlert: async () => true,
+    deleteImpedimentAlert: async () => 0,
     // Sin obligatorios: levelFromCoverage devuelve null y no se toca el nivel.
     findCycleCoverage: async () => [],
     updateStudentLevel: async () => {},
@@ -468,3 +468,30 @@ describe("PortalSyncService.getStatus", () => {
     expect(s.needsImport).toBe(true);
   });
 });
+
+describe("alerta de impedimento de matrícula (retirada el 2026-09-04)", () => {
+  test("la importación la BORRA en vez de crearla, y lo reporta", async () => {
+    // Se descartó por no aportarle nada al alumno. Era además el único dato de
+    // impedimento/deuda que la app llegaba a persistir, así que quitarla
+    // también reduce lo que guardamos.
+    //
+    // El borrado vive en la importación y no en un script suelto porque la
+    // base solo es alcanzable desde el backend desplegado: cada alumno limpia
+    // la suya al sincronizar. Solo toca filas propias.
+    let borradoPara: number | null = null;
+    const repo = fakeRepo({
+      deleteImpedimentAlert: async (_tx: unknown, studentId: number) => {
+        borradoPara = studentId;
+        return 1;
+      },
+    } as never);
+
+    const r = await new PortalSyncService(repo, fakeClient()).importFromPortal(3, 7, { cookies });
+
+    expect(borradoPara).toBe(7);
+    expect(r.summary.alertsDeleted).toBe(1);
+    // Y ya no se crea ninguna alerta por este camino.
+    expect(r.summary.alertsCreated).toBe(0);
+  });
+});
+

@@ -10,7 +10,7 @@ import {
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
-  parseImpedimentos, parseInfoAcademica, parseRecordAcademico, parseSyllabusEntry,
+  parseInfoAcademica, parseRecordAcademico, parseSyllabusEntry,
   parseAulas, parseDelegados,
 } from "./parsers/index.js";
 import { PORTAL_PATHS } from "../../services/portal.client.js";
@@ -23,7 +23,7 @@ const emptySummary = (): ImportSummary => ({
   coursesCreated: 0, teachersCreated: 0, sectionsCreated: 0, sectionsUpdated: 0,
   sessionsUpserted: 0, enrollmentsUpserted: 0, enrollmentsWithdrawn: 0,
   progressUpserted: 0, progressSkipped: 0, alertsCreated: 0, syllabiUpserted: 0,
-  claimsUpserted: 0, claimsDeleted: 0, representativesPromoted: 0,
+  claimsUpserted: 0, claimsDeleted: 0, representativesPromoted: 0, alertsDeleted: 0,
 });
 
 export class PortalSyncService {
@@ -123,7 +123,6 @@ export class PortalSyncService {
     const rec = parseRecordAcademico(pages.record);
     if (!rec.ok) warnings.push({ code: "PARSER_FAILED", block: "record", message: rec.reason });
     const info = parseInfoAcademica(layout);
-    const imped = parseImpedimentos(layout);
 
     const nameByCode = new Map<string, string>();
     const teacherByCourse = new Map<string, string>();
@@ -480,10 +479,17 @@ export class PortalSyncService {
       // Nombre: solo se completa si app_user.full_name está vacío (nunca el correo).
       await this.repository.fillFullNameIfEmpty(tx, userId, mat.data.studentName);
 
-      if (imped.hasImpediment || imped.hasDebt) {
-        const created = await this.repository.upsertImpedimentAlert(tx, studentId, imped.text);
-        if (created) summary.alertsCreated++;
-      }
+      // La alerta de "Impedimento de matrícula" se retiró el 2026-09-04: no le
+      // servía a nadie y era el único dato de impedimento/deuda que la app
+      // llegaba a PERSISTIR. `parseImpedimentos` sigue existiendo y probado,
+      // pero ya no se invoca desde la importación: era su único consumidor.
+      //
+      // El borrado va acá y no en un script suelto porque la base solo es
+      // alcanzable desde el backend desplegado: cada alumno se limpia la suya
+      // en su próxima sincronización. Solo toca filas propias, así que respeta
+      // la regla de "cada quien escribe lo suyo". Cuando ya no queden filas,
+      // esta sentencia no hace nada y se puede quitar.
+      summary.alertsDeleted += await this.repository.deleteImpedimentAlert(tx, studentId);
 
       return p;
     });
