@@ -14,7 +14,7 @@
  *   HIGH_LOAD_THRESHOLD        = 3   (evaluaciones por semana)
  */
 
-import { describe, test, expect, mock } from "bun:test"; // API de pruebas de Bun: describe agrupa, test define casos, expect afirma, mock espía funciones
+import { describe, test, expect, mock, beforeEach } from "bun:test"; // API de pruebas de Bun: describe agrupa, test define casos, expect afirma, mock espía funciones
 import {
   aggregateCourseScores, // función pura que agrupa filas de notas por curso
   isAcademicRisk,         // función pura que decide si un curso está en riesgo académico
@@ -25,6 +25,12 @@ import {
 } from "../../src/modules/alerts/alerts.logic.js"; // SUT de lógica pura (sin BD)
 import { AlertsService } from "../../src/modules/alerts/alerts.service.js"; // SUT de servicio (orquesta lógica + repositorio)
 import type { EnrollmentWithScore, StoredAlert } from "../../src/modules/alerts/alerts.repository.js"; // tipos del repositorio para tipar fixtures
+// Los tres de abajo son para el bloque de regresión del final: ahí el SUT es el
+// SQL de AlertsRepository.getAlerts, que se ejecuta de verdad contra SQLite.
+import { Database } from "bun:sqlite";            // base en memoria que hace de doble
+import { PgDialect } from "drizzle-orm/pg-core";  // convierte el template `sql` de Drizzle en texto + params
+import type { SQL } from "drizzle-orm";           // tipo del template que recibe el doble de `db`
+import { AlertsRepository } from "../../src/modules/alerts/alerts.repository.js"; // SUT de repositorio (SQL crudo)
 
 /**
  * ============================================================================
@@ -535,15 +541,225 @@ describe("[REGRESIÓN] el buzón se acota al período activo", () => {
   });
 });
 
+/**
+ * ============================================================================
+ * REGRESIÓN — "Impedimento de matrícula" no llega al buzón (2026-09-04)
+ * ============================================================================
+ * La alerta se retiró excluyéndola al LEER, y no solo borrándola durante la
+ * importación: el borrado obliga a cada alumno a sincronizar para dejar de
+ * verla y, mientras tanto, le sigue apareciendo. El predicado del `where` la
+ * hace desaparecer para todos de inmediato.
+ *
+ * El invariante vive ENTERO dentro del SQL de `getAlerts`, así que se prueba
+ * ejecutando ese SQL. Se usa la misma técnica que
+ * `test/HU31_jeff/course-detail.contacts-claim.test.ts`: un `db` de mentira
+ * que traduce los marcadores de Drizzle ($1, $2…) a los posicionales de SQLite
+ * y corre la consulta contra una base en memoria. A diferencia de aquel
+ * archivo acá no hace falta `mock.module`: `alerts.repository.ts` importa `db`
+ * SOLO como tipo y recibe la base por constructor, así que alcanza con pasarle
+ * el doble.
+ *
+ * La consulta es ANSI (where, exists, join, not like, `||`, order by) y no usa
+ * nada exclusivo de Postgres, así que SQLite la evalúa tal cual, sin tocar el
+ * código de producción.
+ *
+ * SQLite en memoria no es "una base real": no hay Postgres, ni Neon, ni red,
+ * ni estado entre pruebas. Es un doble que sabe ejecutar SQL, y sin eso este
+ * invariante solo se podría afirmar leyendo el texto del archivo, que es
+ * exactamente lo que no prueba nada.
+ */
+
+const dialecto = new PgDialect();
+let bd = new Database(":memory:");
+
+/** `db` de mentira. Traduce lo que Drizzle emite ($1, $2…) a los marcadores
+ *  posicionales de SQLite, respetando el orden en que aparecen (un mismo $n
+ *  repetido se liga las veces que haga falta). */
+const bdDoble = {
+  execute: async (query: SQL) => {
+    const { sql: texto, params } = dialecto.sqlToQuery(query);
+    const ligados: unknown[] = [];
+    const traducido = texto.replace(/\$(\d+)/g, (_todo, n: string) => {
+      ligados.push(params[Number(n) - 1]);
+      return "?";
+    });
+    return bd.query(traducido).all(...(ligados as never[]));
+  },
+};
+
+const repoReal = new AlertsRepository(bdDoble as never);
+
+/**
+ * `alert` es la única tabla que las pruebas de acá siembran de verdad. Las
+ * otras cinco existen porque la consulta las nombra en el `exists` que valida
+ * las alertas de riesgo académico contra los cursos que el alumno cursa; sin
+ * las tablas, SQLite no llega ni a parsear la consulta.
+ */
+const DDL = `
+  create table alert (id integer primary key, student_id integer, type text,
+    title text, message text, is_read integer, created_at text);
+  create table academic_period (id integer primary key, code text,
+    start_date text, end_date text, is_active integer);
+  create table course (id integer primary key, code text, name text, default_credit integer);
+  create table course_offering (id integer primary key, academic_period_id integer,
+    course_id integer, total_hours text);
+  create table section (id integer primary key, course_offering_id integer,
+    teacher_id integer, code text, jp_id integer);
+  create table enrollment (id integer primary key, student_id integer,
+    section_id integer, status text);
+`;
+
+/** Identificadores del mundo de prueba. Códigos y nombres ficticios. */
+const A_JULIO = 1;                 // student.id del alumno que consulta su buzón
+const A_OTRO = 2;                  // otro alumno, para probar que el buzón no se mezcla
+const CURSO_IS2 = "INGENIERIA DE SOFTWARE II";
+const INICIO_CICLO = new Date("2026-08-03T00:00:00.000Z"); // arranque del período vigente
+
+/**
+ * Mundo mínimo: un período vigente, un curso, su oferta, una sección y la
+ * matrícula activa de A_JULIO en ella. Con eso el `exists` de la consulta tiene
+ * algo que encontrar para "Riesgo Académico: <curso>"; las pruebas del filtro
+ * por título no dependen de estas filas, pero la consulta sí las recorre.
+ */
+const sembrar = () => {
+  bd = new Database(":memory:");
+  bd.run(DDL);
+
+  bd.run(`insert into academic_period (id, code, start_date, end_date, is_active)
+          values (1, '2026-2', '2026-08-03', '2026-12-12', 1)`);
+  bd.run(`insert into course (id, code, name, default_credit) values (1, 'IN202', ?, 4)`, [CURSO_IS2]);
+  bd.run(`insert into course_offering (id, academic_period_id, course_id, total_hours)
+          values (10, 1, 1, '64')`);
+  bd.run(`insert into section (id, course_offering_id, teacher_id, code, jp_id)
+          values (100, 10, 1, '952', null)`);
+  bd.run(`insert into enrollment (id, student_id, section_id, status)
+          values (1000, ?, 100, 'active')`, [A_JULIO]);
+};
+
+/** Inserta una alerta. `creada` va en ISO para que el `>=` de `since` —que
+ *  compara texto en SQLite— ordene igual que una marca de tiempo. */
+let idAlerta = 0;
+const alerta = (
+  studentId: number,
+  type: "academic_risk" | "high_load",
+  title: string,
+  creada: string,
+) =>
+  bd.run(
+    `insert into alert (id, student_id, type, title, message, is_read, created_at)
+     values (?, ?, ?, ?, 'mensaje de prueba', 0, ?)`,
+    [++idAlerta, studentId, type, title, creada],
+  );
+
+/** Títulos que devuelve la consulta, que es lo que se mira en casi todos los casos. */
+const titulos = async (studentId: number, since?: Date) =>
+  (await repoReal.getAlerts(studentId, since)).map((a) => a.title);
+
 describe("[REGRESIÓN] la alerta de impedimento no se muestra", () => {
-  test("la consulta del buzón la excluye por título", async () => {
-    // Se retiró el 2026-09-04. Excluirla al LEER —y no solo borrarla durante la
-    // importación— es lo que hace que desaparezca sin que cada alumno tenga que
-    // sincronizar. Se afirma sobre el SQL porque el repositorio habla con la BD.
-    const fuente = await Bun.file(
-      "src/modules/alerts/alerts.repository.ts",
-    ).text();
-    expect(fuente).toContain("al.title <> 'Impedimento de matrícula'");
+  beforeEach(sembrar);
+
+  test("la consulta no devuelve la alerta titulada 'Impedimento de matrícula'", async () => {
+    // El invariante de la regresión. La alerta está en la tabla —así quedó en
+    // la base de todos los alumnos que ya la habían importado— y aun así el
+    // buzón no la trae: el corte lo hace la lectura, no el borrado.
+    alerta(A_JULIO, "academic_risk", "Impedimento de matrícula", "2026-08-20T10:00:00.000Z");
+
+    expect(await titulos(A_JULIO)).toEqual([]);
+  });
+
+  test("las demás alertas del alumno siguen llegando", async () => {
+    // Contraprueba: un `where` que devolviera cero filas pasaría la prueba de
+    // arriba sin excluir nada en particular. Acá el predicado tiene que
+    // llevarse UNA alerta y dejar la otra.
+    alerta(A_JULIO, "academic_risk", "Impedimento de matrícula", "2026-08-20T10:00:00.000Z");
+    alerta(A_JULIO, "high_load", "Alta Carga: Semana 12", "2026-08-21T10:00:00.000Z");
+
+    expect(await titulos(A_JULIO)).toEqual(["Alta Carga: Semana 12"]);
+  });
+
+  test("el filtro es por título exacto, no por parecido", async () => {
+    // `<>` compara la cadena entera. Una alerta que apenas contenga la palabra
+    // no es la que se retiró y tiene que seguir viéndose; si alguien cambiara
+    // el predicado por un `like '%Impedimento%'`, esta prueba lo detecta.
+    alerta(A_JULIO, "high_load", "Impedimento de matrícula resuelto", "2026-08-22T10:00:00.000Z");
+
+    expect(await titulos(A_JULIO)).toEqual(["Impedimento de matrícula resuelto"]);
+  });
+
+  test("la exclusión no depende del alumno: tampoco la ve otro", async () => {
+    // El predicado va en el `where` general, no atado a un alumno. Si alguien
+    // lo moviera dentro de una rama condicional, este caso lo delata.
+    alerta(A_OTRO, "academic_risk", "Impedimento de matrícula", "2026-08-20T10:00:00.000Z");
+
+    expect(await titulos(A_OTRO)).toEqual([]);
+  });
+
+  test("la alerta excluida no se lleva puestas las de riesgo académico válidas", async () => {
+    // El predicado nuevo convive con el bloque que cruza enrollment → section →
+    // course_offering → academic_period → course. Una alerta "Riesgo Académico:
+    // <curso>" de un curso que el alumno cursa este ciclo tiene que sobrevivir
+    // a los dos filtros a la vez.
+    alerta(A_JULIO, "academic_risk", "Impedimento de matrícula", "2026-08-20T10:00:00.000Z");
+    alerta(A_JULIO, "academic_risk", `Riesgo Académico: ${CURSO_IS2}`, "2026-08-23T10:00:00.000Z");
+
+    expect(await titulos(A_JULIO)).toEqual([`Riesgo Académico: ${CURSO_IS2}`]);
+  });
+
+  test("las filas que sí vuelven conservan su forma tipada", async () => {
+    // `getAlerts` no solo filtra: mapea. Se fija que los booleanos y la fecha
+    // no se degraden a lo que devuelva el driver, porque de eso depende el
+    // contrato de `StoredAlert` que consume el servicio.
+    alerta(A_JULIO, "high_load", "Alta Carga: Semana 12", "2026-08-21T10:00:00.000Z");
+
+    const [a] = await repoReal.getAlerts(A_JULIO);
+    expect(a).toMatchObject({
+      studentId: A_JULIO,
+      type: "high_load",
+      title: "Alta Carga: Semana 12",
+      isRead: false,
+    });
+    expect(a.createdAt).toBeInstanceOf(Date);
+    expect(a.createdAt.toISOString()).toBe("2026-08-21T10:00:00.000Z");
   });
 });
 
+describe("[REGRESIÓN] el corte por `since` sigue vigente sobre el SQL", () => {
+  // Compañero del describe de arriba: el mismo `where` lleva el corte por
+  // período activo. Se ejercita también contra SQL de verdad para que quede
+  // demostrado que agregar el filtro de "Impedimento de matrícula" no rompió
+  // el recorte por ciclo, que es el otro invariante del buzón.
+  beforeEach(sembrar);
+
+  test("una alerta anterior al inicio del período no se devuelve", async () => {
+    // El bug original: en 2026-2 el alumno seguía viendo las alertas de 2026-1.
+    alerta(A_JULIO, "high_load", "Alta Carga: Semana 3", "2026-05-10T10:00:00.000Z");
+
+    expect(await titulos(A_JULIO, INICIO_CICLO)).toEqual([]);
+  });
+
+  test("una alerta posterior al inicio del período sí se devuelve", async () => {
+    // Contraprueba del caso anterior: el corte recorta por fecha, no vacía.
+    alerta(A_JULIO, "high_load", "Alta Carga: Semana 12", "2026-08-21T10:00:00.000Z");
+
+    expect(await titulos(A_JULIO, INICIO_CICLO)).toEqual(["Alta Carga: Semana 12"]);
+  });
+
+  test("sin `since` no se filtra por fecha: se ve el histórico completo", async () => {
+    // Degradación elegida cuando no hay período activo en la base: mostrar de
+    // más antes que dejar al alumno con el buzón vacío. Y el orden es por
+    // fecha descendente, lo más reciente primero.
+    alerta(A_JULIO, "high_load", "Alta Carga: Semana 3", "2026-05-10T10:00:00.000Z");
+    alerta(A_JULIO, "high_load", "Alta Carga: Semana 12", "2026-08-21T10:00:00.000Z");
+
+    expect(await titulos(A_JULIO)).toEqual(["Alta Carga: Semana 12", "Alta Carga: Semana 3"]);
+  });
+
+  test("el corte por fecha tampoco resucita a 'Impedimento de matrícula'", async () => {
+    // Los dos predicados se combinan con `and`: estar dentro del período no es
+    // un salvoconducto para la alerta retirada.
+    alerta(A_JULIO, "academic_risk", "Impedimento de matrícula", "2026-08-20T10:00:00.000Z");
+    alerta(A_JULIO, "high_load", "Alta Carga: Semana 12", "2026-08-21T10:00:00.000Z");
+
+    expect(await titulos(A_JULIO, INICIO_CICLO)).toEqual(["Alta Carga: Semana 12"]);
+  });
+});
