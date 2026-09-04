@@ -1,0 +1,360 @@
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script language="JavaScript" src="/portalUL/av/scripts/aVirtualBB.js?rnd=java.util.Random@a26f91ff"></script>
+<title>Aula Virtual</title>
+
+<SCRIPT LANGUAGE="JavaScript">
+
+	aDepc = new Array( ) ;
+	aCurs = new Array( ) ;
+	aSecc = new Array( ) ;
+
+	aNuAula = new Array( ) ;
+	aTipAV = new Array( ) ;
+	aNomDepc = new Array( ) ;
+	aNomCurs = new Array( ) ;
+
+	aUserDcte = new Array( ) ;
+	aCoordCurs = new Array( ) ;
+	aCoordCIEC = new Array( ) ;
+	aDcte = new Array( ) ;
+	aAlum = new Array( ) ;
+
+	aNoCmpDepcAdmSup = new Array( ) ;
+	aNoAbrDepcAdmSup = new Array( ) ;
+	aCoDepcAdmSup = new Array( ) ;
+
+	var t=new Date();
+	
+	var serverAV = 'http://acad.ulima.edu.pe';	
+	var dbAV_AULAVIRTUAL = '/AV/AV_001.NSF/';
+	var dbAV_TABLON = '/AV/AV_008.NSF/';
+	var dbAV_ASESORIA = '/AV/AV_007.NSF/';
+	var dbAV_ENLACE = '/AV/AV_005.NSF/';
+	var dbAV_BLOCK = '/AV/AV_002.NSF/';
+	var dbAV_FORO = '/AV/AV_009.NSF/';
+	var dbAV_GRUPO = '/AV/AV_003.NSF/';
+	var dbAV_MATERIALES = '/AV/AV_011.NSF/';
+	var dbAV_BIBLIO = '/AV/AV_013.NSF/';
+	var dbAV_VIDEO = '/AV/AV_012.NSF/';
+	
+	var dbCIEC_AV_AULAVIRTUAL = '/AV/AV011030_101.NSF/';
+	var dbCIEC_AV_TABLON = '/AV/AV011030_108.NSF/';
+	var dbCIEC_AV_ASESORIA = '/AV/AV011030_107.NSF/';
+	var dbCIEC_AV_ENLACE = '/AV/AV011030_105.NSF/';
+	var dbCIEC_AV_BLOCK = '/AV/AV011030_102.NSF/';
+	var dbCIEC_AV_FORO = '/AV/AV011030_109.NSF/';
+	var dbCIEC_AV_GRUPO = '/AV/AV011030_103.NSF/';
+	var dbCIEC_AV_MATERIALES = '/AV/AV011030_111.NSF/';
+	var dbCIEC_AV_BIBLIO = '/AV/AV011030_113.NSF/';
+	var dbCIEC_AV_VIDEO = '/AV/AV011030_112.NSF/';
+		
+	var Url_JSP_GAED ='http://webaloe.ulima.edu.pe/portalUL/gaed/servlets/';
+	var Url_JSP_GADA = '/portalUL/gada/servlets/';	
+	var Url_JSP_AV = '/portalUL/av/servlets/';
+	var Url_SERVER_QP1 = 'http://arce1.ulima.edu.pe';
+	var Url_SERVER_QP2 = 'http://arce1.ulima.edu.pe';
+	var Url_BIBLIOTECA = 'http://www1.ulima.edu.pe/webulima.nsf/OtrosWeb/biblioteca/$file/index.html';
+	
+	var bdST = '/adm.nsf/';
+	var bdCorreos = '/CorreoAcad.nsf/';	
+	var bdSilabo = '/ac/ac_bd001.nsf/';
+	var bdSEPARATA = '/mese_bd001.nsf/';
+	
+</SCRIPT>
+<style>
+
+.asignaturas {
+
+margin:10px;
+padding:0;
+font: normal 11px Verdana, Arial, Helvetica, sans-serif;
+color: #6c6b68;
+}
+
+a:link, a:visited {
+font: normal 11px Verdana, Arial, Helvetica, sans-serif;
+color:#6c6b68;
+text-decoration:underline;
+}
+
+a:hover {
+font: normal 11px Verdana, Arial, Helvetica, sans-serif;
+color:#ff7902;
+text-decoration:underline;
+}
+
+li {
+    margin-bottom: 10px;
+}
+
+.titular {
+	font-family: Verdana, Arial, Helvetica, sans-serif;
+	font-size: 16px;
+	font-weight: bold;
+	color: #FF7902;
+}
+</style>
+</head>
+
+<!-- *** inicio *** //-->
+
+<body>
+
+<!-- *** inicio del formulario //-->
+<form name="avForm" method="post" action="">
+<input type="hidden" name="prm_sNuAula" value"">
+<input type="hidden" name="prm_sCoUser" value"">
+<table width="100%">
+<tr>
+	<td align="center">
+		<img src="https://contenidos.ulima.edu.pe/portalUL/images/logo/logoVertical.png" alt="" hspace="0" vspace="0" border="0" id="logo">
+	</td>
+</tr>
+<tr>
+	<td align="center" class="titular">
+		Delegados
+	</td>
+</tr>
+<tr>
+	<td>
+
+<ul class="asignaturas">
+	
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[0]="002";
+		aNuAula[0]="150730";
+						
+		aNoAbrDepcAdmSup[0]="ESC.INGENIERIA";
+		aNoCmpDepcAdmSup[0]="ESCUELA UNIVERSITARIA DE INGENIERIA";
+		aCoDepcAdmSup[0]="410000";		
+							
+		aNomDepc[0]="CARRERA ING.SI.";
+		aNomCurs[0]="ING. SOFT. II";
+		aDepc[0]="650400";
+		aCurs[0]="1327";
+		aSecc[0]="853";
+		aUserDcte[0]="DCTE05";
+		aCoordCIEC[0]="0";
+		aCoordCurs[0]="0";
+		aDcte[0]="0";
+		aAlum[0]="1";
+		true
+		false
+		false
+		false
+	</SCRIPT>
+		
+			
+			
+			
+			
+							
+				
+					
+						
+					<li>CARRERA ING.SI. / ING. SOFT. II / 853</li>
+					&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenDelegado('150730');">Delegado</a><br>
+							
+						
+					
+				
+			
+			
+		
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[1]="002";
+		aNuAula[1]="151008";
+						
+		aNoAbrDepcAdmSup[1]="ESC.INGENIERIA";
+		aNoCmpDepcAdmSup[1]="ESCUELA UNIVERSITARIA DE INGENIERIA";
+		aCoDepcAdmSup[1]="410000";		
+							
+		aNomDepc[1]="CARRERA ING.SI.";
+		aNomCurs[1]="GEST.PROYECTOS";
+		aDepc[1]="650400";
+		aCurs[1]="5674";
+		aSecc[1]="957";
+		aUserDcte[1]="DCTE06";
+		aCoordCIEC[1]="0";
+		aCoordCurs[1]="0";
+		aDcte[1]="0";
+		aAlum[1]="1";
+		true
+		false
+		false
+		false
+	</SCRIPT>
+		
+			
+			
+			
+			
+							
+				
+					
+						
+					<li>CARRERA ING.SI. / GEST.PROYECTOS / 957</li>
+					&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenDelegado('151008');">Delegado</a><br>
+							
+						
+					
+				
+			
+			
+		
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[2]="002";
+		aNuAula[2]="154503";
+						
+		aNoAbrDepcAdmSup[2]="ESC.INGENIERIA";
+		aNoCmpDepcAdmSup[2]="ESCUELA UNIVERSITARIA DE INGENIERIA";
+		aCoDepcAdmSup[2]="410000";		
+							
+		aNomDepc[2]="CARRERA ING.SI.";
+		aNomCurs[2]="SIST.ERP";
+		aDepc[2]="650400";
+		aCurs[2]="650028";
+		aSecc[2]="853";
+		aUserDcte[2]="DCTE07";
+		aCoordCIEC[2]="0";
+		aCoordCurs[2]="0";
+		aDcte[2]="0";
+		aAlum[2]="1";
+		true
+		false
+		false
+		false
+	</SCRIPT>
+		
+			
+			
+			
+			
+							
+				
+					
+						
+					<li>CARRERA ING.SI. / SIST.ERP / 853</li>
+					&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenDelegado('154503');">Delegado</a><br>
+							
+						
+					
+				
+			
+			
+		
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[3]="002";
+		aNuAula[3]="154597";
+						
+		aNoAbrDepcAdmSup[3]="ESC.INGENIERIA";
+		aNoCmpDepcAdmSup[3]="ESCUELA UNIVERSITARIA DE INGENIERIA";
+		aCoDepcAdmSup[3]="410000";		
+							
+		aNomDepc[3]="CARRERA ING.SI.";
+		aNomCurs[3]="PROP. INVESTIGACIÓN";
+		aDepc[3]="650400";
+		aCurs[3]="650066";
+		aSecc[3]="851";
+		aUserDcte[3]="DCTE08";
+		aCoordCIEC[3]="0";
+		aCoordCurs[3]="0";
+		aDcte[3]="0";
+		aAlum[3]="1";
+		true
+		false
+		false
+		false
+	</SCRIPT>
+		
+			
+			
+			
+			
+							
+				
+					
+						
+					<li>CARRERA ING.SI. / PROP. INVESTIGACIÓN / 851</li>
+					&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenDelegado('154597');">Delegado</a><br>
+							
+						
+					
+				
+			
+			
+		
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[4]="002";
+		aNuAula[4]="154615";
+						
+		aNoAbrDepcAdmSup[4]="ESC.INGENIERIA";
+		aNoCmpDepcAdmSup[4]="ESCUELA UNIVERSITARIA DE INGENIERIA";
+		aCoDepcAdmSup[4]="410000";		
+							
+		aNomDepc[4]="CARRERA ING.SI.";
+		aNomCurs[4]="ANALÍTICA DE NEGOCIO";
+		aDepc[4]="650400";
+		aCurs[4]="650078";
+		aSecc[4]="851";
+		aUserDcte[4]="DCTE09";
+		aCoordCIEC[4]="0";
+		aCoordCurs[4]="0";
+		aDcte[4]="0";
+		aAlum[4]="1";
+		true
+		false
+		false
+		false
+	</SCRIPT>
+		
+			
+			
+			
+			
+							
+				
+					
+						
+					<li>CARRERA ING.SI. / ANALÍTICA DE NEGOCIO / 851</li>
+					&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenDelegado('154615');">Delegado</a><br>
+							
+						
+					
+				
+			
+			
+		
+
+	<br>
+</ul>
+
+	</td>
+</tr>
+
+</table>
+
+</form>
+
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"3fce220191754e43b589fa12c69340a2","spa":2}' crossorigin="anonymous"></script>
+</body>
+
+</html>
+

@@ -5,13 +5,61 @@ import type { PortalCookies } from "../modules/portal-sync/portal-sync.types.js"
 const ROOT = "/portalUL/";
 const UA = "Mozilla/5.0 (compatible; ULimaPlus/1.0)";
 
-/** Rutas fijas. Lo único interpolado es el COCICLO, validado como ^\d{5}$. */
+/**
+ * Valida el número de aula del Aula Virtual (`prm_sNuAula`) ANTES de que se
+ * interpole en el query string, y devuelve el mismo valor para poder usarlo
+ * inline en el template (RS-8).
+ *
+ * El criterio es el MISMO que el de `fetchAll` con el COCICLO (`^\d{5}$`) y el
+ * de `fetchSyllabus` con el código de curso (`^\d{4,6}$`): regex anclada en
+ * ambos extremos y solo dígitos. La razón para validar acá y no confiar en el
+ * llamador es que el aula NO sale de nuestra base: sale del HTML del sidebar
+ * del portal, o sea de una fuente que puede cambiar sin aviso. Un valor con
+ * `&`, `?`, `/` o `..` colado en `?prm_sNuAula=` deja de ser un parámetro y
+ * pasa a ser otra petición al portal hecha con la sesión viva del alumno.
+ *
+ * El rango 4-8 es lo observado el 2026-09-04 (aulas de 6 dígitos, tipo
+ * `154508`) con holgura a los dos lados: el portal no documenta el ancho y
+ * clavarlo en 6 sería atar el cliente a una muestra de 10 nóminas.
+ *
+ * Mismo error que un COCICLO mal formado —502 `PORTAL_UNAVAILABLE`, no 4xx—
+ * porque la culpa sería del portal y no del cliente: este valor jamás llega
+ * desde la API pública, y el 409 está reservado para sesión inválida.
+ */
+const assertAula = (aula: string): string => {
+  if (!/^\d{4,8}$/.test(aula)) {
+    throw new HttpError(502, "Aula del portal con formato inesperado.", "PORTAL_UNAVAILABLE");
+  }
+  return aula;
+};
+
+/** Rutas fijas. Lo único interpolado son el COCICLO (`^\d{5}$`, validado en
+ *  `fetchAll`) y el aula del panel de delegados (`^\d{4,8}$`, validada acá
+ *  mismo por `assertAula`). */
 export const PORTAL_PATHS = {
   layout: "layout.jsp",
   matricula: (cociclo: string) => `gama/servlets/ComandoMostrarConsMatr?COCICLO=${cociclo}&Fg=1`,
   record: "gada/servlets/ComandoListarRecordAcademico?ac=1",
   logout: "servlets/CustomLogoutServlet",
   securityCheck: "j_security_check",
+
+  // ── Panel de delegados ───────────────────────────────────────────────────
+  // `ComandoIngresarAulaVirtualBBDelegado` NO devuelve la nómina: devuelve un
+  // frameset, y el dato vive dos saltos más adentro. Estas son las rutas de
+  // esos dos saltos. No hace falta un método nuevo en el cliente: `fetchPage`
+  // ya es genérico y ambas cuelgan de `ROOT` como el resto.
+
+  /** Sidebar del panel. Un `OpenDelegado('<aula>')` por curso más los arrays
+   *  JS planos `aNuAula`/`aCurs`/`aSecc` que mapean aula → curso → sección.
+   *  Sin parámetros a propósito: el servlet responde según la sesión, así que
+   *  acá no hay nada que validar. */
+  cursosDelegado: "av/servlets/ComandoListarCursosXOpcionAulaVirtualDelegado",
+
+  /** Nómina de una sección: la tabla real, con las únicas dos casillas
+   *  marcadas de toda la página. El aula pasa por `assertAula` antes de
+   *  interpolarse; un aula basura revienta acá y nunca llega a la red. */
+  nominaDelegado: (aula: string) =>
+    `av/servlets/ComandoListarAulaDelegadoAulaVirtual?prm_sNuAula=${assertAula(aula)}`,
 } as const;
 
 /** Vista Domino de sílabos. Vive en un host DISTINTO de `webaloe` (ver

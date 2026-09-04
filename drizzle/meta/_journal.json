@@ -43,6 +43,13 @@
       "when": 1788363042154,
       "tag": "0004_portal_sync_final_grade",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788529818489,
+      "tag": "0006_delegado_claim",
+      "breakpoints": true
     }
   ]
 }

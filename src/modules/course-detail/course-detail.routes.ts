@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import type { CourseDetailController } from "./course-detail.controller.js";
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import { authMiddleware, requireRole, STUDENT_ROLES } from "../../shared/middleware/auth-middleware.js";
+import {
+  authMiddleware, requireRole, STUDENT_ROLES, type AuthVariables,
+} from "../../shared/middleware/auth-middleware.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 
 const splitName = (fullName: string) => {
   if (fullName.includes(",")) {
@@ -33,7 +36,7 @@ const splitName = (fullName: string) => {
 };
 
 export const createCourseDetailRoutes = (controller: CourseDetailController) => {
-  const app = new Hono();
+  const app = new Hono<{ Variables: AuthVariables }>();
 
   // Todas las rutas de detalle de curso exponen datos académicos sensibles
   // (secciones, docentes, matrículas, contactos): requieren JWT válido de alumno.
@@ -134,6 +137,36 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
 
   app.get("/sections/:sectionId/contacts", async (c) => {
     const sectionId = Number(c.req.param("sectionId"));
+
+    // Pertenencia. Hasta acá la ruta solo exigía JWT + rol, sin ningún predicado
+    // sobre QUIÉN pregunta: cualquier usuario autenticado podía iterar
+    // `sectionId` y leerse la nómina de cualquier sección. Con los delegados
+    // pendientes eso se convertiría además en un padrón consultable de
+    // delegados de toda la universidad, así que la guarda es precondición del
+    // fallback de más abajo, no un extra.
+    //
+    // Pasan: el alumno matriculado en la sección, y el docente o jefe de
+    // práctica de esa misma sección. El `?? 0` es un centinela que nunca empata
+    // (los id son identity y arrancan en 1): un alumno no trae teacherId y un
+    // docente no trae studentId.
+    const studentId = c.get("studentId");
+    const teacherId = c.get("teacherId");
+    const allowed = (await db.execute(sql`
+      select 1 as ok from section sec
+      where sec.id = ${sectionId}
+        and (
+          sec.teacher_id = ${teacherId ?? 0}
+          or sec.jp_id = ${teacherId ?? 0}
+          or exists (
+            select 1 from enrollment e
+            where e.section_id = sec.id and e.student_id = ${studentId ?? 0}
+          )
+        )
+      limit 1
+    `)) as unknown as Array<{ ok: number }>;
+    if (!allowed.length) {
+      throw new HttpError(403, "No perteneces a esta sección.", "SECTION_FORBIDDEN");
+    }
     const teacherRows = await db.execute(sql`
       select
         t.teacher_code,
@@ -205,6 +238,32 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
           }
         : null;
 
+    // Delegados que el portal publica pero que todavía no son usuarios.
+    //
+    // Se resuelve por COMPARACIÓN, no por existencia: un claim se emite solo si
+    // (1) no hay representante REAL activo para ese cargo —si lo hay, manda la
+    // tabla de permisos— y (2) esa persona no está ya matriculada con cuenta,
+    // porque entonces ya sale dentro de `alumnos[]` y marcarla como ausente
+    // sería mentira. Así nadie aparece dos veces.
+    const claimRows = (await db.execute(sql`
+      select c.position, c.student_code, c.full_name
+      from section_representative_claim c
+      where c.section_id = ${sectionId}
+        and not exists (
+          select 1 from section_representative sr
+          where sr.section_id = c.section_id
+            and sr.position = c.position
+            and sr.is_active = true
+        )
+        and not exists (
+          select 1 from enrollment e
+          join student s on s.id = e.student_id
+          join app_user au on au.id = s.user_id
+          where e.section_id = c.section_id and au.code = c.student_code
+        )
+      order by c.position
+    `)) as unknown as Array<{ position: string; student_code: string; full_name: string }>;
+
     const studentsByEnrollment = new Map<number, Array<any>>();
     for (const row of rows) {
       const current = studentsByEnrollment.get(row.enrollment_id) ?? [];
@@ -232,6 +291,16 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
           networking: networkingFromRows(studentRows),
         };
       }),
+      // Clave HERMANA de `alumnos`, no un elemento más: los alumnos exigen
+      // email, career_id y setupComplete, que un claim no tiene y que no se
+      // pueden inventar. `contactable: false` habla de una CAPACIDAD (la app no
+      // debe ofrecer chatear con quien no existe), no de la persona.
+      representantesPendientes: claimRows.map((row) => ({
+        code: row.student_code,
+        ...splitName(row.full_name),
+        position: row.position,
+        contactable: false,
+      })),
     });
   });
 

@@ -48,6 +48,13 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     upsertSection: async () => ({ id: 40, created: true }),
     upsertScheduleSession: async () => {},
     upsertEnrollment: async () => ({ id: 50, created: true }),
+    // Delegados: por defecto no hay nada que escribir ni a quién promover, así
+    // que el bloque queda inerte y estas pruebas siguen midiendo lo suyo. Los
+    // casos propios de delegados los cubre service.delegados.test.ts.
+    upsertRepresentativeClaims: async () => ({ upserted: 0, deleted: 0 }),
+    promoteClaimIfAny: async () => null,
+    deleteClaimsOfInactivePeriods: async () => 0,
+    findActiveRepresentativePosition: async () => null,
     withdrawMissingEnrollments: async () => 0,
     countActiveEnrollments: async () => 5,
     // El progreso se resuelve en lote: una consulta para todos los codigos y

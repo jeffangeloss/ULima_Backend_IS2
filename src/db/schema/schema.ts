@@ -350,6 +350,43 @@ export const sectionRepresentative = pgTable("section_representative", {
     .where(sql`${t.isActive} = TRUE`),
 }));
 
+// Lo que el PORTAL dice sobre quién representa a una sección, antes de que esa
+// persona exista como usuario de ULima++. No otorga permisos: solo
+// `section_representative` autoriza. Cuando el titular se registra e importa,
+// su matrícula empata por `student_code` y ahí sí se le promueve.
+//
+// No lleva FK al alumno a propósito: el delegado casi nunca tiene cuenta, y
+// fabricarle una (como hace el seed) inventaría correo institucional,
+// contraseña y carrera, y lo metería en networking, chat y en el contexto que
+// el chatbot manda a Cohere.
+//
+// Tampoco guarda QUIÉN lo reportó: sería útil para auditar, pero deja escrito
+// un registro de "A delató a B" que no compensa.
+//
+// El aislamiento por ciclo es gratis: `section` cuelga de `course_offering`,
+// que cuelga de `academic_period`. Por eso la llave es la sección y no hay
+// columna de período.
+export const sectionRepresentativeClaim = pgTable("section_representative_claim", {
+  id: integer("id").generatedByDefaultAsIdentity().primaryKey(),
+  sectionId: integer("section_id").notNull().references(() => section.id),
+  position: representativePositionEnum("position").notNull(),
+  // Mismo tipo y dominio que `app_user.code`: `student` NO tiene columna de
+  // código, así que el empate de la promoción es contra `app_user`.
+  studentCode: varchar("student_code", { length: 30 }).notNull(),
+  // Mismo largo que `app_user.full_name`. El parser recorta antes de llegar
+  // acá: un 22001 dentro de la transacción haría rollback de notas, horario y
+  // matrícula.
+  fullName: varchar("full_name", { length: 150 }).notNull(),
+  // Instante en que se RECIBIÓ la respuesta del portal, no el del INSERT: la
+  // descarga ocurre fuera de la transacción y entre observar y escribir hay
+  // segundos. Sin esto, dos importaciones concurrentes pueden dejar
+  // persistida la observación más vieja.
+  observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+}, (t) => ({
+  uqSectionRepresentativeClaimPosition:
+    unique("uq_section_representative_claim_position").on(t.sectionId, t.position),
+}));
+
 export const academicWeek = pgTable("academic_week", {
   id: integer("id").generatedByDefaultAsIdentity().primaryKey(),
   academicPeriodId: integer("academic_period_id").notNull().references(() => academicPeriod.id),

@@ -11,8 +11,11 @@ import {
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
   parseImpedimentos, parseInfoAcademica, parseRecordAcademico, parseSyllabusEntry,
+  parseAulas, parseDelegados,
 } from "./parsers/index.js";
+import { PORTAL_PATHS } from "../../services/portal.client.js";
 import type {
+  DelegadosNomina,
   ImportResult, ImportSummary, PortalCookies, RecordRow, SyllabusEntry, SyncStatus, SyncWarning,
 } from "./portal-sync.types.js";
 
@@ -20,12 +23,24 @@ const emptySummary = (): ImportSummary => ({
   coursesCreated: 0, teachersCreated: 0, sectionsCreated: 0, sectionsUpdated: 0,
   sessionsUpserted: 0, enrollmentsUpserted: 0, enrollmentsWithdrawn: 0,
   progressUpserted: 0, progressSkipped: 0, alertsCreated: 0, syllabiUpserted: 0,
+  claimsUpserted: 0, claimsDeleted: 0, representativesPromoted: 0,
 });
 
 export class PortalSyncService {
   constructor(
     private readonly repository: PortalSyncRepository,
     private readonly client: PortalClient,
+    /**
+     * Solo para re-firmar el JWT cuando la importación promueve al propio
+     * alumno (RS-18). Es OPCIONAL y de tipo estructural a propósito: los dobles
+     * de los tests existentes construyen el service con dos argumentos, y
+     * tipar la dependencia por su forma evita acoplar portal-sync al módulo de
+     * auth entero. Sin él, `token` sale `null` y el rol se actualiza en el
+     * próximo login, que es la degradación aceptada.
+     */
+    private readonly auth?: {
+      reissueToken(userId: number, role: "delegate" | "subdelegate"): Promise<string | null>;
+    },
   ) {}
 
   async getStatus(studentId: number): Promise<SyncStatus> {
@@ -174,6 +189,85 @@ export class PortalSyncService {
     // parcial de período activo y responde 500. Leerlo antes no elimina la
     // carrera (haría falta un advisory lock) pero saca de en medio la segunda
     // conexión y la lectura obsoleta dentro de la propia transacción.
+    // ── 3.6 Delegados: sidebar + una nómina por aula, FUERA de la transacción.
+    //
+    // `ComandoIngresarAulaVirtualBBDelegado` no sirve: devuelve un frameset. El
+    // dato vive dos saltos más adentro, y el sidebar es además quien mapea
+    // aula → curso → sección, que es el empate con nuestras secciones.
+    //
+    // Degrada POR AULA, no por fase: `Promise.all` rechaza entero al primer
+    // fallo y descartaría los delegados de todas las secciones por una sola
+    // nómina caída. Cada petición y cada parseo van en su propio try, y lo que
+    // sí se entendió se escribe igual. Esto es una excepción explícita a la
+    // regla general de portal-sync según la cual sesión inválida, portal caído
+    // o timeout abortan la importación: los delegados son secundarios y no
+    // pueden borrar notas, horario ni matrícula.
+    const delegadosBySection = new Map<string, { delegados: DelegadosNomina; observedAt: Date }>();
+    try {
+      const sidebar = await this.client.fetchPage(PORTAL_PATHS.cursosDelegado, cookies);
+      const aulas = parseAulas(sidebar);
+      if (!aulas.ok) {
+        warnings.push({ code: "PARSER_FAILED", block: "delegado", message: aulas.reason });
+      } else {
+        await Promise.all(aulas.data.map(async (a) => {
+          const donde = `${a.courseCode}/${a.sectionCode}`;
+          let html: string;
+          try {
+            html = await this.client.fetchPage(PORTAL_PATHS.nominaDelegado(a.aula), cookies);
+          } catch {
+            // El mensaje NUNCA lleva fragmentos del HTML del portal.
+            warnings.push({
+              code: "DELEGADOS_UNAVAILABLE", block: "delegado",
+              message: `No se pudo traer la nómina de ${donde}.`,
+            });
+            return;
+          }
+          // El instante de la RESPUESTA, no el del INSERT: la escritura ocurre
+          // segundos después, dentro de la transacción, y `observed_at` es lo
+          // que decide qué observación gana entre dos alumnos concurrentes.
+          const observedAt = new Date();
+          const parsed = parseDelegados(html, a.aula);
+          if (!parsed.ok) {
+            warnings.push({
+              code: "PARSER_FAILED", block: "delegado",
+              message: `No se entendió la nómina de ${donde}: ${parsed.reason}`,
+            });
+            return;
+          }
+          // Cargos que el portal marcó pero que vinieron inservibles. Se
+          // reportan acá; el repositorio ya sabe que no debe borrarlos.
+          for (const w of parsed.data.warnings ?? []) {
+            warnings.push({ code: "PARSER_FAILED", block: "delegado", message: `${donde}: ${w.reason}` });
+          }
+          delegadosBySection.set(`${a.courseCode}|${a.sectionCode}`, { delegados: parsed.data, observedAt });
+        }));
+
+        // Que el sidebar y el consolidado de matrícula no coincidan en NADA es
+        // señal de un cambio en el portal, no de un salón sin delegado.
+        //
+        // Se mide contra las aulas que el sidebar DECLARÓ, no contra las
+        // nóminas que sobrevivieron a la descarga. Medirlo sobre las
+        // sobrevivientes hacía que una caída de red —todas las nóminas
+        // fallando— se reportara además como "el portal cambió", que es
+        // sencillamente falso y manda a soporte a buscar donde no es. Es el
+        // mismo error de diagnóstico que este módulo ya se prohíbe a sí mismo
+        // en el mensaje de SYLLABUS_UNAVAILABLE.
+        const matriculado = new Set(mat.data.rows.map((r) => `${r.courseCode}|${r.sectionCode}`));
+        const empatan = aulas.data.filter((x) => matriculado.has(`${x.courseCode}|${x.sectionCode}`)).length;
+        if (aulas.data.length > 0 && empatan === 0) {
+          warnings.push({
+            code: "PARSER_FAILED", block: "delegado",
+            message: "Ninguna de las aulas del panel de delegados empató con tu matrícula.",
+          });
+        }
+      }
+    } catch {
+      warnings.push({
+        code: "DELEGADOS_UNAVAILABLE", block: "delegado",
+        message: "No se pudo abrir el panel de delegados en miUlima.",
+      });
+    }
+
     const activeBeforeTx = await this.repository.findActivePeriod();
     // La fecha de inicio del período entrante se conoce ANTES del upsert (sale
     // de KNOWN_PERIOD_CALENDARS/defaultPeriodDates, no de la BD): la misma
@@ -184,6 +278,11 @@ export class PortalSyncService {
     );
     const period = await this.repository.runInTransaction(async (tx) => {
       const p = await this.repository.upsertPeriod(tx, ciclo.data.periodCode, activate);
+
+      // Los datos de terceros mueren con su ciclo: es lo que hace defendible
+      // guardarlos sin consentimiento. Va acá porque `upsertPeriod` es el
+      // único cierre de ciclo que existe hoy en el repo (no hay cron).
+      summary.claimsDeleted += await this.repository.deleteClaimsOfInactivePeriods(tx, p.id);
       if (p.created) {
         await this.repository.ensureAcademicWeeks(tx, p.id, p.startDate, p.endDate);
         if (!hasPublishedCalendar(p.code)) {
@@ -253,12 +352,28 @@ export class PortalSyncService {
         sectionIdByCourse.set(row.courseCode, sec.id);
         keepSectionIds.push(sec.id);
 
+        // Claims: acá y no antes, porque `section_id` recién existe ahora.
+        const deleg = delegadosBySection.get(`${row.courseCode}|${row.sectionCode}`);
+        if (deleg) {
+          const r = await this.repository.upsertRepresentativeClaims(
+            tx, sec.id, deleg.delegados, deleg.observedAt,
+          );
+          summary.claimsUpserted += r.upserted;
+          summary.claimsDeleted += r.deleted;
+        }
+
         // Nota final del récord para ESTE curso y ciclo, si ya existe.
         const finalGrade = rec.ok
           ? (rec.data.find((x) => x.periodCode === p.code && x.courseCode === row.courseCode)?.grade ?? null)
           : null;
-        await this.repository.upsertEnrollment(tx, studentId, sec.id, finalGrade);
+        // El retorno se CAPTURA: la promoción necesita el `enrollment_id`, y
+        // por eso va acá y no junto al claim de arriba.
+        const enr = await this.repository.upsertEnrollment(tx, studentId, sec.id, finalGrade);
         summary.enrollmentsUpserted++;
+
+        if (await this.repository.promoteClaimIfAny(tx, sec.id, enr.id, userCode)) {
+          summary.representativesPromoted++;
+        }
       }
 
       if (horario.ok) {
@@ -370,6 +485,19 @@ export class PortalSyncService {
       return p;
     });
 
+    // Token re-firmado si esta importación otorgó un cargo. El rol viaja
+    // DENTRO del JWT y hoy solo se calcula en el login, así que sin esto el
+    // recién promovido no vería su pestaña hasta volver a entrar.
+    //
+    // El rol se relee de la BD ya confirmada, nunca se deriva del claim: quien
+    // ya era delegado en otra sección no puede quedar degradado por haber sido
+    // promovido a subdelegado en esta.
+    let token: string | null = null;
+    if (summary.representativesPromoted > 0 && this.auth) {
+      const position = await this.repository.findActiveRepresentativePosition(studentId);
+      if (position) token = await this.auth.reissueToken(userId, position);
+    }
+
     return {
       period: { id: period.id, code: period.code, created: period.created },
       identity: {
@@ -379,6 +507,7 @@ export class PortalSyncService {
       },
       summary,
       warnings,
+      token,
     };
   }
 }

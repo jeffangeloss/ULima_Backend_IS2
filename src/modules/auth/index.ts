@@ -11,6 +11,10 @@ const authController = new AuthController(authService);
 
 export const authRoutes = createAuthRoutes(authController);
 
+/** Se exporta la MISMA instancia (no una nueva) para que portal-sync pueda
+ *  re-firmar el token del alumno que acaba de ser promovido a delegado. */
+export { authService };
+
 export { AuthController } from "./auth.controller.js";
 export { AuthRepository } from "./auth.repository.js";
 export { AuthService } from "./auth.service.js";

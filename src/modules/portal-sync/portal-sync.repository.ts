@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
-import type { RecordRow, SyllabusEntry } from "./portal-sync.types.js";
+import type { DelegadosNomina, RecordRow, SyllabusEntry } from "./portal-sync.types.js";
 
 /** Transacción de Drizzle/postgres-js; se tipa laxo para no acoplar a la versión. */
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -310,6 +310,28 @@ export class PortalSyncRepository {
     return rows[0] ? { id: Number(rows[0].id), code: rows[0].code } : null;
   }
 
+  /**
+   * Cargo vigente del alumno en CUALQUIER sección, para re-firmar el token.
+   *
+   * Se consulta después de que la transacción confirma y NO se deriva del claim
+   * recién promovido: alguien que ya era `delegate` en otra sección y acaba de
+   * ser promovido a `subdelegate` en esta no puede terminar con un token
+   * degradado. Por eso `delegate` gana el desempate.
+   */
+  async findActiveRepresentativePosition(
+    studentId: number,
+  ): Promise<"delegate" | "subdelegate" | null> {
+    const rows = (await this.database.execute(sql`
+      select sr.position
+      from section_representative sr
+      join enrollment e on e.id = sr.enrollment_id
+      where e.student_id = ${studentId} and sr.is_active = true
+      order by case when sr.position = 'delegate' then 0 else 1 end
+      limit 1
+    `)) as unknown as Array<{ position: "delegate" | "subdelegate" }>;
+    return rows[0]?.position ?? null;
+  }
+
   async findUserCode(userId: number): Promise<string | null> {
     const rows = (await this.database.execute(sql`
       select code, full_name as "fullName" from app_user where id = ${userId} limit 1
@@ -501,6 +523,164 @@ export class PortalSyncRepository {
       returning id, (xmax = 0) as "created"
     `)) as unknown as Array<{ id: number; created: boolean }>;
     return { id: Number(rows[0].id), created: Boolean(rows[0].created) };
+  }
+
+  // ── Delegados del portal ──────────────────────────────────────────────────
+
+  /**
+   * Deja en `section_representative_claim` exactamente lo que el portal publica
+   * para esta sección.
+   *
+   * Un cargo PRESENTE se upsertea; un cargo AUSENTE se borra: si el salón
+   * revocó a su delegado, el portal es la fuente de verdad y dejar el claim
+   * viejo haría que la app mintiera el resto del ciclo. El borrado es seguro
+   * porque nadie referencia a esta tabla — la prohibición de `delete` vale
+   * para `section_representative`, cuya fila es padre de `announcement`.
+   *
+   * El upsert es CONDICIONADO por `observed_at`. Dos alumnos de la misma
+   * sección pueden sincronizar con segundos de diferencia y confirmar en orden
+   * inverso al de observación; sin el `where`, quedaría persistida la
+   * observación más vieja. `observedAt` es el instante de la respuesta HTTP,
+   * no el del INSERT: la descarga ocurre fuera de la transacción.
+   *
+   * Ausencia de claim NO desactiva a un `section_representative` real: un
+   * claim nunca revoca permisos por sí solo.
+   */
+  async upsertRepresentativeClaims(
+    tx: Tx, sectionId: number, delegados: DelegadosNomina, observedAt: Date,
+  ): Promise<{ upserted: number; deleted: number }> {
+    let upserted = 0;
+    let deleted = 0;
+
+    // Un cargo que el portal SÍ marcó pero que se descartó por dato inservible
+    // no se toca: no se escribe (no hay dato válido) pero TAMPOCO se borra.
+    // Borrarlo sería leer un problema de formato como una revocación del salón
+    // y tirar un claim bueno de una importación anterior.
+    const descartadas = new Set((delegados.warnings ?? []).map((w) => w.position));
+
+    for (const position of ["delegate", "subdelegate"] as const) {
+      if (descartadas.has(position)) continue;
+      const persona = position === "delegate" ? delegados.delegate : delegados.subdelegate;
+
+      if (!persona) {
+        const gone = (await tx.execute(sql`
+          delete from section_representative_claim
+          where section_id = ${sectionId} and position = ${position}::representative_position
+          returning id
+        `)) as unknown as Array<{ id: number }>;
+        deleted += gone.length;
+        continue;
+      }
+
+      const rows = (await tx.execute(sql`
+        insert into section_representative_claim
+          (section_id, position, student_code, full_name, observed_at)
+        values (${sectionId}, ${position}::representative_position,
+                ${persona.code}, ${persona.fullName}, ${observedAt.toISOString()}::timestamptz)
+        on conflict on constraint uq_section_representative_claim_position do update
+          set student_code = excluded.student_code,
+              full_name    = excluded.full_name,
+              observed_at  = excluded.observed_at
+          where excluded.observed_at > section_representative_claim.observed_at
+        returning id
+      `)) as unknown as Array<{ id: number }>;
+      upserted += rows.length;
+    }
+
+    return { upserted, deleted };
+  }
+
+  /**
+   * Si el portal señala a ESTE alumno como representante de ESTA sección, le da
+   * el cargo de verdad. Devuelve el cargo otorgado, o `null` si no había claim
+   * suyo acá.
+   *
+   * Dos trampas del esquema, las dos capaces de tumbar la importación entera:
+   *
+   * 1. `uq_active_section_representative_position` es un índice único PARCIAL y
+   *    no diferible, así que primero hay que DESACTIVAR al ocupante anterior.
+   *    Misma lección que `upsertPeriod`.
+   * 2. `enrollment_id` tiene un UNIQUE PLANO: una fila desactivada sigue
+   *    ocupando el valor. Por eso el `on conflict` va sobre `enrollment_id` y
+   *    no sobre `(section_id, position)`. Con el target equivocado, la SEGUNDA
+   *    importación del mismo delegado lanza 23505 y, como toda la escritura
+   *    vive en una sola transacción, hace rollback de notas, horario y
+   *    matrícula. De paso, pasar de delegado a subdelegado en la misma sección
+   *    es un UPDATE y no una segunda fila que el UNIQUE hace imposible.
+   */
+  async promoteClaimIfAny(
+    tx: Tx, sectionId: number, enrollmentId: number, studentCode: string,
+  ): Promise<"delegate" | "subdelegate" | null> {
+    const claim = (await tx.execute(sql`
+      select position from section_representative_claim
+      where section_id = ${sectionId} and student_code = ${studentCode}
+      order by position
+      limit 1
+    `)) as unknown as Array<{ position: "delegate" | "subdelegate" }>;
+
+    const position = claim[0]?.position ?? null;
+    if (!position) return null;
+
+    await tx.execute(sql`
+      update section_representative set is_active = false
+      where section_id = ${sectionId}
+        and position = ${position}::representative_position
+        and is_active = true
+        and enrollment_id <> ${enrollmentId}
+    `);
+
+    await tx.execute(sql`
+      insert into section_representative (section_id, enrollment_id, position, is_active)
+      values (${sectionId}, ${enrollmentId}, ${position}::representative_position, true)
+      on conflict (enrollment_id) do update
+        set section_id = excluded.section_id,
+            position   = excluded.position,
+            is_active  = true
+    `);
+
+    return position;
+  }
+
+  /**
+   * Borra los claims de todo período que ya no esté activo.
+   *
+   * Es lo que hace defendible guardar el nombre y el código de alguien que no
+   * es usuario de la app y no dio su consentimiento: el dato muere con su
+   * ciclo. Corre dentro de la transacción de la importación, después de
+   * `upsertPeriod`, que es el único evento de cierre de ciclo que existe hoy
+   * en el repo (no hay cron ni scheduler).
+   *
+   * Se barre por "período inactivo" y no por "el período que este UPDATE acaba
+   * de desactivar": así también se limpian los ciclos que quedaron cerrados
+   * antes de que esta función existiera, y la operación es idempotente.
+   *
+   * PERO el período que se está importando queda EXCLUIDO siempre, aunque esté
+   * inactivo. `shouldActivatePeriod` devuelve false para un ciclo creado antes
+   * de su fecha de inicio —el caso que el service reporta como
+   * PERIOD_NOT_ACTIVATED_YET—, y `upsertPeriod` lo escribe con
+   * `is_active = false`. Sus claims son del ciclo VIGENTE para el alumno, no
+   * de uno cerrado: sin esta exclusión, una segunda importación hecha todavía
+   * antes de la fecha de inicio los borra al abrir la transacción, y solo se
+   * reescriben las secciones cuya nómina se pudo descargar y parsear (RS-17
+   * degrada por aula). Las demás quedan sin delegado hasta que otro import
+   * tenga suerte.
+   *
+   * LÍMITE CONOCIDO: el disparador es la primera importación del ciclo nuevo,
+   * no un reloj. Si nadie importa durante meses, los claims del ciclo viejo
+   * sobreviven ese tiempo.
+   */
+  async deleteClaimsOfInactivePeriods(tx: Tx, currentPeriodId: number): Promise<number> {
+    const rows = (await tx.execute(sql`
+      delete from section_representative_claim c
+      using section s, course_offering co, academic_period ap
+      where c.section_id = s.id
+        and s.course_offering_id = co.id
+        and co.academic_period_id = ap.id
+        and ap.is_active = false
+        and ap.id <> ${currentPeriodId}
+      returning c.id
+    `)) as unknown as Array<{ id: number }>;
+    return rows.length;
   }
 
   async countActiveEnrollments(tx: Tx, studentId: number): Promise<number> {

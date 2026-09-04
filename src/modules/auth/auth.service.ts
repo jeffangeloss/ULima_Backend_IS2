@@ -255,6 +255,75 @@ export class AuthService {
   }
 
   /**
+   * RS-18 (delegados desde el portal): re-emite el JWT del alumno cuando la
+   * importación acaba de promoverlo a delegado o subdelegado, para que el rol
+   * nuevo viaje en el token sin obligarlo a volver a iniciar sesión.
+   *
+   * **NO se llama a `incrementTokenVersion`, y no es un olvido del patrón que
+   * usa el login.** Se re-firma con el `token_version` VIGENTE y lo único que
+   * cambia es `role`; ese es el motivo entero de que este método exista en vez
+   * de reusar el camino de login. Hay Single Active Session: `authMiddleware`
+   * compara el `tokenVersion` del JWT contra `app_user.token_version` en CADA
+   * petición y responde 401 si difieren. Incrementarlo acá invalidaría el token
+   * que la app está usando en ese mismo instante —el de la importación en
+   * curso—, y el `ApiClient` de Flutter trata TODO 401 como expiración de
+   * sesión y cierra la sesión: darle a alguien el rol de delegado lo echaría de
+   * la app. Es la misma razón por la que portal-sync eligió 409 y no 401 para
+   * la sesión inválida del portal. Quien "arregle" esto agregando el
+   * incremento rompe la feature completa.
+   *
+   * El `role` llega calculado por el llamador con `findActiveRepresentation`
+   * DESPUÉS de que la transacción confirmó, nunca derivado del claim recién
+   * promovido: a alguien que ya era `delegate` en otra sección no se lo puede
+   * degradar a `subdelegate` por una promoción nueva.
+   *
+   * Los demás campos que `signToken` exige (`code`, `studentId`) y la versión
+   * se releen de la BD con `findById` —el mismo repositorio del que los saca el
+   * login— en vez de recibirlos por parámetro: así se firma la versión que
+   * `app_user` tiene AHORA. Entre el login del alumno y esta re-emisión pudo
+   * haber un cambio de contraseña, que sí sube la versión
+   * (`updatePasswordAndInvalidateSessions`); firmar una versión traída de
+   * memoria emitiría un token nacido muerto.
+   *
+   * Devuelve `null` en lugar de lanzar cuando el usuario no se puede leer: la
+   * promoción ya quedó confirmada en BD y un fallo acá no puede tumbar una
+   * importación que ya escribió notas, horario y matrícula (RQ-6). Sin token
+   * nuevo el rol solo queda rancio hasta el próximo login y no otorga nada
+   * —`SectionManagementService.requireRepresentative` revalida sección por
+   * sección—, que es exactamente la degradación simétrica que RS-18 ya acepta
+   * en el caso contrario (al representante desactivado tampoco se le toca la
+   * sesión). El campo del contrato es `ImportResult.token: string | null`.
+   */
+  async reissueToken(userId: number, role: AppRole): Promise<string | null> {
+    // Un token docente lleva `teacherId` y no `studentId`, y ningún docente se
+    // promueve desde la importación: `section_representative` cuelga de
+    // `enrollment`, que es de alumno. Se corta acá para no firmar nunca un
+    // token de alumno con rol docente, que `authMiddleware` rechazaría con 401
+    // por falta de la claim que ese rol exige.
+    if (role === "teacher") return null;
+
+    try {
+      const user = await this.repository.findById(userId, role);
+      // Sin fila de alumno no hay `studentId` que firmar. No se inventa el
+      // token: el llamador reporta `token: null` y el rol se actualiza solo
+      // en el próximo login.
+      if (!user) return null;
+
+      return this.signToken({
+        userId: user.id,
+        studentId: user.studentId,
+        code: user.code,
+        role,
+        // Versión vigente leída de app_user, deliberadamente sin incrementar.
+        tokenVersion: user.tokenVersion,
+      });
+    } catch (e) {
+      console.error('DB Error in auth.service reissueToken', e);
+      return null;
+    }
+  }
+
+  /**
    * HU20: solicita un código de restablecimiento por código de alumno o correo
    * institucional. Siempre responde el mismo mensaje genérico (200), exista o
    * no la cuenta, para no permitir enumeración de usuarios.

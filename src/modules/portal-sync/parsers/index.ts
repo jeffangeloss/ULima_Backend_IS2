@@ -6,3 +6,4 @@ export { parseHorario } from "./horario.js";
 export { parseRecordAcademico } from "./record.js";
 export { parseImpedimentos, parseInfoAcademica } from "./info-academica.js";
 export { parseSyllabusEntry } from "./silabo.js";
+export { parseAulas, parseDelegados } from "./delegado.js";

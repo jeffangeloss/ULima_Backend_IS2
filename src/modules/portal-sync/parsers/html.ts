@@ -35,3 +35,33 @@ export const tdsOf = (tr: string): string[] => tr.match(/<td[\s\S]*?<\/td>/gi) ?
 /** Texto ya normalizado de cada celda (`td` o `th`) de una fila. */
 export const cellsOf = (tr: string): string[] =>
   (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) ?? []).map((td) => clean(stripTags(td)));
+
+/** Escapa un literal para incrustarlo en un `RegExp` construido en caliente. */
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * `value` CRUDO del `<input>` que se llama exactamente `name`, o `null` si no
+ * hay tal input (o si el tag no trae `value=`).
+ *
+ * Existe por la nómina de delegados: ahí el código y el nombre del alumno viven
+ * en el atributo `value` de dos inputs `readonly` y NO en el texto de la celda,
+ * así que `cellsOf` devuelve cadena vacía sobre esas dos columnas.
+ *
+ * El nombre se compara COMPLETO —la comilla de cierre es parte del patrón—
+ * porque ese formulario hace convivir `prm_sCoUser_1` con `prm_sCoUser_10` y
+ * `prm_sCoUser_29` con `prm_sCoUserDlgd`: un `includes` o una regex sin cerrar
+ * devolvería el input equivocado.
+ *
+ * Devuelve el valor sin normalizar: quien lo consuma decide si le aplica `clean`
+ * (el código y el nombre sí; un identificador numérico interno puede no querer).
+ */
+export const inputValueByName = (html: string, name: string): string | null => {
+  const n = escapeRe(name);
+  const tag = html.match(
+    new RegExp(`<input\\b[^>]*\\bname\\s*=\\s*(?:"${n}"|'${n}'|${n}(?=[\\s>]))[^>]*>`, "i"),
+  )?.[0];
+  if (!tag) return null;
+  const v = tag.match(/\bvalue\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s">]*))/i);
+  if (!v) return null;
+  return v[1] ?? v[2] ?? v[3] ?? "";
+};
