@@ -91,13 +91,21 @@ export class AlertsService {
       }
     }
 
-    // Return all alerts augmented with course info
-    const alerts = await this.repository.getAlerts(studentId);
-    return this.augmentAlerts(alerts, courseMap);
-    // Retornar solo alertas del período activo actual para evitar que alertas
-    // de semestres anteriores aparezcan en el buzón del alumno.
+    // Solo las alertas del período ACTIVO: las de ciclos anteriores no tienen
+    // por qué seguir en el buzón.
+    //
+    // `alert` no tiene columna de período —solo student_id y created_at—, así
+    // que el corte es por fecha contra el inicio del ciclo vigente. Sin período
+    // activo no se filtra, que es el comportamiento de siempre.
+    //
+    // Este filtro ya estaba escrito, pero quedó DEBAJO de un `return`: era
+    // código muerto y nunca corrió. Aquella versión además se saltaba
+    // `augmentAlerts`, así que activarla tal cual habría dejado a cada alerta
+    // sin su información de curso. Detectado el 2026-09-04, con el buzón
+    // mostrando alertas de 2026-1 estando en 2026-2.
     const periodStart = await this.repository.getActivePeriodStart();
-    return await this.repository.getAlerts(studentId, periodStart ?? undefined);
+    const alerts = await this.repository.getAlerts(studentId, periodStart ?? undefined);
+    return this.augmentAlerts(alerts, courseMap);
   }
 
   async markAlertAsRead(studentId: number, alertId: number): Promise<boolean> {

@@ -475,3 +475,63 @@ describe("[UNIT TEST] Lógica pura de alertas académicas (alerts.logic.ts)", ()
     expect(ACADEMIC_RISK_MAX_AVERAGE).toBe(10.5);  // verifica que el umbral de promedio sigue en 10.5
   });
 });
+
+/**
+ * ============================================================================
+ * REGRESIÓN — el buzón se acota al período ACTIVO (2026-09-04)
+ * ============================================================================
+ * `alert` no tiene columna de período: solo `student_id` y `created_at`. El
+ * corte por ciclo se hace pasándole a `getAlerts` la fecha de inicio del
+ * período vigente.
+ *
+ * Ese filtro ya estaba escrito en el servicio, pero DEBAJO de un `return`: era
+ * código muerto y nunca corrió, así que el alumno seguía viendo en 2026-2 las
+ * alertas de 2026-1. Aquella versión muerta además devolvía las alertas sin
+ * pasar por `augmentAlerts`, o sea sin la información de curso.
+ */
+describe("[REGRESIÓN] el buzón se acota al período activo", () => {
+  test("le pasa a getAlerts la fecha de inicio del período vigente", async () => {
+    const repo = makeRepo();
+    const inicio = new Date("2026-08-03T00:00:00.000Z");
+    repo.getActivePeriodStart = mock(async () => inicio as Date | null);
+    const svc = new AlertsService(repo as never);
+
+    await svc.getAlertsForStudent(1);
+
+    // Lo que importa: el segundo argumento. Sin él se listan TODAS las alertas
+    // históricas del alumno, que es justo el bug reportado.
+    expect(repo.getAlerts).toHaveBeenCalledWith(1, inicio);
+  });
+
+  test("sin período activo no se filtra, en vez de vaciar el buzón", async () => {
+    // Degradación elegida: preferimos mostrar de más a dejar al alumno sin
+    // alertas si la base todavía no tiene un ciclo marcado como activo.
+    const repo = makeRepo();
+    const svc = new AlertsService(repo as never);
+
+    await svc.getAlertsForStudent(1);
+
+    expect(repo.getAlerts).toHaveBeenCalledWith(1, undefined);
+  });
+
+  test("las alertas devueltas siguen pasando por augmentAlerts", async () => {
+    // La versión muerta se saltaba este paso: activarla tal cual habría dejado
+    // cada alerta sin su información de curso.
+    const repo = makeRepo();
+    repo.getActivePeriodStart = mock(async () => new Date("2026-08-03") as Date | null);
+    repo.getAlerts = mock(async () => ([
+      {
+        id: 7, studentId: 1, type: "academic_risk",
+        title: "Riesgo Académico: Base de Datos",
+        message: "…", isRead: false, createdAt: new Date("2026-08-20"),
+      },
+    ] as StoredAlert[]));
+    const svc = new AlertsService(repo as never);
+
+    const out = await svc.getAlertsForStudent(1);
+
+    expect(out).toHaveLength(1);
+    expect(out[0].title).toBe("Riesgo Académico: Base de Datos");
+  });
+});
+
