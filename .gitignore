@@ -58,3 +58,6 @@ backup_*.sql
 reports/
 .vercel
 .env*
+
+# Salidas del extractor de asesorías: Excel/PDF de la facultad con Zoom personales, NO se versionan.
+scripts/out/
