@@ -1,3 +1,4 @@
+import { partirNombre as splitName } from "../../../shared/utils/nombre-persona.js";
 import type { db } from "../../../db/index.js";
 import { sql } from "drizzle-orm";
 import type {
@@ -14,16 +15,6 @@ const dayName = (day: number) =>
 
 const hhmm = (time: string | null) => (time ? time.slice(0, 5) : "");
 
-const splitName = (fullName: string) => {
-  if (fullName.includes(",")) {
-    const parts = fullName.split(",");
-    return { lastName: parts[0].trim(), firstName: parts.slice(1).join(",").trim() };
-  }
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length > 2) return { lastName: parts.slice(0, 2).join(" "), firstName: parts.slice(2).join(" ") };
-  if (parts.length === 2) return { lastName: parts[0], firstName: parts[1] };
-  return { firstName: fullName, lastName: "" };
-};
 
 type SessionRow = {
   id: number;

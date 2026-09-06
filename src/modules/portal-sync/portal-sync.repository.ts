@@ -449,6 +449,13 @@ export class PortalSyncRepository {
       if (!elegido.teacher_code) {
         await tx.execute(sql`update teacher set teacher_code = ${code} where id = ${elegido.id}`);
       }
+      // El nombre SÍ se refresca. Los docentes importados antes del 2026-09-06
+      // quedaron con los nombres antes que los apellidos y al mostrarlos salía
+      // "JAVIER MORE, SANCHEZ"; el portal ahora los entrega con la coma que
+      // marca el corte. Sin esto, esas filas no se arreglarían nunca.
+      if (elegido.full_name !== name) {
+        await tx.execute(sql`update teacher set full_name = ${name} where id = ${elegido.id}`);
+      }
       return { id: Number(elegido.id), created: false };
     }
 

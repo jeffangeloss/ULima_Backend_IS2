@@ -1,3 +1,4 @@
+import { partirNombre as splitName } from "../../shared/utils/nombre-persona.js";
 import type { db } from "../../db/index.js";
 import { sql } from "drizzle-orm";
 import type {
@@ -65,14 +66,6 @@ type TeacherRow = {
   teacher_id: number;
 };
 
-
-const splitName = (fullName: string) => {
-  const parts = fullName.trim().split(/\s+/);
-  return {
-    firstName: parts.length > 1 ? parts.slice(0, -1).join(" ") : fullName,
-    lastName: parts.length > 1 ? parts[parts.length - 1] : "",
-  };
-};
 
 /**
  * PISO de ciclos que se dan por cumplidos. NO es una afirmación sobre las notas

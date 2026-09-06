@@ -1,3 +1,4 @@
+import { partirNombre as splitName } from "../../shared/utils/nombre-persona.js";
 import { Hono, type Context } from "hono";
 import type { CourseDetailController } from "./course-detail.controller.js";
 import { sql } from "drizzle-orm";
@@ -7,33 +8,6 @@ import {
 } from "../../shared/middleware/auth-middleware.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 
-const splitName = (fullName: string) => {
-  if (fullName.includes(",")) {
-    const parts = fullName.split(",");
-    return {
-      lastName: parts[0].trim(),
-      firstName: parts.slice(1).join(",").trim(),
-    };
-  }
-  
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length > 2) {
-    return {
-      lastName: parts.slice(0, 2).join(" "),
-      firstName: parts.slice(2).join(" "),
-    };
-  } else if (parts.length === 2) {
-    return {
-      lastName: parts[0],
-      firstName: parts[1],
-    };
-  }
-  
-  return {
-    firstName: fullName,
-    lastName: "",
-  };
-};
 
 export const createCourseDetailRoutes = (controller: CourseDetailController) => {
   const app = new Hono<{ Variables: AuthVariables }>();
