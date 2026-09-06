@@ -10,6 +10,8 @@ targets:
   - ../../../src/server.ts
   - ../../../src/shared/middleware/rate-limit.ts
   - ../../../src/db/schema/schema.ts
+  - ../../../src/db/seed/equivalencias.ts
+  - ../../../src/db/seed/equivalencias.logic.ts
   - ../../../drizzle/**
   - ../../../test/HU31_jeff/**
 ---
@@ -17,6 +19,8 @@ targets:
 # Portal Sync
 
 > Estado: **aprobada e implementada**. Revisada el 2026-09-02 contra el esquema real, los fixtures del portal y las convenciones del repo; las correcciones de esa revisión ya están incorporadas. Se agregó el sílabo (nueva fuente Domino, `cactus.ulima.edu.pe`) el mismo día, aprobado por el owner (ver §SSO, §Sílabos, §Decisiones); ese lote pasó por una revisión independiente y sus hallazgos también están incorporados (`on conflict do nothing` sin target, presupuesto de ejecución corregido y limitaciones conocidas en §Sincronización paso 12). Pendiente: aplicar en la base de datos real la migración `drizzle/0004_portal_sync_final_grade.sql` y correr la verificación manual end-to-end contra el portal miUlima (ver §Verification). Quedan además decisiones sueltas sin resolver que no bloquean el desarrollo (ver §Decisiones pendientes).
+>
+> **Ampliación 2026-09-06 — equivalencias de malla (§Equivalencias de malla).** Segundo intento de emparejamiento del récord contra la malla vigente, para los cursos cuyo código quedó en el plan anterior (26 de los 53 aprobados del récord real medido). Implementado y probado. **Pendiente de aplicar en la BD**: `drizzle/0008_course_equivalence.sql` y luego `bun run db:seed:equivalencias -- --apply` (aditivo, con backup, según el runbook de `MIGRATIONS.md`). Cubre 14 de los 26; los 12 de Estudios Generales esperan la tabla oficial 2026-1 ↔ 2025-1 y **no se inventan**.
 
 ## Contexto
 
@@ -264,8 +268,16 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
 9. **Matrícula** — `enrollment` por `uq_enrollment_student_section`, `status = active`. Las horas de asistencia no se tocan. **Retiro**: solo se marcan `withdrawn` las matrículas del alumno **cuya sección pertenece al período importado** (join `section → course_offering → academic_period`; `enrollment` no tiene columna de período). **Nunca se ejecuta el retiro si dejaría al alumno con cero matrículas activas**: ambos logins exigen `hasActiveEnrollment` y lo dejarían fuera de la app sin poder volver a importar (RS-BE-8). En ese caso no se retira nada y se reporta `WITHDRAW_SKIPPED_WOULD_LOCK_OUT`. La lista de secciones a conservar (`keep`) es TODA sección tocada en la importación, sin colapsar por curso: dos filas del mismo curso con distinta sección (columna `GR.`) deben conservarse ambas.
    `[@test] ../../../test/HU31_jeff/repository.student.test.ts`
    `[@test] ../../../test/HU31_jeff/service.import.test.ts`
-10. **Progreso** — `student_course_progress` por `uq_student_course_progress (student_id, curriculum_course_id)`, con `curriculum_id` (`NOT NULL`) = `student.curriculum_id`. Se resuelve `curriculum_course` por `course.code` dentro de la malla del alumno; si el curso no está en la malla la fila se omite y se cuenta en `warnings.progressSkipped` (convalidaciones, cursos de otra facultad, códigos legados). Estado: `approved` si `grade >= 11`, `failed` si `grade < 11`, `in_progress` si no hay nota y la fila es del período activo. Filas de ciclos pasados sin nota numérica se omiten y se reportan. Con varias filas del mismo curso (columna `VEZ`) gana la de **mayor `VEZ`**; a igual `VEZ`, la de ciclo más reciente.
+10. **Progreso** — `student_course_progress` por `uq_student_course_progress (student_id, curriculum_course_id)`, con `curriculum_id` (`NOT NULL`) = `student.curriculum_id`. Estado: `approved` si `grade >= 11`, `failed` si `grade < 11`, `in_progress` si no hay nota y la fila es del período activo. Filas de ciclos pasados sin nota numérica se omiten y se reportan. Con varias filas del mismo curso (columna `VEZ`) gana la de **mayor `VEZ`**; a igual `VEZ`, la de ciclo más reciente.
+
+    El `curriculum_course` se resuelve en **dos intentos**, cada uno en UNA sola consulta (no una por curso):
+    a. **Directo** — `course.code` dentro de la malla del alumno (`findCurriculumCourseIds`).
+    b. **Por equivalencia** — solo con los códigos que sobraron de (a): `course_equivalence` por `(curriculum_id, legacy_code)` (`findEquivalentCurriculumCourseIds`). No se consulta si no sobró nada, para no gastar un viaje dentro de la transacción. Ver §Equivalencias de malla.
+
+    Un código que no resuelve por ninguno de los dos se omite y se cuenta en `summary.progressSkipped`, con el warning `PROGRESS_SKIPPED` (convalidaciones, cursos de otra facultad, códigos legados aún sin equivalencia). Lo recuperado por (b) se cuenta aparte en `summary.progressViaEquivalence`.
     `[@test] ../../../test/HU31_jeff/repository.student.test.ts`
+    `[@test] ../../../test/HU31_jeff/repository.equivalencias.test.ts`
+    `[@test] ../../../test/HU31_jeff/service.equivalencias.test.ts`
 11. **Impedimentos** — si hay deuda o impedimento se hace upsert de **una sola** `alert` por alumno y período, con `type = 'academic_risk'`, `title` (`NOT NULL`) = `"Impedimento de matrícula"` y `message` = el texto del portal. Idempotente: si ya existe una alerta de ese alumno con ese título y mensaje, **no se crea otra aunque esté leída**; solo se actualiza el mensaje si cambió.
 12. **Sílabos** — `syllabus`, con **`on conflict do nothing` SIN conflict target**. Los sílabos de todos los cursos importados se buscan **en paralelo** (§Sílabos, §Cliente del portal) DESPUÉS de resolver la identidad y ANTES de abrir la transacción (misma razón que matrícula/récord: son peticiones de red, no deben mantener la conexión de BD abierta), y se resuelven por **curso**, no por fila: dos secciones del mismo curso comparten una sola oferta y un solo sílabo. Dentro de la transacción, cada sílabo se inserta justo después de que su `course_offering` existe (`upsertOffering`, paso 7), que es la clave que exige `syllabus.course_offering_id`.
     - **Columnas históricas, decisión del owner (2026-09-02)**: `syllabus.drive_file_id` recibe el UNID de Domino y `syllabus.drive_file_url` la URL de `vSyllabusXCicloAV`. Las columnas conservan sus nombres actuales (`drive_file_id`/`drive_file_url`) SIN migración ni rename, aunque ya no signifiquen solo Google Drive — hoy también guardan la referencia al documento Domino. Comentario en el código donde se escriben, dejando constancia de que el nombre es histórico.
@@ -280,6 +292,39 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
     `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
     `[@test] ../../../test/HU31_jeff/repository.syllabus.test.ts`
     `[@test] ../../../test/HU31_jeff/service.import.test.ts`
+
+### Equivalencias de malla (`course_equivalence`)
+
+La malla de Ingeniería de Sistemas cambió al plan **2026-1**, y en la BD hay **una sola** malla (`curriculum` id 1) de la que cuelgan todos los alumnos. El récord académico, en cambio, es histórico: un alumno de ciclo alto trae buena parte de sus cursos con los códigos de la malla anterior, que ya no existen en `curriculum_course`. Con solo el match directo del paso 10.a esas filas se omiten para siempre.
+
+Medido sobre el récord real de 20235218 (`spike-portal/fixtures/10_gada_servlets_ComandoListarRecordAcademico_ac_1.html`): de **53 cursos aprobados, 27 calzan por código y 26 no**.
+
+**Tabla** `course_equivalence` (migración `drizzle/0008_course_equivalence.sql`):
+
+| columna | tipo | nota |
+| --- | --- | --- |
+| `id` | identity PK | |
+| `curriculum_id` | → `curriculum.id` | la malla **destino** (la vigente) |
+| `legacy_code` | `varchar(30)` | el código tal como lo trae el récord |
+| `curriculum_course_id` | integer | el curso equivalente en la malla vigente |
+| `source` | `varchar(120)` | de qué documento oficial salió la equivalencia |
+
+- `uq_course_equivalence (curriculum_id, legacy_code)`: un código legado tiene **una** equivalencia por malla.
+- FK **compuesta** `(curriculum_course_id, curriculum_id)` → `uq_curriculum_course_id_curriculum`, en vez de una simple a `curriculum_course.id`: hace imposible que una equivalencia apunte a un curso de otra malla. Ese único ya existía en el esquema sin ninguna FK que lo usara.
+- N→1 permitido a propósito (dos cursos viejos fusionados en uno nuevo); no hay unique sobre `curriculum_course_id`.
+- `legacy_code` **no** es FK a `course.code`: los códigos viejos no están en `course` y no deben crearse ahí (paso 5: el récord nunca crea `course`).
+
+**Desempate antes de escribir.** El segundo intento hace posible que dos filas del récord caigan en el mismo `curriculum_course`, algo que con solo el match directo no podía pasar porque el llamador ya agrupa por código. Importa porque `upsertProgressBatch` lleva `distinct on (curriculum_course_id)` **sin `order by`**: dos filas con la misma clave darían un ganador arbitrario. Reglas, aplicadas en el service antes del upsert (`ganaProgreso`):
+
+1. El match **directo gana** sobre el de equivalencia. Si el alumno tiene en su récord el código viejo y el nuevo del mismo curso, manda lo que dice el código vigente.
+2. A igual procedencia gana el **mejor estado**: `approved` > `in_progress` > `failed`. Aprobar la mitad de un curso fusionado no se pierde porque su otra mitad esté desaprobada. (`student_course_status` también tiene `withdrawn`, pero el récord nunca lo produce.)
+
+**Seed** — `src/db/seed/equivalencias.ts` (`bun run db:seed:equivalencias`), human-gated con `--apply` igual que `db:seed:docentes`: dry-run por defecto. Las parejas viven como datos en `equivalencias.logic.ts` en la forma `código legado → código vigente`, y el seed resuelve el código vigente contra `curriculum_course` al aplicar: los ids de `curriculum_course` **no se hardcodean nunca**, son de la instancia y no del documento. Un código vigente que no exista en la malla se **reporta y no se inserta**. Avisa además si un código "legado" sigue vivo en la malla vigente (sería letra muerta: el match directo ya lo resuelve). Es `on conflict do nothing`, así que re-correrlo es inocuo, y solo escribe en `course_equivalence`: no crea cursos ni toca el progreso de ningún alumno.
+`[@test] ../../../test/HU31_jeff/seed.equivalencias.test.ts`
+
+**Cobertura actual y hueco declarado.** El seed arranca con las **14** equivalencias de facultad (ciclos 3-7) que da `tabla_de_equivalencia_de_plan_de_estudios_v3.pdf`. Ese documento es **2025-1 ↔ 2025-0**, de una generación anterior, y por eso no cubre los **12** restantes del caso medido, todos de Estudios Generales: `6505`, `510002`, `510001`, `6506`, `6382`, `6510`, `5686`, `650001`, `6512`, `6513`, `1472`, `4380`. Para esos hace falta la tabla oficial **2026-1 ↔ 2025-1**, que aún no se tiene. **No se inventan**: viven en `SIN_EQUIVALENCIA_CONOCIDA` con una prueba que verifica que NO estén en la tabla, y entran al seed cuando exista el documento. Mientras tanto siguen contando en `PROGRESS_SKIPPED`.
+
+**El piso por nivel se queda.** `approvedLevelsFor` (`src/modules/auth/auth.repository.ts`) y el recorte de `levelFromCoverage` (paso 4) **no se tocan**. Esta tabla mejora el emparejamiento pero no lo completa —los 12 de EEGG, más convalidaciones y cursos de otra facultad, siguen sin mapear—, así que el piso sigue siendo la red de seguridad y no un parche temporal.
 
 ### Fuera de alcance explícito
 

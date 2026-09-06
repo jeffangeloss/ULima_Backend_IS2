@@ -94,6 +94,18 @@ ROLLBACK y la BD queda intacta.
 
 ## Migraciones aplicadas / reconciliaciones
 
+- **`drizzle/0008_course_equivalence.sql` (equivalencias de malla) — ⏳ PENDIENTE DE APLICAR.** Aditiva y no destructiva: crea la tabla `course_equivalence` (código de la malla anterior → `curriculum_course` de la vigente), su unique `uq_course_equivalence (curriculum_id, legacy_code)` y **una FK compuesta** `(curriculum_course_id, curriculum_id)` → `uq_curriculum_course_id_curriculum`, que impide apuntar a un curso de otra malla. No toca ninguna tabla existente. Diseño en `specs/features/portal-sync/portal-sync.spec.md` §Equivalencias de malla. Runbook, con datos móviles y backup previo:
+  ```bash
+  bun run db:migrate
+  ```
+  ```bash
+  bun run db:seed:equivalencias
+  ```
+  ```bash
+  bun run db:seed:equivalencias -- --apply
+  ```
+  El seed es dry-run por defecto e idempotente (`on conflict do nothing`); solo escribe en `course_equivalence`. Verificación: `to_regclass('course_equivalence')`, 14 filas sembradas, y una importación de prueba desde el portal cuyo `summary.progressViaEquivalence` sea > 0 y cuyo `progressSkipped` haya bajado.
+
 - **`drizzle/0001_flowery_jack_flag.sql` (HU27 — carnet de networking) — ✅ APLICADA a prod (2026-07-11)** con `bun run db:migrate`. Aditiva y no-destructiva: enum `social_platform` + tabla `user_social_link` + columna `app_user.networking_opt_in boolean default false NOT NULL`. Diseño en `specs/features/networking/networking.spec.md`. BD lista para que meltiruiz implemente HU27.
 - **Reconciliación de drift (2026-07-11)**: la BD viva tenía una columna `teacher.linkedin_link varchar(500)` agregada **directamente en la BD** (fuera de Drizzle y del schema.ts — un compañero empezó networking por su lado). Estaba 100% en NULL. Se **dropeó** (`ALTER TABLE teacher DROP COLUMN linkedin_link`) para eliminar el drift y consolidar el networking en el diseño de HU27 (`user_social_link` sobre `app_user`, que cubre alumnos **y** docentes). Backup previo de `teacher` (175 filas) tomado antes del drop.
 - **`drizzle/0002_slim_miracleman.sql` (HU19 — estado de simulación `simulated_available`) — ✅ APLICADA a prod (2026-07-11)**. Agrega el valor `simulated_available` al enum `curriculum_simulation_status` (habilita simular "des-aprobar" un curso: aprobado→disponible; antes el `PUT /curriculum/me/simulation` daba 400). ⚠️ **GOTCHA: `ALTER TYPE ... ADD VALUE` NO corre dentro de una transacción** → `bun run db:migrate` (y `db:apply`, que envuelven en transacción) **fallan** con ese error, PERO el valor **igual se agrega** (ADD VALUE es no-transaccional y no se revierte). Reconciliación hecha: se verificó que el enum ya tenía el valor y se **selló manualmente la 0002** en `drizzle.__drizzle_migrations` (insert de `hash=sha256(0002.sql)` + `created_at=journal.when`) → `db:migrate` volvió a quedar no-op. **Para futuros `ADD VALUE`**: correr el `ALTER TYPE` en autocommit (sin `sql.begin`) y luego sellar la migración, en vez de `db:migrate`.

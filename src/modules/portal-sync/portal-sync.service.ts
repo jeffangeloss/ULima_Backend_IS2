@@ -22,9 +22,32 @@ import type {
 const emptySummary = (): ImportSummary => ({
   coursesCreated: 0, teachersCreated: 0, sectionsCreated: 0, sectionsUpdated: 0,
   sessionsUpserted: 0, enrollmentsUpserted: 0, enrollmentsWithdrawn: 0,
-  progressUpserted: 0, progressSkipped: 0, alertsCreated: 0, syllabiUpserted: 0,
+  progressUpserted: 0, progressSkipped: 0, progressViaEquivalence: 0,
+  alertsCreated: 0, syllabiUpserted: 0,
   claimsUpserted: 0, claimsDeleted: 0, representativesPromoted: 0, alertsDeleted: 0,
 });
+
+/** `approved` > `in_progress` > `failed`. `student_course_status` también tiene
+ *  `withdrawn`, pero el récord académico nunca lo produce: `progressStatusFor`
+ *  solo devuelve estos tres o `null`. */
+const RANGO_PROGRESO: Record<ProgressStatus, number> = { approved: 3, in_progress: 2, failed: 1 };
+
+/**
+ * Desempate entre dos filas del récord que caen en el MISMO `curriculum_course`.
+ * Solo es posible desde que hay segundo intento por equivalencia.
+ *
+ * 1. El match DIRECTO gana: si el alumno tiene en su récord el código viejo y el
+ *    nuevo del mismo curso, manda lo que dice el código de la malla vigente.
+ * 2. A igual procedencia, gana el MEJOR estado: aprobar la mitad de un curso
+ *    fusionado no se pierde porque la otra mitad esté desaprobada.
+ */
+const ganaProgreso = (
+  candidato: { status: ProgressStatus; directo: boolean },
+  previo: { status: ProgressStatus; directo: boolean },
+): boolean => {
+  if (candidato.directo !== previo.directo) return candidato.directo;
+  return RANGO_PROGRESO[candidato.status] > RANGO_PROGRESO[previo.status];
+};
 
 export class PortalSyncService {
   constructor(
@@ -428,14 +451,48 @@ export class PortalSyncService {
           tx, student.curriculumId, conEstado.map((x) => x.code),
         );
 
-        // 3. UNA sentencia: todo el progreso. Un curso del récord que no está
-        // en la malla (convalidación, código antiguo) se omite igual que antes.
-        const aEscribir: Array<{ curriculumCourseId: number; status: ProgressStatus }> = [];
+        // 2b. SEGUNDO intento, SOLO con lo que sobró: la malla cambió al plan
+        // 2026-1 y el récord es histórico, así que un alumno de ciclo alto trae
+        // buena parte de sus cursos con códigos que ya no existen en
+        // `curriculum_course` (26 de los 53 aprobados en el récord real de
+        // 20235218). `course_equivalence` los mapea a la malla vigente.
+        //
+        // No se consulta si no sobró nada: sería un viaje de más DENTRO de la
+        // transacción de la importación, que es justo lo que el lote evita.
+        const sinMallaDirecta = conEstado.filter((x) => !ccIdPorCodigo.has(x.code));
+        const ccIdPorLegado = sinMallaDirecta.length
+          ? await this.repository.findEquivalentCurriculumCourseIds(
+            tx, student.curriculumId, sinMallaDirecta.map((x) => x.code),
+          )
+          : new Map<string, number>();
+
+        // 3. UNA sentencia: todo el progreso. Un curso que no resuelve por
+        // ninguno de los dos caminos (convalidación, o código legado que aún no
+        // está en `course_equivalence`) se omite igual que antes.
+        //
+        // Se colapsa por `curriculum_course_id` ANTES de escribir. Con el match
+        // directo solo esto no podía pasar —el llamador ya agrupa por código—,
+        // pero por equivalencia sí: el código viejo y el nuevo del mismo curso
+        // en el mismo récord, o dos cursos viejos fusionados en uno. Y
+        // `upsertProgressBatch` desempata con `distinct on (curriculum_course_id)`
+        // SIN `order by`, así que dejarle dos filas con la misma clave sería un
+        // ganador arbitrario.
+        const mejorPorCurso = new Map<number, { status: ProgressStatus; directo: boolean }>();
         for (const { code, status } of conEstado) {
-          const ccId = ccIdPorCodigo.get(code);
+          const idDirecto = ccIdPorCodigo.get(code);
+          const ccId = idDirecto ?? ccIdPorLegado.get(code);
           if (!ccId) { summary.progressSkipped++; continue; }
-          aEscribir.push({ curriculumCourseId: ccId, status });
+          const candidato = { status, directo: idDirecto !== undefined };
+          const previo = mejorPorCurso.get(ccId);
+          if (!previo || ganaProgreso(candidato, previo)) mejorPorCurso.set(ccId, candidato);
         }
+        const aEscribir = [...mejorPorCurso].map(([curriculumCourseId, v]) => (
+          { curriculumCourseId, status: v.status }
+        ));
+        // Cuenta CURSOS DE LA MALLA que entraron por equivalencia, no filas del
+        // récord: así es comparable con `progressUpserted` y dos códigos viejos
+        // fusionados en uno cuentan una vez.
+        summary.progressViaEquivalence += [...mejorPorCurso.values()].filter((v) => !v.directo).length;
         // Se cuenta lo que la base dice haber escrito, no lo que se intentó.
         summary.progressUpserted += await this.repository.upsertProgressBatch(
           tx, studentId, student.curriculumId, aEscribir,

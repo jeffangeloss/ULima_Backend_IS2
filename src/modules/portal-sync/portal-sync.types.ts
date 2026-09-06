@@ -67,7 +67,13 @@ export interface SyncWarning { code: WarningCode; block: string; message: string
 export interface ImportSummary {
   coursesCreated: number; teachersCreated: number; sectionsCreated: number; sectionsUpdated: number;
   sessionsUpserted: number; enrollmentsUpserted: number; enrollmentsWithdrawn: number;
-  progressUpserted: number; progressSkipped: number; alertsCreated: number; syllabiUpserted: number;
+  progressUpserted: number; progressSkipped: number;
+  /** Cursos DE LA MALLA cuyo progreso entró por `course_equivalence` y no por
+   *  código directo. Cuenta cursos y no filas del récord, para que sea
+   *  comparable con `progressUpserted`: dos códigos viejos fusionados en uno
+   *  cuentan una vez. Existe para medir cuánto aporta la tabla sin leer la BD. */
+  progressViaEquivalence: number;
+  alertsCreated: number; syllabiUpserted: number;
   claimsUpserted: number; claimsDeleted: number; representativesPromoted: number;
   alertsDeleted: number;
 }

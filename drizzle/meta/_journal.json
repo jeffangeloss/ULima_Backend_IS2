@@ -50,6 +50,13 @@
       "when": 1788529818489,
       "tag": "0006_delegado_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788717739032,
+      "tag": "0008_course_equivalence",
+      "breakpoints": true
     }
   ]
 }

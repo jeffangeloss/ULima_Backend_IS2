@@ -813,6 +813,42 @@ export class PortalSyncRepository {
   }
 
   /**
+   * SEGUNDO intento de emparejamiento: los códigos que `findCurriculumCourseIds`
+   * no resolvió, buscados en `course_equivalence`.
+   *
+   * La malla cambió al plan 2026-1 y el récord académico es histórico, así que
+   * un alumno de ciclo alto trae buena parte de sus cursos con códigos que ya
+   * no existen en `curriculum_course`. Sobre el récord real de 20235218, 26 de
+   * sus 53 cursos aprobados no calzaban por código y se perdían con el warning
+   * `PROGRESS_SKIPPED`.
+   *
+   * Misma forma que `findCurriculumCourseIds` y por las mismas razones: UN solo
+   * viaje para todos los códigos —esto corre dentro de la transacción de la
+   * importación— y los códigos como UN parámetro JSON, nunca un arreglo de JS
+   * interpolado (`= any(${array})` renderiza un constructor de fila y Postgres
+   * lo rechaza con 42809) ni un `string_to_array` que una coma rompería en
+   * silencio.
+   *
+   * `uq_course_equivalence (curriculum_id, legacy_code)` garantiza una fila por
+   * código, así que no hace falta desempatar acá. Un código sin equivalencia
+   * simplemente no vuelve: no es un error, es el estado normal de todo lo que
+   * todavía no está en la tabla.
+   */
+  async findEquivalentCurriculumCourseIds(
+    tx: Tx, curriculumId: number, legacyCodes: string[],
+  ): Promise<Map<string, number>> {
+    const codigos = [...new Set(legacyCodes)];
+    if (!codigos.length) return new Map();
+    const rows = (await tx.execute(sql`
+      select ce.legacy_code as "code", ce.curriculum_course_id::int as "id"
+      from course_equivalence ce
+      where ce.curriculum_id = ${curriculumId}
+        and ce.legacy_code = any(select json_array_elements_text(${JSON.stringify(codigos)}::json))
+    `)) as unknown as Array<{ code: string; id: number }>;
+    return new Map(rows.map((r) => [String(r.code), Number(r.id)]));
+  }
+
+  /**
    * Escribe TODO el progreso en UNA sentencia (ver `findCurriculumCourseIds`).
    *
    * Mantiene exactamente la semántica de la versión de a uno: mismo conflict
