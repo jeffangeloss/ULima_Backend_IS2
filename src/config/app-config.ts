@@ -4,6 +4,16 @@ export const config = {
   db: {
     url: env.DATABASE_URL,
   },
+  /** Fotos de perfil. `enabled` en false deja la feature apagada sin romper
+   *  nada: todos se siguen viendo con iniciales. */
+  cloudinary: {
+    cloudName: env.CLOUDINARY_CLOUD_NAME,
+    apiKey: env.CLOUDINARY_API_KEY,
+    apiSecret: env.CLOUDINARY_API_SECRET,
+    get enabled() {
+      return Boolean(env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET);
+    },
+  },
   auth: {
     jwtSecret: env.JWT_SECRET,
     jwtExpiresIn: env.JWT_EXPIRES_IN,

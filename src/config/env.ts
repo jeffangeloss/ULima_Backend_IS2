@@ -43,6 +43,13 @@ const envSchema = z.object({
   // Clave de API de Resend para enviar correos transaccionales (restablecer contraseña).
   // Si está vacía y NODE_ENV !== 'production', el OTP se loguea en consola con prefijo [DEV ONLY].
   RESEND_API_KEY: z.string().optional().default(""),
+  // Cloudinary (fotos de perfil). Opcionales: sin ellas la app funciona igual y
+  // todos se ven con iniciales, que es el estado de hoy. El SECRET nunca sale
+  // del backend y se define como variable de entorno en Vercel: el repo es
+  // público y el APK es descargable por cualquiera.
+  CLOUDINARY_CLOUD_NAME: z.string().optional().default(""),
+  CLOUDINARY_API_KEY: z.string().optional().default(""),
+  CLOUDINARY_API_SECRET: z.string().optional().default(""),
   // Remitente de los correos enviados con Resend, formato "Nombre <correo@dominio>".
   // Default = dominio verificado del proyecto (DKIM/SPF/DMARC en mail.grupo5app.lat):
   // así, aun si RESEND_FROM no está seteada en algún entorno, NO se envía desde
