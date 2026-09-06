@@ -65,6 +65,7 @@ type TeacherRow = {
   teacher_id: number;
 };
 
+
 const splitName = (fullName: string) => {
   const parts = fullName.trim().split(/\s+/);
   return {
@@ -73,6 +74,29 @@ const splitName = (fullName: string) => {
   };
 };
 
+/**
+ * PISO de ciclos que se dan por cumplidos. NO es una afirmación sobre las notas
+ * del alumno: es el relleno de lo que no se pudo emparejar contra la malla.
+ *
+ * La malla cambió, así que el récord de un alumno de ciclo alto trae buena
+ * parte de sus cursos con los códigos de la malla ANTERIOR, que no existen en
+ * `curriculum_course`; lo mismo pasa con convalidaciones. En la importación
+ * real esas filas se omiten (el warning PROGRESS_SKIPPED de portal-sync) y por
+ * eso la cobertura de los ciclos bajos queda llena de huecos: 20233903, que
+ * está en ciclo 8, tiene 0/6, 2/6, 0/6, 2/6 y 3/6 obligatorios aprobados en los
+ * ciclos 1..5. Nadie llega a ciclo 8 sin aprobar el 1: el hueco es del
+ * emparejamiento, no del alumno.
+ *
+ * Es el mismo recorte —y por la misma razón— que hace `levelFromCoverage` en
+ * portal-sync.repository.ts.
+ *
+ * Es un PISO y nunca un techo: el nivel no acota lo que el alumno pudo aprobar.
+ * El plan de estudios pide requisitos POR CURSO, no por ciclo (AUDITORÍA, ciclo
+ * 8, solo exige GESTIÓN FINANCIERA, ciclo 6), así que adelantarse de ciclo es
+ * normal. Lo que el alumno aprobó de verdad se SUMA encima de este piso en
+ * `buildUser`; sin esa suma, un aprobado del propio ciclo o de uno superior
+ * quedaba invisible.
+ */
 const approvedLevelsFor = (currentLevel: number | null) => {
   if (currentLevel == null || currentLevel <= 1) return [];
   return Array.from({ length: currentLevel - 1 }, (_, index) => index + 1);
@@ -449,9 +473,10 @@ export class AuthRepository {
   }
 
   private async buildUser(row: UserRow, role: AppRole): Promise<AuthUser> {
-    const [specialties, currentCourses] = await Promise.all([
+    const [specialties, currentCourses, approvedCourseIds] = await Promise.all([
       this.findActiveSpecialties(Number(row.student_id)),
       this.findCurrentCourses(Number(row.student_id), Number(row.curriculum_id)),
+      this.findApprovedCourseIds(Number(row.student_id)),
     ]);
 
     const primary = specialties.find((specialty) => specialty.selectionType === "primary")?.specialtyId ?? null;
@@ -490,9 +515,33 @@ export class AuthRepository {
       especialidades_interes: interest,
       especialidades: combined,
       specialties,
+      // La malla se arma con la UNIÓN de dos cosas, no con una sola:
+      //
+      //   approvedLevels    → piso para lo que no se pudo emparejar (ver
+      //                       `approvedLevelsFor`). Sin él, los obligatorios de
+      //                       ciclos bajos que quedaron fuera del emparejamiento
+      //                       figurarían pendientes y bloquearían por
+      //                       prerrequisito media malla.
+      //   approvedCourseIds → lo que el alumno aprobó DE VERDAD, curso por
+      //                       curso, según lo que importó portal-sync.
+      //
+      // Antes solo viajaba el piso, con la lista de ids fija en `[]`. Eso hacía
+      // que un curso se viera aprobado únicamente si su ciclo era MENOR al del
+      // alumno, así que un aprobado del propio ciclo o de uno superior
+      // desaparecía (20233903 con AUDITORÍA, ciclo 8; 20235218 con GESTIÓN DE
+      // PROYECTOS, ciclo 9) y NINGÚN electivo aprobado se mostraba jamás.
+      //
+      // `approvedElectives` repite `approvedCourseIds` a propósito: es el único
+      // campo de ids que sabe leer el Flutter ya instalado
+      // (malla_logic.dart hace `approved.addAll(progress.approvedElectives)`),
+      // y ese cliente une ambas fuentes igual que acá. Llenarlo arregla la
+      // malla de las apps ya publicadas sin esperar una nueva versión. Cuando
+      // no queden clientes viejos, este campo se borra y queda solo el de
+      // arriba, que es el que dice la verdad en su nombre.
       courseProgress: {
         approvedLevels: approvedLevelsFor(currentLevel),
-        approvedElectives: [],
+        approvedCourseIds,
+        approvedElectives: approvedCourseIds,
         currentCourses,
       },
     };
@@ -516,6 +565,37 @@ export class AuthRepository {
       name: row.name,
       selectionType: row.selection_type,
     }));
+  }
+
+  /**
+   * Cursos de la malla que el alumno tiene APROBADOS, uno por uno.
+   *
+   * Es la lectura que faltaba: `student_course_progress` la escribe portal-sync
+   * en cada importación y hasta ahora solo la leían el cálculo de nivel
+   * (`findCycleCoverage`) y el chatbot; la malla, que es quien la necesita para
+   * pintar los cursos completados, nunca la consultaba.
+   *
+   * Solo `approved`. `in_progress` viaja aparte en `currentCourses` (son cosas
+   * distintas: uno lo estás llevando, el otro ya lo cerraste) y `failed` no es
+   * progreso cumplido — si entrara, la malla desbloquearía cursos por un
+   * requisito que el alumno no aprobó.
+   *
+   * No se filtra por `curriculum_id`: la fila ya cuelga del curso concreto de
+   * la malla (`curriculum_course_id`), así que el id devuelto solo puede ser de
+   * la malla del alumno. Se devuelven como string porque así viaja el id de
+   * curso en toda esta respuesta (`currentCourses` hace lo mismo) y así lo
+   * compara el cliente.
+   */
+  private async findApprovedCourseIds(studentId: number): Promise<string[]> {
+    const rows = await this.database.execute(sql`
+      select curriculum_course_id
+      from student_course_progress
+      where student_id = ${studentId}
+        and status = 'approved'
+      order by curriculum_course_id
+    `) as unknown as Array<{ curriculum_course_id: number }>;
+
+    return rows.map((r) => String(r.curriculum_course_id));
   }
 
   private async findCurrentCourses(studentId: number, curriculumId: number): Promise<AuthCurrentCourse[]> {

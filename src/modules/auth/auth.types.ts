@@ -71,7 +71,15 @@ export type AuthUser = {
   especialidades: number[];
   specialties: AuthSpecialty[];
   courseProgress: {
+    // PISO, no verdad: los ciclos por debajo del nivel del alumno se dan por
+    // cumplidos para tapar lo que no se pudo emparejar (cambio de malla,
+    // convalidaciones, códigos antiguos). Ver buildUser en auth.repository.ts.
     approvedLevels: number[];
+    // Ids de `curriculum_course` REALMENTE aprobados, de student_course_progress.
+    approvedCourseIds: string[];
+    // LEGADO: mismo contenido que `approvedCourseIds`. El Flutter ya publicado
+    // solo sabe leer ids por este campo; se sigue llenando para que la malla
+    // se arregle sin obligar a reinstalar la app. Ver buildUser.
     approvedElectives: string[];
     currentCourses: AuthCurrentCourse[];
   };
