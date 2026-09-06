@@ -101,3 +101,52 @@ export const planDeSiembra = (
   }
   return { aInsertar, sinCursoVigente };
 };
+
+/**
+ * Forma mínima de la etiqueta de plantilla de `postgres.js`. Las consultas del
+ * seed la reciben como parámetro para poder probarlas sin base de datos.
+ *
+ * Devuelve `any` a propósito: el tipo `Sql` de postgres.js está sobrecargado
+ * (además de la plantilla, `sql(valor)` devuelve un `Helper` cuyo `then` es
+ * privado), y TypeScript resuelve esa otra firma al asignarlo a una de una sola
+ * sobrecarga. Cada consulta declara su propia forma de retorno abajo.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type SqlTag = (trozos: TemplateStringsArray, ...valores: any[]) => any;
+
+/**
+ * OJO — este seed corre sobre `postgres.js`, NO sobre la plantilla `sql` de
+ * Drizzle. Las dos tienen reglas OPUESTAS para un arreglo de JS:
+ *
+ *   - Drizzle lo expande como constructor de fila: `any(($1,$2))`, que Postgres
+ *     rechaza con 42809. De ahí `intArray` y el truco del parámetro JSON en
+ *     `portal-sync.repository.ts`.
+ *   - postgres.js lo serializa como arreglo de Postgres nativo, y `= any($1)`
+ *     funciona tal cual. Pero si le pasas un STRING con un cast `::json`, lo
+ *     vuelve a serializar y llega un escalar: `json_typeof` da `string` y
+ *     Postgres falla con "cannot call json_array_elements_text on a scalar".
+ *
+ * Trasladar acá la solución de Drizzle rompió el dry-run contra la BD real el
+ * 2026-09-06. Los códigos van como ARREGLO y sin cast.
+ */
+export const consultarCursosVigentes = (
+  sql: SqlTag, curriculumId: number, codigosVigentes: string[],
+) => sql`
+    select c.code, cc.id::int as curriculum_course_id
+    from curriculum_course cc
+    join course c on c.id = cc.course_id
+    where cc.curriculum_id = ${curriculumId}
+      and c.code = any(${codigosVigentes})
+  ` as PromiseLike<Array<{ code: string; curriculum_course_id: number }>>;
+
+/** Códigos "legados" que TODAVÍA viven en la malla vigente: el match directo de
+ *  portal-sync ya los resuelve, así que su equivalencia sería letra muerta. */
+export const consultarLegadosVivos = (
+  sql: SqlTag, curriculumId: number, codigosLegados: string[],
+) => sql`
+    select c.code
+    from curriculum_course cc
+    join course c on c.id = cc.course_id
+    where cc.curriculum_id = ${curriculumId}
+      and c.code = any(${codigosLegados})
+  ` as PromiseLike<Array<{ code: string }>>;

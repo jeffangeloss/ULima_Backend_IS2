@@ -19,6 +19,7 @@ import "dotenv/config";
 import postgres from "postgres";
 import {
   EQUIVALENCIAS, FUENTE, SIN_EQUIVALENCIA_CONOCIDA,
+  consultarCursosVigentes, consultarLegadosVivos,
   planDeSiembra, problemasDeLaTabla,
 } from "./equivalencias.logic.js";
 
@@ -71,18 +72,9 @@ async function main() {
 
   // 2. Resolver los códigos VIGENTES contra la malla. Los ids de
   //    `curriculum_course` son de la instancia, nunca del documento.
-  // Los códigos viajan como UN parámetro JSON y no como arreglo, igual que en
-  // `portal-sync.repository.ts`: es la forma que este repo ya tiene probada
-  // contra Postgres, y no depende de cómo el driver de turno serialice un
-  // arreglo de JS (ver el 42809 documentado en `intArray`).
-  const vigentes = JSON.stringify(EQUIVALENCIAS.map((e) => e.vigente));
-  const filas = (await sql`
-    select c.code, cc.id::int as curriculum_course_id
-    from curriculum_course cc
-    join course c on c.id = cc.course_id
-    where cc.curriculum_id = ${malla.id}
-      and c.code = any(select json_array_elements_text(${vigentes}::json))
-  `) as unknown as Array<{ code: string; curriculum_course_id: number }>;
+  const filas = await consultarCursosVigentes(
+    sql, malla.id, EQUIVALENCIAS.map((e) => e.vigente),
+  );
   const idPorCodigo = new Map(filas.map((f) => [String(f.code), Number(f.curriculum_course_id)]));
 
   const { aInsertar, sinCursoVigente } = planDeSiembra(EQUIVALENCIAS, idPorCodigo);
@@ -90,14 +82,9 @@ async function main() {
   // 3. Chequeo de sanidad: un código "legado" que TODAVÍA existe en la malla no
   //    es legado. El match directo de portal-sync ya lo resuelve y la
   //    equivalencia sería, en el mejor caso, letra muerta.
-  const legados = JSON.stringify(EQUIVALENCIAS.map((e) => e.legacy));
-  const legadosVivos = (await sql`
-    select c.code
-    from curriculum_course cc
-    join course c on c.id = cc.course_id
-    where cc.curriculum_id = ${malla.id}
-      and c.code = any(select json_array_elements_text(${legados}::json))
-  `) as unknown as Array<{ code: string }>;
+  const legadosVivos = await consultarLegadosVivos(
+    sql, malla.id, EQUIVALENCIAS.map((e) => e.legacy),
+  );
 
   console.log(`Plan (fuente: ${FUENTE}):`);
   for (const f of aInsertar) {

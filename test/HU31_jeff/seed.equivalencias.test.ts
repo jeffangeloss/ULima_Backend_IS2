@@ -3,6 +3,8 @@ import {
   EQUIVALENCIAS,
   FUENTE,
   SIN_EQUIVALENCIA_CONOCIDA,
+  consultarCursosVigentes,
+  consultarLegadosVivos,
   planDeSiembra,
   problemasDeLaTabla,
 } from "../../src/db/seed/equivalencias.logic.js";
@@ -92,5 +94,56 @@ describe("planDeSiembra", () => {
     const { aInsertar, sinCursoVigente } = planDeSiembra(EQUIVALENCIAS, new Map());
     expect(aInsertar).toEqual([]);
     expect(sinCursoVigente).toHaveLength(14);
+  });
+});
+
+/**
+ * Regresión: el seed corre sobre `postgres.js`, NO sobre la plantilla `sql` de
+ * Drizzle. Son dos drivers con reglas opuestas para un arreglo de JS:
+ *
+ *   - Drizzle expande el arreglo como constructor de fila → `any(($1,$2))` →
+ *     Postgres lo rechaza con 42809. Por eso existe `intArray` y por eso
+ *     `findCurriculumCourseIds` manda los códigos como un parámetro JSON.
+ *   - postgres.js serializa el arreglo como arreglo de Postgres nativo, y
+ *     `= any($1)` funciona. Pero si le das un STRING con un cast `::json`, lo
+ *     vuelve a serializar: `json_typeof` sale `string` y Postgres falla con
+ *     "cannot call json_array_elements_text on a scalar".
+ *
+ * Trasladar la solución de Drizzle a este seed rompió el dry-run contra la BD
+ * real el 2026-09-06. Estas pruebas fijan que los códigos viajen como ARREGLO.
+ */
+describe("las consultas del seed hablan postgres.js, no Drizzle", () => {
+  const sqlEspia = () => {
+    const llamadas: Array<{ texto: string; valores: unknown[] }> = [];
+    const tag = (trozos: TemplateStringsArray, ...valores: unknown[]) => {
+      llamadas.push({ texto: trozos.join("?"), valores });
+      return Promise.resolve([] as unknown[]);
+    };
+    return { tag, llamadas };
+  };
+
+  test("los códigos vigentes viajan como arreglo, no como JSON stringificado", async () => {
+    const { tag, llamadas } = sqlEspia();
+    await consultarCursosVigentes(tag, 1, ["650055", "560042"]);
+    const codigos = llamadas[0]!.valores[1];
+    expect(Array.isArray(codigos)).toBe(true);
+    expect(codigos).toEqual(["650055", "560042"]);
+  });
+
+  test("los códigos legados viajan como arreglo, no como JSON stringificado", async () => {
+    const { tag, llamadas } = sqlEspia();
+    await consultarLegadosVivos(tag, 1, ["650003", "1459"]);
+    expect(Array.isArray(llamadas[0]!.valores[1])).toBe(true);
+  });
+
+  test("ninguna de las dos castea a ::json", async () => {
+    // El cast es justo lo que dispara la doble serialización de postgres.js.
+    const { tag, llamadas } = sqlEspia();
+    await consultarCursosVigentes(tag, 1, ["650055"]);
+    await consultarLegadosVivos(tag, 1, ["650003"]);
+    for (const l of llamadas) {
+      expect(l.texto).toContain("= any(");
+      expect(l.texto).not.toContain("::json");
+    }
   });
 });
