@@ -155,6 +155,21 @@ targets:
 - `currentCycle` (`AuthUser.currentCycle: string | null`) es el `period_code` del primer curso actual. Si el alumno no tiene matrícula en el período activo (p. ej. antes de importar el ciclo nuevo desde el portal), cae al **código del período activo** (`AuthRepository.findActivePeriodCode`); si tampoco hay ningún período activo, es `null`. Nunca un ciclo hardcodeado en código.
   - El cliente Flutter (`lib/models/user_model.dart:137`) ya parsea `json['currentCycle'] as String? ?? '2026-1'`, así que un valor `null` es seguro de recibir: no rompe un campo no-nulo.
 
+### BR-AUTH-14: Progreso de malla — unión del piso por nivel y el progreso real por curso
+
+`courseProgress` es lo ÚNICO que el cliente usa para pintar qué cursos tiene completados en la malla (`ULima_Frontend_IS2/lib/domain/malla/malla_logic.dart`, `approvedCourseIdsForProgress`). El conjunto de aprobados es la **unión** de dos fuentes que se complementan:
+
+- **`approvedCourseIds: string[]`** — ids de `curriculum_course` con `student_course_progress.status = 'approved'` para el alumno (`AuthRepository.findApprovedCourseIds`). Es el progreso REAL, curso por curso, tal como lo escribió la importación de portal-sync. **Solo `approved`**: `in_progress` viaja aparte en `currentCourses` (son cosas distintas: uno lo estás llevando, el otro ya lo cerraste) y `failed` no es progreso cumplido — si entrara, la malla desbloquearía cursos por un requisito que el alumno no aprobó. No se filtra por `curriculum_id` porque la fila ya cuelga del curso concreto de la malla.
+- **`approvedLevels: number[]`** — `[1 .. currentLevel-1]` (`approvedLevelsFor`). Es un **PISO**, NO una afirmación sobre las notas del alumno: rellena lo que no se pudo emparejar contra la malla. Como la malla cambió, el récord de un alumno de ciclo alto trae buena parte de sus cursos con los códigos de la malla anterior, que no existen en `curriculum_course`, y la importación los omite (warning `PROGRESS_SKIPPED`, ver `portal-sync.spec.md`). Medido en producción: 20233903, que está en ciclo 8, tiene 0/6, 2/6, 0/6, 2/6 y 3/6 obligatorios aprobados en los ciclos 1..5. Nadie llega a ciclo 8 sin aprobar el 1: el hueco es del emparejamiento, no del alumno. Es el mismo recorte —y por la misma razón— que hace `levelFromCoverage` en `portal-sync.repository.ts`.
+- **`approvedElectives: string[]`** — **LEGADO**: repite exactamente `approvedCourseIds`. Es el único campo de ids que sabe leer el Flutter ya publicado, así que se sigue llenando para que la malla se corrija sin obligar a actualizar la app instalada. Se elimina cuando no queden clientes viejos; el nombre miente a propósito y por tiempo limitado.
+
+**El nivel es piso y NUNCA techo.** El plan de estudios pide requisitos POR CURSO, no por ciclo: `AUDITORÍA Y CONTROL DE SISTEMAS` (ciclo 8) solo exige `GESTIÓN FINANCIERA` (ciclo 6), y `GESTIÓN DE PROYECTOS` (ciclo 9) solo exige `AUDITORÍA`. Adelantarse de ciclo es normal, así que un curso aprobado del propio ciclo del alumno o de uno superior es información legítima y debe verse completado.
+
+Sustituir el piso por el progreso real (en vez de sumarlos) NO es una simplificación válida: dejaría ~23 obligatorios de ciclos bajos figurando pendientes y bloquearía media malla por prerrequisito.
+
+Antes de esta regla `approvedCourseIds` no existía y `approvedElectives` era el literal `[]`, así que un curso se veía completado **solo** si su ciclo era menor al del alumno, sin mirar su nota: 20233903 (ciclo 8) veía pendiente AUDITORÍA y 20235218 (ciclo 9) veía pendiente GESTIÓN DE PROYECTOS, ambos con su fila `approved` en la base, y ningún electivo aprobado aparecía jamás.
+  `[@test] ../../../test/HU31_jeff/auth.progreso-malla.test.ts`
+
 ## Endpoints
 
 ### POST /auth/login

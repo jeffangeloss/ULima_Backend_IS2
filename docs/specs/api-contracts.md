@@ -86,13 +86,36 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
   "setupComplete": false,
   "specialties": [
     { "specialtyId": 1, "name": "Ingeniería de Software", "selectionType": "primary" }
-  ]
+  ],
+  "courseProgress": {
+    "approvedLevels": [1, 2, 3, 4],
+    "approvedCourseIds": ["33", "41", "90"],
+    "approvedElectives": ["33", "41", "90"],
+    "currentCourses": [
+      {
+        "idSeccion": "12",
+        "codigoSeccion": "701",
+        "idCurso": "58",
+        "courseId": "58",
+        "nombre": "INGENIERÍA DE SOFTWARE II",
+        "period_code": "2026-2"
+      }
+    ]
+  }
 }
 ```
 
 Errores de login con código: `401 USER_NOT_FOUND`, `401 INVALID_PASSWORD`, `403 NOT_ENROLLED`. Errores adicionales de Google: `401 INVALID_TOKEN`, `403 INVALID_DOMAIN`.
 
 `User.currentCycle` es `string | null`: el `period_code` del curso actual del alumno si tiene matrícula en el período activo; si no tiene (p. ej. antes de importar el ciclo nuevo desde el portal), cae al código del período activo igual; `null` solo si no hay ningún período activo. Nunca un ciclo hardcodeado.
+
+`User.courseProgress` es lo único con lo que el cliente pinta los cursos completados de la malla. El conjunto de aprobados es la **unión** de `approvedLevels` y `approvedCourseIds`, no uno de los dos (ver `auth.spec.md` BR-AUTH-14):
+
+- `approvedCourseIds: string[]` — ids de `curriculum_course` con `student_course_progress.status = 'approved'`. Es el progreso real curso por curso. Solo `approved`: `in_progress` va en `currentCourses` y `failed` no cuenta.
+- `approvedLevels: number[]` — `[1 .. currentLevel-1]`. Es un **piso** que rellena lo que no se pudo emparejar contra la malla tras el cambio de plan de estudios (los cursos que la importación omite con `PROGRESS_SKIPPED`), no una afirmación sobre las notas. Es piso y nunca techo: los requisitos del plan son por curso, así que un aprobado del propio ciclo del alumno o de uno superior es legítimo y debe verse completado.
+- `approvedElectives: string[]` — **legado**, repite `approvedCourseIds`. Existe solo para que las apps Flutter ya instaladas —que únicamente leen este campo— reciban el progreso real sin actualizarse. Los clientes nuevos deben leer `approvedCourseIds`; este campo se retira cuando no queden clientes viejos.
+
+Un cliente que no conozca `approvedCourseIds` debe tratarlo como ausente y seguir usando `approvedElectives`; un cliente nuevo debe unir ambos, porque un backend anterior no manda el primero.
 
 ## Academic Profile
 
