@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
+import { mismaPersona } from "../../shared/utils/nombre-persona.js";
 import type { DelegadosNomina, RecordRow, SyllabusEntry } from "./portal-sync.types.js";
 
 /** Transacción de Drizzle/postgres-js; se tipa laxo para no acoplar a la versión. */
@@ -403,11 +404,59 @@ export class PortalSyncRepository {
     `);
   }
 
+  /**
+   * Docente por nombre, sin duplicar a quien ya está.
+   *
+   * Resolver solo por `teacher_code` —lo que hacía antes— no alcanza: las filas
+   * sembradas a mano no tienen código, así que la misma persona se insertaba de
+   * nuevo con el nombre en otro orden ("DIAZ PARRA, JOSE RAUL" sembrada vs
+   * "JOSE RAUL DIAZ PARRA" del portal). En producción eso dejó 11 grupos
+   * duplicados, y las secciones nuevas colgaban de la copia: un docente con
+   * cuenta dejaba de ver sus propias secciones.
+   *
+   * Orden: código (camino rápido y barato) → misma persona por conjunto de
+   * palabras → insertar. `teacher` son unos cientos de filas y se leen una vez
+   * por docente del ciclo, así que el escaneo no se nota; poner un índice sobre
+   * el nombre no serviría, porque lo que cambia es el ORDEN de las palabras.
+   */
   async upsertTeacher(tx: Tx, fullName: string) {
     const name = fullName || PLACEHOLDER_TEACHER;
+    const code = teacherCodeFor(fullName);
+
+    const porCodigo = (await tx.execute(sql`
+      select id from teacher where teacher_code = ${code} limit 1
+    `)) as unknown as Array<{ id: number }>;
+    if (porCodigo[0]) {
+      await tx.execute(sql`update teacher set full_name = ${name} where id = ${porCodigo[0].id}`);
+      return { id: Number(porCodigo[0].id), created: false };
+    }
+
+    const todos = (await tx.execute(sql`
+      select id, full_name, teacher_code, user_id from teacher
+    `)) as unknown as Array<{ id: number; full_name: string; teacher_code: string | null; user_id: number | null }>;
+    // `mismaPersona` exige igualdad exacta del conjunto de palabras: un apellido
+    // de más es otra persona. Acá se escribe en la base, así que no se adivina.
+    const iguales = todos.filter((t) => mismaPersona(t.full_name, name));
+    if (iguales.length) {
+      // Con cuenta primero: es la fila que esa persona usa para entrar, y
+      // colgarle las secciones a otra es justo el síntoma que se corrige.
+      const elegido = [...iguales].sort((a, b) =>
+        Number(Boolean(b.user_id)) - Number(Boolean(a.user_id))
+        || Number(Boolean(b.teacher_code)) - Number(Boolean(a.teacher_code))
+        || a.id - b.id)[0];
+      // Se le rellena el código solo si no tenía: pisar un `DOC00x` rompería el
+      // vínculo por el que el seed de cuentas docentes la encuentra.
+      if (!elegido.teacher_code) {
+        await tx.execute(sql`update teacher set teacher_code = ${code} where id = ${elegido.id}`);
+      }
+      return { id: Number(elegido.id), created: false };
+    }
+
+    // Nadie empata. El `on conflict` se conserva como red ante una carrera
+    // entre dos importaciones simultáneas del mismo docente.
     const rows = (await tx.execute(sql`
       insert into teacher (teacher_code, full_name)
-      values (${teacherCodeFor(fullName)}, ${name})
+      values (${code}, ${name})
       on conflict (teacher_code) do update set full_name = excluded.full_name
       returning id, (xmax = 0) as "created"
     `)) as unknown as Array<{ id: number; created: boolean }>;
