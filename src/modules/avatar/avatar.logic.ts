@@ -36,13 +36,22 @@ export const paramsAFirmar = (input: { publicId: string; timestamp: number }): R
   timestamp: String(input.timestamp),
 });
 
-/** Firma de subida, tal como Cloudinary la especifica: parámetros ordenados
- *  alfabéticamente como `k=v` unidos por `&`, más el secreto, en sha1. */
-export const firmaDeSubida = (input: { publicId: string; timestamp: number; apiSecret: string }): string => {
-  const params = paramsAFirmar(input);
-  const cadena = Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join("&");
-  return createHash("sha1").update(cadena + input.apiSecret).digest("hex");
-};
+/** sha1 de los parámetros ordenados alfabéticamente como `k=v` unidos por `&`,
+ *  más el secreto. Es el algoritmo que Cloudinary especifica para ambas firmas. */
+const firmar = (params: Record<string, string>, apiSecret: string): string =>
+  createHash("sha1")
+    .update(Object.keys(params).sort().map((k) => `${k}=${params[k]}`).join("&") + apiSecret)
+    .digest("hex");
+
+/** Firma de subida. */
+export const firmaDeSubida = (input: { publicId: string; timestamp: number; apiSecret: string }): string =>
+  firmar(paramsAFirmar(input), input.apiSecret);
+
+/** Firma para BORRAR la imagen. Va aparte de la de subida porque el borrado no
+ *  lleva `overwrite` ni `invalidate`, y firmar de más hace que Cloudinary
+ *  rechace la petición. */
+export const firmaDeBorrado = (input: { publicId: string; timestamp: number; apiSecret: string }): string =>
+  firmar({ public_id: input.publicId, timestamp: String(input.timestamp) }, input.apiSecret);
 
 /**
  * URL pública de la foto, construida al vuelo y NUNCA guardada: con la URL

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
-  TRANSFORMACION_AVATAR, construirUrlAvatar, firmaDeSubida, paramsAFirmar,
+  TRANSFORMACION_AVATAR, construirUrlAvatar, firmaDeBorrado, firmaDeSubida, paramsAFirmar,
   publicIdDe, puedeQuitarAvatar,
 } from "../../src/modules/avatar/avatar.logic.js";
 
@@ -60,6 +60,26 @@ describe("firmaDeSubida", () => {
   });
   test("el secreto no aparece en la firma", () => {
     expect(firmaDeSubida({ ...base, apiSecret: secreto })).not.toContain(secreto);
+  });
+});
+
+describe("firmaDeBorrado", () => {
+  const secreto = "secreto-de-prueba";
+  const base = { publicId: "ulima/avatars/42", timestamp: 1700000000 };
+
+  test("solo firma public_id y timestamp", () => {
+    // Firmar de más —arrastrando `overwrite` o `invalidate` de la subida— hace
+    // que Cloudinary rechace el borrado, y entonces la foto seguiría accesible
+    // por URL aunque la app dejara de mostrarla.
+    const esperado = createHash("sha1")
+      .update("public_id=ulima/avatars/42&timestamp=1700000000" + secreto)
+      .digest("hex");
+    expect(firmaDeBorrado({ ...base, apiSecret: secreto })).toBe(esperado);
+  });
+
+  test("es distinta de la firma de subida para los mismos datos", () => {
+    expect(firmaDeBorrado({ ...base, apiSecret: secreto }))
+      .not.toBe(firmaDeSubida({ ...base, apiSecret: secreto }));
   });
 });
 

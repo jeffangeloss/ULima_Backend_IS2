@@ -18,6 +18,9 @@ export type TeacherAuthUser = {
   lastName: string;
   institutionalEmail: string;
   email: string;
+  /** Foto de perfil ya transformada, o null si no subió ninguna: la app pinta
+   *  las iniciales, como siempre. Se construye al vuelo y no se guarda. */
+  avatarUrl: string | null;
   role: "teacher";
   teacherLabel: TeacherLabel;
   // Los docentes no pasan por el setup de carrera; fijo para el routing del frontend.
@@ -53,6 +56,9 @@ export type AuthUser = {
   lastName: string;
   institutionalEmail: string;
   email: string;
+  /** Foto de perfil ya transformada, o null si no subió ninguna: la app pinta
+   *  las iniciales, como siempre. Se construye al vuelo y no se guarda. */
+  avatarUrl: string | null;
   role: AppRole;
   careerId: number;
   career_id: number;

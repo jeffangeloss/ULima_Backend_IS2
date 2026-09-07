@@ -15,7 +15,7 @@ targets:
 
 # Fotos de perfil
 
-> Estado: **diseño aprobado por el owner el 2026-09-06**, sección por sección. Sin implementar.
+> Estado: **backend implementado** (2026-09-07). Migración `0009_avatar` aplicada y sellada en la base. Módulo montado en `/avatar` con firma, confirmación y borrado propio y por moderación; `avatarUrl` viaja ya en contactos y en `/auth/me`. Pendiente: las credenciales de Cloudinary en Vercel (sin ellas la feature responde 503 y todos se ven con iniciales) y todo el frontend.
 
 ## Contexto
 
