@@ -1,6 +1,6 @@
 // Seed RS-BE-9 — horas de clase SEMANALES del plan de estudios oficial.
 //
-// Fuente: "Plan de estudios 2026-1", Carrera de Ingeniería de Sistemas, Facultad
+// Fuente: "Plan de estudios 2026-1" (74 cursos), Carrera de Ingeniería de Sistemas, Facultad
 // de Ingeniería (ULima). Columna TOT = TEO + PRA. Documento oficial de la
 // Universidad, no dato inventado: mismo criterio que `course_equivalence`.
 //
@@ -45,6 +45,7 @@ export const MALLA_HORAS: ReadonlyArray<{ code: string; weeklyHours: number; nam
   { code: "510010", weeklyHours: 4, name: "FILOSOFÍA APLICADA" },
   { code: "6503", weeklyHours: 6, name: "CÁLCULO I" },
   { code: "560042", weeklyHours: 5, name: "CÁLCULO II" },
+  { code: "560038", weeklyHours: 3, name: "SISTEMAS ORGANIZACIONALES / ORGANIZATIONAL SYSTEMS" },
   { code: "650053", weeklyHours: 5, name: "FÍSICA PARA SISTEMAS" },
   { code: "650054", weeklyHours: 5, name: "INTRODUCCIÓN A LA PROGRAMACIÓN" },
   { code: "560040", weeklyHours: 4, name: "INTELIGENCIA ARTIFICIAL APLICADA" },
@@ -100,9 +101,11 @@ export const MALLA_HORAS: ReadonlyArray<{ code: string; weeklyHours: number; nam
   { code: "650080", weeklyHours: 4, name: "INNOVACIÓN DIGITAL" },
   { code: "650081", weeklyHours: 5, name: "PROYECTO DE VIDEOJUEGOS" },
   { code: "650082", weeklyHours: 4, name: "ARQUITECTURA EMPRESARIAL" },
+  { code: "650011", weeklyHours: 5, name: "INTERACCIÓN HUMANO COMPUTADORA / HUMAN COMPUTER INTERACTION" },
   { code: "650083", weeklyHours: 5, name: "ARQUITECTURA DE TECNOLOGÍAS DE LA INFORMACIÓN" },
   { code: "650084", weeklyHours: 4, name: "DEVOPS" },
   { code: "650085", weeklyHours: 5, name: "ARQUITECTURA DE SOFTWARE" },
+  { code: "520074", weeklyHours: 4, name: "SEGURIDAD, SALUD OCUPACIONAL Y BIENESTAR ORGANIZACIONAL" },
 ];
 
 const sql = postgres(DATABASE_URL);
