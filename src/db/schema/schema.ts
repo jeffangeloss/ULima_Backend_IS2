@@ -3,6 +3,7 @@ import {
   check,
   date,
   decimal,
+  foreignKey,
   index,
   integer,
   pgEnum,
@@ -211,6 +212,48 @@ export const curriculumCourseSpecialty = pgTable("curriculum_course_specialty", 
   specialtyId: integer("specialty_id").notNull().references(() => specialty.id),
 }, (t) => ({
   pk: primaryKey({ columns: [t.curriculumCourseId, t.specialtyId] }),
+}));
+
+/**
+ * Equivalencias de la malla ANTERIOR hacia la vigente.
+ *
+ * La malla de Ingeniería de Sistemas cambió al plan 2026-1 y en la BD hay una
+ * sola `curriculum`, pero el récord académico es histórico: un alumno de ciclo
+ * alto trae buena parte de sus cursos con códigos que ya no existen en
+ * `curriculum_course`. Sin esta tabla `portal-sync` los omite para siempre
+ * (warning `PROGRESS_SKIPPED`): sobre el récord real de 20235218, 26 de sus 53
+ * cursos aprobados no calzaban por código.
+ *
+ * `legacy_code` NO es FK a `course.code`: los códigos viejos no están en
+ * `course` y no deben crearse ahí — el récord académico nunca crea cursos
+ * (portal-sync.spec.md §Sincronización paso 5), porque sus nombres vienen
+ * truncados a 20 caracteres y ensuciarían el catálogo de la malla.
+ *
+ * N→1 a propósito y sin unique sobre `curriculum_course_id`: dos cursos viejos
+ * pueden haberse fusionado en uno de la malla nueva.
+ */
+export const courseEquivalence = pgTable("course_equivalence", {
+  id: integer("id").generatedByDefaultAsIdentity().primaryKey(),
+  curriculumId: integer("curriculum_id").notNull().references(() => curriculum.id),
+  /** El código tal como lo publica el récord del portal. */
+  legacyCode: varchar("legacy_code", { length: 30 }).notNull(),
+  /** El curso equivalente DENTRO de `curriculum_id`; lo garantiza la FK compuesta. */
+  curriculumCourseId: integer("curriculum_course_id").notNull(),
+  /** De qué documento oficial salió la equivalencia. Sin la procedencia no hay
+   *  forma de distinguir, mirando la fila, una tabla oficial de una completada
+   *  a ojo. */
+  source: varchar("source", { length: 120 }).notNull(),
+}, (t) => ({
+  uqCourseEquivalence: unique("uq_course_equivalence").on(t.curriculumId, t.legacyCode),
+  // FK COMPUESTA, no una simple a `curriculum_course.id`: hace imposible que una
+  // equivalencia de una malla apunte a un curso de otra. Se apoya en
+  // `uq_curriculum_course_id_curriculum`, que ya existía en el esquema sin
+  // ninguna FK que lo usara.
+  fkCourseEquivalenceCurriculumCourse: foreignKey({
+    columns: [t.curriculumCourseId, t.curriculumId],
+    foreignColumns: [curriculumCourse.id, curriculumCourse.curriculumId],
+    name: "course_equivalence_curriculum_course_fk",
+  }),
 }));
 
 export const coursePrerequisite = pgTable("course_prerequisite", {

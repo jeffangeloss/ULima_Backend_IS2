@@ -111,6 +111,7 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         asistido: Number(row.attended_hours ?? 0),
         inasistencia: Number(row.absent_hours ?? 0),
         total: Number(row.total_hours ?? 0),
+        asistenciaDisponible: Number(row.total_hours ?? 0) > 0,
       })),
     });
   });

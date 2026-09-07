@@ -10,6 +10,7 @@ targets:
   - ../../../src/server.ts
   - ../../../src/shared/middleware/rate-limit.ts
   - ../../../src/db/schema/schema.ts
+  - ../../../src/db/seed/malla_horas.ts
   - ../../../drizzle/**
   - ../../../test/HU31_jeff/**
 ---
@@ -17,6 +18,8 @@ targets:
 # Portal Sync
 
 > Estado: **aprobada e implementada**. Revisada el 2026-09-02 contra el esquema real, los fixtures del portal y las convenciones del repo; las correcciones de esa revisión ya están incorporadas. Se agregó el sílabo (nueva fuente Domino, `cactus.ulima.edu.pe`) el mismo día, aprobado por el owner (ver §SSO, §Sílabos, §Decisiones); ese lote pasó por una revisión independiente y sus hallazgos también están incorporados (`on conflict do nothing` sin target, presupuesto de ejecución corregido y limitaciones conocidas en §Sincronización paso 12). Pendiente: aplicar en la base de datos real la migración `drizzle/0004_portal_sync_final_grade.sql` y correr la verificación manual end-to-end contra el portal miUlima (ver §Verification). Quedan además decisiones sueltas sin resolver que no bloquean el desarrollo (ver §Decisiones pendientes).
+>
+> **Cambio propuesto el 2026-09-06, PENDIENTE DE APROBACIÓN (RS-BE-9, §Horas de clase del ciclo).** Corrige `course_offering.total_hours`, que hoy se calcula como `créditos × 16` y subestima las horas de clase entre 20% y 40%. Incluye un cambio de BD aditivo (`course.weekly_hours`) y un seed de referencia desde el plan de estudios oficial, así que necesita aprobación explícita de BD además de la de spec. Implementado hasta ahora: solo la función pura `resolveOfferingTotalHours` y sus tests; **nada cableado a la importación, ninguna migración aplicada, ningún dato tocado**.
 
 ## Contexto
 
@@ -88,6 +91,7 @@ Que un curso no tenga sílabo publicado (`viewentry` vacío) es normal, no un er
 - RS-BE-6: El backend aborta sin escribir nada si no puede **probar** que la sesión del portal pertenece al alumno autenticado.
 - RS-BE-7: Ni la contraseña ni el TOTP ni las cookies del portal se persisten ni se registran en logs. Las cookies viven solo en memoria durante la petición.
 - RS-BE-8: La importación nunca puede dejar al alumno sin acceso a la app.
+- RS-BE-9: `course_offering.total_hours` son **horas de clase reales** del ciclo (`horas semanales × semanas del período`), no un derivado de los créditos. La fuente se elige por precedencia: horario importado > malla oficial > créditos como último recurso. `[@test] ../../../test/HU31_jeff/repository.hours.test.ts`
 
 ## Arquitectura
 
@@ -259,8 +263,9 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
 
    Los duplicados ya creados se repararon con `src/db/seed/fusionar-docentes.ts` (human-gated, 11 grupos, 26 secciones y 20 asesorías repuntadas). El placeholder para cursos sin docente usa `teacher_code = 'PORTAL:SIN-DOCENTE'` y se reporta `TEACHER_MISSING`. `institutional_email` se deja `NULL` (es unique). Crear docentes desde el portal es dato real, no inventado; el placeholder sí es dato sintético y figura en §Decisiones pendientes.
    `[@test] ../../../test/HU31_jeff/repository.catalog.test.ts`
-7. **Oferta y sección** — `course_offering` por `uq_course_offering (academic_period_id, course_id)`, con `total_hours` = créditos × 16 (`attendance-risk` descarta toda sección con `total_hours <= 0`). `section` por `uq_section_offering_code (course_offering_id, code)`; `teacher_id` se actualiza solo si el actual es el placeholder. `jp_id` no se toca.
+7. **Oferta y sección** — `course_offering` por `uq_course_offering (academic_period_id, course_id)`, con `total_hours` resuelto por `resolveOfferingTotalHours` (ver §Horas de clase del ciclo; `attendance-risk` descarta toda sección con `total_hours <= 0`). En este paso todavía no hay horario cargado, así que el valor sale de la malla o, si el curso no está en ella, de los créditos; el paso 8.b lo corrige después con el horario real. `section` por `uq_section_offering_code (course_offering_id, code)`; `teacher_id` se actualiza solo si el actual es el placeholder. `jp_id` no se toca.
 8. **Sesiones de horario** — clave natural real `uq_schedule_session (section_id, day_of_week, start_time)`, **sin `end_time`**: `ON CONFLICT (section_id, day_of_week, start_time) DO UPDATE SET end_time = excluded.end_time, classroom = excluded.classroom`. `color_hex` no se toca. Las sesiones que ya no aparecen no se borran.
+   **8.b Recálculo de horas** — recién acá existen las sesiones, así que después de cargarlas se recalcula `course_offering.total_hours` de las ofertas tocadas en esta importación, usando la suma real de `schedule_session` (ver §Horas de clase del ciclo). Es el único paso que **pisa** el valor en vez de usar `greatest`: el horario es más confiable que la estimación del paso 7, aunque dé un número menor.
 9. **Matrícula** — `enrollment` por `uq_enrollment_student_section`, `status = active`. Las horas de asistencia no se tocan. **Retiro**: solo se marcan `withdrawn` las matrículas del alumno **cuya sección pertenece al período importado** (join `section → course_offering → academic_period`; `enrollment` no tiene columna de período). **Nunca se ejecuta el retiro si dejaría al alumno con cero matrículas activas**: ambos logins exigen `hasActiveEnrollment` y lo dejarían fuera de la app sin poder volver a importar (RS-BE-8). En ese caso no se retira nada y se reporta `WITHDRAW_SKIPPED_WOULD_LOCK_OUT`. La lista de secciones a conservar (`keep`) es TODA sección tocada en la importación, sin colapsar por curso: dos filas del mismo curso con distinta sección (columna `GR.`) deben conservarse ambas.
    `[@test] ../../../test/HU31_jeff/repository.student.test.ts`
    `[@test] ../../../test/HU31_jeff/service.import.test.ts`
@@ -280,6 +285,78 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
     `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
     `[@test] ../../../test/HU31_jeff/repository.syllabus.test.ts`
     `[@test] ../../../test/HU31_jeff/service.import.test.ts`
+
+### Horas de clase del ciclo (`total_hours`)
+
+`course_offering.total_hours` es el **denominador** del porcentaje de inasistencia de `attendance-risk`, que decide el umbral de impedido (25% hasta ciclo 5, 35% desde ciclo 6) y dispara las alertas de HU30. Hasta ahora se calculaba como `créditos × 16`, y eso está mal: los créditos no son horas de clase.
+
+**Medido el 2026-09-06 contra la BD real** (las 12 ofertas del período activo 2026-2 que tienen datos) y contra el plan de estudios oficial 2026-1 de Ingeniería de Sistemas:
+
+| Curso | `créditos × 16` (actual) | Horas reales (`TOT × 16`) | Error |
+| --- | --- | --- | --- |
+| PARADIGMAS DE PROGRAMACIÓN | 48 h | 80 h | −40% |
+| ANÁLISIS Y DISEÑO DE ALGORITMOS | 48 h | 80 h | −40% |
+| PROPUESTA DE INVESTIGACIÓN | 48 h | 80 h | −40% |
+| INGENIERÍA DE SOFTWARE II | 64 h | 96 h | −33% |
+| SEMINARIO DE INVESTIGACIÓN I | 64 h | 96 h | −33% |
+| CIBERSEGURIDAD, SEGURIDAD DE SISTEMAS | 64 h | 80 h | −20% |
+| ERP, PLANEAMIENTO, DEVOPS, ANALÍTICA, GESTIÓN DE PROYECTOS | 48 h | 64 h | −25% |
+
+Las 12 dan exactamente `default_credit × 16`, sin una sola excepción. Un denominador chico **infla** el porcentaje de inasistencia: en PARADIGMAS el alumno aparece impedido a las 12 h de falta cuando el límite real son 20 h. Hoy no se nota porque `enrollment.absent_hours` está en 0 para todo el período activo, pero se activaría el día que entre asistencia real, y `attendance-risk.notifyStudents` manda esas alertas a alumnos de verdad.
+
+**Fuente de verdad: el horario.** La suma de `schedule_session` de la sección coincide **12 de 12** con la columna TOT del plan oficial. El dato correcto ya está en la BD; solo no se estaba usando.
+
+**Precedencia** (`resolveOfferingTotalHours`, función pura en `portal-sync.repository.ts`), siempre `horas semanales × semanas del período` (`academicWeekCount`, no un 16 fijo: 2026-1 dura 17 semanas):
+
+1. `schedule` — suma real de `schedule_session` de la sección. Se aplica en el paso 8.b.
+2. `curriculum` — `course.weekly_hours` de la malla oficial. Cubre las ofertas sin horario importado (62 de 74 en el período activo).
+3. `credits` — créditos como proxy de horas semanales. Último recurso, y una degradación conocida.
+
+Un factor semanal en 0 o nulo **no** es fuente: una sección sin sesiones cae al escalón siguiente en vez de fijar el total en 0 (con 0, `attendance-risk` descarta la sección entera).
+
+**Columna nueva** (cambio de BD aditivo, requiere aprobación explícita):
+
+| columna | tipo | nota |
+| --- | --- | --- |
+| `course.weekly_hours` | `smallint NULL` | horas de clase semanales según la malla (columna TOT del plan de estudios). `NULL` = el curso no está en la malla cargada. |
+
+Migración `drizzle/0008_course_weekly_hours.sql`, idempotente (`ADD COLUMN IF NOT EXISTS`), con `chk_course_weekly_hours CHECK (weekly_hours IS NULL OR weekly_hours > 0)`.
+
+**Seed de referencia** `src/db/seed/malla_horas.ts`: las 71 filas del plan de estudios oficial 2026-1 de Ingeniería de Sistemas (código, horas TEO/PRA/TOT), matcheadas por `course.code`. Verificado: **71 de 71 cruzan** con `course.code` y los créditos coinciden al 100% con `course.default_credit`, o sea que el documento y la BD hablan del mismo catálogo. Solo escribe `weekly_hours`; no crea cursos ni toca ninguna otra columna. Mismo criterio que `course_equivalence`: dato de referencia extraído de un documento oficial de la Universidad, no dato mock.
+
+**Backfill.** Las ofertas ya escritas conservan su `créditos × 16` hasta que alguien vuelva a importar. Corregirlas de una vez requiere un `UPDATE` sobre datos existentes y va como paso aprobado aparte, no dentro de la importación.
+
+### Equivalencias de malla (`course_equivalence`)
+
+La malla de Ingeniería de Sistemas cambió al plan **2026-1**, y en la BD hay **una sola** malla (`curriculum` id 1) de la que cuelgan todos los alumnos. El récord académico, en cambio, es histórico: un alumno de ciclo alto trae buena parte de sus cursos con los códigos de la malla anterior, que ya no existen en `curriculum_course`. Con solo el match directo del paso 10.a esas filas se omiten para siempre.
+
+Medido sobre el récord real de 20235218 (`spike-portal/fixtures/10_gada_servlets_ComandoListarRecordAcademico_ac_1.html`): de **53 cursos aprobados, 27 calzan por código y 26 no**.
+
+**Tabla** `course_equivalence`:
+
+| columna | tipo | nota |
+| --- | --- | --- |
+| `id` | identity PK | |
+| `curriculum_id` | → `curriculum.id` | la malla **destino** (la vigente) |
+| `legacy_code` | `varchar(30)` | el código tal como lo trae el récord |
+| `curriculum_course_id` | → `curriculum_course.id` | el curso equivalente en la malla vigente |
+| `source` | `varchar(120)` | de qué documento oficial salió la equivalencia |
+
+- `uq_course_equivalence (curriculum_id, legacy_code)`: un código legado tiene **una** equivalencia por malla.
+- FK **compuesta** `(curriculum_course_id, curriculum_id)` → `uq_curriculum_course_id_curriculum`: hace imposible apuntar a un curso de otra malla. Ese único ya existía en el esquema sin ninguna FK que lo usara.
+- N→1 permitido a propósito (dos cursos viejos fusionados en uno nuevo); no hay unique sobre `curriculum_course_id`.
+- `legacy_code` **no** es FK a `course.code`: los códigos viejos no están en `course` y no deben crearse ahí (paso 5: el récord nunca crea `course`).
+
+**Desempate antes de escribir.** El segundo intento hace posible que dos filas del récord caigan en el mismo `curriculum_course`, algo que con solo el match directo no podía pasar porque el llamador agrupa por código. Importa porque `upsertProgressBatch` lleva `distinct on (curriculum_course_id)` **sin `order by`**: dos filas con la misma clave darían un ganador arbitrario. Reglas, aplicadas en el service antes del upsert:
+
+1. El match **directo gana** sobre el de equivalencia. Si el alumno tiene en su récord el código viejo y el nuevo del mismo curso, manda el nuevo.
+2. Entre dos códigos legados que mapean al mismo `curriculum_course`, gana el **mejor estado**: `approved` > `in_progress` > `failed` > `withdrawn`. Aprobar un curso fusionado no se pierde porque su otra mitad esté desaprobada.
+
+**Seed** — `src/db/seed/equivalencias.ts`, human-gated con `--apply` igual que `db:seed:docentes` (dry-run por defecto). Las parejas viven como datos en el archivo en la forma `código legado → código vigente`, y el seed resuelve el código vigente contra `curriculum_course` en el momento de aplicar: los ids de `curriculum_course` no se hardcodean nunca. Un código vigente que no exista en la malla se **reporta y no se inserta**. Es `on conflict do nothing`, así que re-correrlo es inocuo.
+
+**Cobertura actual y hueco declarado.** El seed arranca con las **14** equivalencias de facultad (ciclos 3-7) que da `tabla_de_equivalencia_de_plan_de_estudios_v3.pdf`. Ese documento es **2025-1 ↔ 2025-0**, de una generación anterior, y por eso no cubre los **12** restantes del caso medido, todos de Estudios Generales: `6505`, `510002`, `510001`, `6506`, `6382`, `6510`, `5686`, `650001`, `6512`, `6513`, `1472`, `4380`. Para esos hace falta la tabla oficial **2026-1 ↔ 2025-1**, que aún no se tiene. **No se inventan**: entran al seed cuando exista el documento. Mientras tanto siguen contando en `PROGRESS_SKIPPED`.
+
+**El piso por nivel se queda.** `approvedLevelsFor` (`src/modules/auth/auth.repository.ts`) y el recorte de `levelFromCoverage` (paso 4) **no se tocan**. Esta tabla mejora el emparejamiento pero no lo completa —los 12 de EEGG, más convalidaciones y cursos de otra facultad, siguen sin mapear—, así que el piso sigue siendo la red de seguridad y no un parche temporal.
 
 ### Fuera de alcance explícito
 

@@ -16,6 +16,7 @@ export class AttendanceRiskRepository {
         s.current_level,
         e.absent_hours,
         COALESCE(co.total_hours, e.total_hours) as total_section_hours,
+        e.total_hours as enrollment_total_hours,
         cc.cycle
       FROM enrollment e
       JOIN student s ON s.id = e.student_id
@@ -39,6 +40,7 @@ export class AttendanceRiskRepository {
         s.current_level,
         e.absent_hours,
         COALESCE(co.total_hours, e.total_hours) as total_section_hours,
+        e.total_hours as enrollment_total_hours,
         c.name as course_name,
         sec.code as section_code,
         cc.cycle

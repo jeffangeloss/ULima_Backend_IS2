@@ -184,6 +184,7 @@ export class ScheduleService {
           asistido: Number(row.attended_hours ?? 0),
           inasistencia: Number(row.absent_hours ?? 0),
           total: Number(row.total_hours ?? 0),
+          asistenciaDisponible: Number(row.total_hours ?? 0) > 0,
           horarios: [],
         });
       }
@@ -302,9 +303,12 @@ export class ScheduleService {
           promedioSeccion: 0,
           idCurso: String(row.course_id),
           curso: row.course_name,
+          // La fila del horario docente es una SECCIÓN; la asistencia de este
+          // esquema es por MATRÍCULA. No hay dato que reportar acá.
           asistido: 0,
           inasistencia: 0,
           total: 0,
+          asistenciaDisponible: false,
           horarios: [],
         });
       }
@@ -345,6 +349,7 @@ export class ScheduleService {
         asistido: 0,
         inasistencia: 0,
         total: 0,
+        asistenciaDisponible: false,   // una asesoría no lleva control de asistencia
         isAdvising: true,
         horarios: [
           {

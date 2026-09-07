@@ -21,6 +21,12 @@ export type SectionResponse = {
   asistido: number;
   inasistencia: number;
   total: number;
+  /**
+   * ¿Hay asistencia cargada para esta matrícula? Bandera POSITIVA: el cliente
+   * no puede distinguir "0 faltas" de "nunca se midió" mirando los números, y
+   * ese 0 se pintaba como una dona verde llena (RS-BE-10).
+   */
+  asistenciaDisponible: boolean;
   horarios: SessionDetail[];
 };
 
