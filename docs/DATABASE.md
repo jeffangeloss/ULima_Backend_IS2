@@ -1,6 +1,6 @@
 # Base de datos ULima++ — documentación exhaustiva
 
-*Actualizada 2026-07-12, verificada contra el schema (`src/db/schema/schema.ts`) y la BD viva (PostgreSQL 18.3 en AWS RDS). 34 tablas, 11 enums, 7 migraciones registradas.*
+*Actualizada 2026-09-06, verificada contra el schema (`src/db/schema/schema.ts`) y la BD viva (PostgreSQL 17.11 en Neon). 35 tablas, 11 enums, 10 migraciones registradas.*
 
 > **Para qué sirve este doc:** saber **dónde vive cada cosa**. Si te preguntas "¿dónde está el JP?", "¿dónde se guardan las notas?", "¿de dónde sale el delegado?" — la respuesta está aquí. Empieza por la sección [2. ¿Dónde vive cada cosa?](#2-dónde-vive-cada-cosa-faq).
 
@@ -8,11 +8,12 @@
 
 ## 1. Visión general
 
-- **Motor:** PostgreSQL **18.3** (AWS RDS, `api-mobile-db.cbk2ge28uibe.us-east-2.rds.amazonaws.com:5432/postgres`, SSL requerido). Credenciales en `.env` (`DATABASE_URL`) — nunca commitearlas.
+- **Motor:** PostgreSQL **17.11** en **Neon** (endpoint con *pooler*, región `us-east-1`, SSL requerido). Host y credenciales viven SOLO en `.env` (`DATABASE_URL`) — **este repo es público**, no se escriben acá.
+  ⚠️ **Cambió**: hasta julio de 2026 esto era AWS RDS con PostgreSQL 18.3 (`api-mobile-db.cbk2ge28uibe.us-east-2.rds.amazonaws.com`). La mudanza a Neon además **bajó** el major de 18 a 17, así que cualquier instrucción vieja que pida "cliente pg18" hay que leerla como "cliente >= 17".
 - **ORM:** Drizzle. El schema canónico es **`src/db/schema/schema.ts`** (fuente de verdad del modelo). Las relaciones drizzle están intencionalmente omitidas (`src/db/relations/index.ts`); los repos usan SQL parametrizado.
 - **Migraciones:** carpeta `drizzle/` (`0000_baseline` = re-baseline TT04 del 2026-07-07 + incrementales). Flujo oficial: `bun run db:generate` → revisar el SQL → **backup** → `bun run db:migrate` (runner `src/db/migrate.ts`; el CLI `drizzle-kit migrate` NO se usa). `db:push` **prohibido**. Registro en `drizzle.__drizzle_migrations`. Runbook: `MIGRATIONS.md`.
-- **Red:** el wifi de la ULima bloquea el puerto 5432 → conectarse con datos móviles. `pg_dump` local (v16 Homebrew) NO puede dumpear el server v18 (mismatch de versión); usar cliente pg18 o snapshot lógico de conteos si la migración es puramente aditiva.
-- **Una sola BD compartida** entre todos los despliegues (el Vercel del fork de Ronald y cualquier entorno local apuntan a la misma RDS). Cuidado con datos de prueba.
+- **Red:** el wifi de la ULima bloquea el puerto 5432 → conectarse con datos móviles. El `pg_dump` de `postgresql@16` (Homebrew) NO puede dumpear el server 17: aborta por mismatch de versión. El cliente que sirve es `libpq` (`brew install libpq`), que es *keg-only* y se invoca por ruta completa: `/opt/homebrew/opt/libpq/bin/pg_dump`.
+- **Una sola BD compartida** entre todos los despliegues (el Vercel del fork de Ronald y cualquier entorno local apuntan a la misma instancia de Neon). Cuidado con datos de prueba.
 
 ### Mapa por dominios
 
@@ -23,7 +24,7 @@ app_user ─┬─ student   career ─ curriculum          academic_period     
 user_social_link      course, specialty                └ section (teacher, jp)     student_score   (OFICIAL)
 password_reset_token  course_prerequisite               └ enrollment (student)     simulated_grades (ALUMNO)
                       curriculum_course_specialty          └ section_representative
-MALLA DEL ALUMNO                                           └ advising_rsvp (vía sesión)
+MALLA DEL ALUMNO      course_equivalence                   └ advising_rsvp (vía sesión)
 student_specialty     HORARIO / ASESORÍAS           COMUNICACIÓN
 student_course_progress  academic_week              announcement (del representante)
 student_curriculum_simulation  schedule_session     alert (por alumno)
@@ -122,6 +123,7 @@ Formato: **tabla** — qué es. Columnas clave. Restricciones. Quién escribe / 
 - **`course`** — catálogo global de cursos: `code` (unique), `name`, `default_credit` (CHECK >0), `origin_faculty` (cursos de otra facultad).
 - **`curriculum_course`** — curso **posicionado en la malla**: `cycle`, `display_order`, `credit`, `category` (enum EEGG/común/facultad/electivo). Unique (curriculum, course). ⚠️ Casi todo el dominio malla referencia **esta** tabla (no `course`): prerequisitos, progreso, simulación, especialidades del curso.
 - **`course_prerequisite`** — prerequisitos: tipo `course` (apunta a otro `curriculum_course`) o `completed_cycle` (exige ciclo N completo). CHECK de exclusión mutua entre ambas formas; sin auto-prerequisito.
+- **`course_equivalence`** — equivalencias de la malla **anterior** hacia la vigente: `legacy_code` (el código como lo publica el récord del portal) → `curriculum_course`. Existe porque la malla cambió al plan 2026-1 y el récord académico es histórico: sin ella `portal-sync` omite esos cursos (warning `PROGRESS_SKIPPED`). `legacy_code` NO es FK a `course.code` (los códigos viejos no están en `course`); la integridad la da una **FK compuesta** `(curriculum_course_id, curriculum_id)` que impide apuntar a un curso de otra malla. N→1 permitido (cursos fusionados). *Escribe:* `db:seed:equivalencias` (human-gated). *Lee:* `portal-sync` como segundo intento de emparejamiento. Hoy 14 filas; faltan las de Estudios Generales (ver `MIGRATIONS.md` y la spec de portal-sync).
 - **`specialty`** — especialidades por carrera (7). `curriculum_course_specialty` — qué cursos de la malla pertenecen a cada especialidad (PK compuesta).
 
 ### Alumno: malla, especialidad, simulación
@@ -194,7 +196,7 @@ Formato: **tabla** — qué es. Columnas clave. Restricciones. Quién escribe / 
 ## 6. Discrepancias schema ↔ BD viva (estado 2026-07-12)
 
 - **`chatbot_session` / `chatbot_message` existen en la BD pero NO en `src/db/schema/schema.ts`** (ni en las migraciones de este repo). Las creó el backend del chatbot (HU28) desarrollado en el fork de Ronald (`itsRon4ld`, rama `ronald` — cohere + rate-limit). FKs: session→student (CASCADE), message→session (CASCADE). Si el chatbot se adopta en meltiruiz, hay que incorporar estas tablas al schema y regularizar la migración; mientras tanto, `drizzle-kit generate` local NO las ve (cuidado: un `db:push` las destruiría — otra razón por la que está prohibido).
-- `drizzle.__drizzle_migrations` registra **7** migraciones aunque este repo tiene 4 archivos (`0000`–`0003`): las extra son del fork de Ronald. El runner de drizzle no se confunde (aplica por hash), pero no "limpiar" esa tabla.
+- `drizzle.__drizzle_migrations` registra **10** migraciones (2026-09-06) y el journal de este repo tiene 8 entradas: la diferencia son migraciones del fork de Ronald. El runner de drizzle no se confunde (aplica por hash), pero no "limpiar" esa tabla. Cruce hecho el 2026-09-06: las 8 del journal están todas registradas.
 
 ## 7. Operativa rápida
 
@@ -206,6 +208,6 @@ bun run db:seed:docentes   # seed de docentes
 psql "$DATABASE_URL"       # requiere datos móviles (wifi ULima bloquea 5432)
 ```
 
-- Backup pre-migración: cliente pg18 (`brew install postgresql@18`) o, si la migración es solo aditiva, snapshot de conteos (`SELECT relname, n_live_tup FROM pg_stat_user_tables`) + script de rollback.
+- Backup pre-migración: `pg_dump` de `libpq` (`brew install libpq`, luego `/opt/homebrew/opt/libpq/bin/pg_dump`) o, si la migración es solo aditiva, snapshot de conteos (`SELECT relname, n_live_tup FROM pg_stat_user_tables`) + script de rollback.
 - Freeze de DDL 48 h antes de una demo.
 - Cuentas de prueba: alumno RONALD HURTADO (`20231483`, student 2); docentes `hquintan` (titular 856) y `alo` (JP 856). Las contraseñas NO se documentan aquí: se fijan vía env (`PROF_PASSWORD`/`JP_PASSWORD`) al correr el seed y se comunican fuera de banda.
