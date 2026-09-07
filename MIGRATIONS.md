@@ -2,7 +2,18 @@
 
 Estado real auditado el 2026-07-05 y protocolo vigente hasta el fin del ciclo 2026-1.
 
-## Estado real de la BD (auditoría 2026-07-05)
+## Dónde vive la BD (verificado 2026-09-06)
+
+- **PostgreSQL 17.11 en Neon** (endpoint con *pooler*, región `us-east-1`). El host y las credenciales viven SOLO en `.env` (`DATABASE_URL`): **este repo es público**, así que no se escriben acá.
+- **Ya no es AWS RDS.** Las secciones históricas de abajo (y `docs/DATABASE.md`) hablan de "PostgreSQL 18.3 en AWS RDS": eso era cierto en julio de 2026 y dejó de serlo con la mudanza a Neon, que además bajó el major de 18 a 17. Se conservan tal cual como registro de lo que se auditó entonces.
+- **Cliente de `pg_dump`/`psql`**: el major del cliente debe ser **>= el del servidor (17)**. El `postgresql@16` de Homebrew **se niega** ("aborting because of server version mismatch"). El que sirve es `libpq`:
+  ```bash
+  brew install libpq
+  ```
+  Es *keg-only* (no se enlaza a `/opt/homebrew/bin` porque choca con `postgresql`), así que hay que invocarlo por ruta completa: `/opt/homebrew/opt/libpq/bin/pg_dump`.
+- **Red**: el wifi de la ULima bloquea el 5432. Todo lo de abajo requiere datos móviles.
+
+## Estado real de la BD (auditoría 2026-07-05, sobre la BD de entonces en AWS RDS)
 
 - La BD productiva (PostgreSQL 18 en AWS RDS) **coincide con `src/db/schema/schema.ts`**: 28/28 tablas tras aplicar la 0003, sin tablas sobrantes ni faltantes.
 - La tabla `__drizzle_migrations` **no existe** en la BD: ninguna migración se aplicó nunca vía `drizzle-kit migrate`; históricamente todo se aplicó a mano.
@@ -36,7 +47,7 @@ Mientras la BD no esté sellada, sigue vigente el protocolo manual de abajo (`db
 1. **`drizzle-kit generate`/`migrate` congelados. `db:push` prohibido siempre** (diffea contra un snapshot obsoleto y puede generar DROPs de objetos reales).
 2. Todo cambio de BD = **SQL aditivo escrito a mano**, numerado secuencialmente (`drizzle/000N_nombre.sql`), **dentro del PR** que lo necesita, con `IF NOT EXISTS` donde aplique. Solo `CREATE TABLE`, `ADD COLUMN` (nullable o con default) y `CREATE INDEX`; nada destructivo.
 3. **Orden estricto: el SQL se aplica en la BD ANTES del merge/deploy del código que lo usa.**
-4. **Una sola persona aplica** (Jeff), con backup previo (`pg_dump`, requiere cliente v18: `/opt/homebrew/opt/libpq/bin/pg_dump`), en transacción, y **avisa al equipo** con la evidencia de verificación (`to_regclass` + columnas + smoke test).
+4. **Una sola persona aplica** (Jeff), con backup previo (`pg_dump` de `libpq`, por ruta completa: `/opt/homebrew/opt/libpq/bin/pg_dump` — ver §Dónde vive la BD; el `pg_dump` de `postgresql@16` NO sirve), en transacción, y **avisa al equipo** con la evidencia de verificación (`to_regclass` + columnas + smoke test).
 5. Todo lo aplicado se registra en la tabla de abajo. Esa lista es el insumo del **re-baseline post-demo** (recrear el journal desde el esquema real y adoptar `drizzle-kit migrate` con `__drizzle_migrations`).
 6. **Freeze pre-demo:** nadie ejecuta DDL en las 48 horas previas a la exposición. Lo que no esté migrado 48h antes, no entra a la demo.
 
@@ -94,17 +105,10 @@ ROLLBACK y la BD queda intacta.
 
 ## Migraciones aplicadas / reconciliaciones
 
-- **`drizzle/0008_course_equivalence.sql` (equivalencias de malla) — ⏳ PENDIENTE DE APLICAR.** Aditiva y no destructiva: crea la tabla `course_equivalence` (código de la malla anterior → `curriculum_course` de la vigente), su unique `uq_course_equivalence (curriculum_id, legacy_code)` y **una FK compuesta** `(curriculum_course_id, curriculum_id)` → `uq_curriculum_course_id_curriculum`, que impide apuntar a un curso de otra malla. No toca ninguna tabla existente. Diseño en `specs/features/portal-sync/portal-sync.spec.md` §Equivalencias de malla. Runbook, con datos móviles y backup previo:
-  ```bash
-  bun run db:migrate
-  ```
-  ```bash
-  bun run db:seed:equivalencias
-  ```
-  ```bash
-  bun run db:seed:equivalencias -- --apply
-  ```
-  El seed es dry-run por defecto e idempotente (`on conflict do nothing`); solo escribe en `course_equivalence`. Verificación: `to_regclass('course_equivalence')`, 14 filas sembradas, y una importación de prueba desde el portal cuyo `summary.progressViaEquivalence` sea > 0 y cuyo `progressSkipped` haya bajado.
+- **`drizzle/0008_course_equivalence.sql` (equivalencias de malla) — ✅ APLICADA 2026-09-06** con `bun run db:migrate` (era la única pendiente: los hashes de las otras 7 entradas del journal ya estaban en `drizzle.__drizzle_migrations`). Aditiva y no destructiva: crea la tabla `course_equivalence` (código de la malla anterior → `curriculum_course` de la vigente), su unique `uq_course_equivalence (curriculum_id, legacy_code)` y **una FK compuesta** `(curriculum_course_id, curriculum_id)` → `uq_curriculum_course_id_curriculum`, que impide apuntar a un curso de otra malla. No toca ninguna tabla existente. Diseño en `specs/features/portal-sync/portal-sync.spec.md` §Equivalencias de malla.
+  Backup previo: `backup_pre_0008_20260906.sql` (461K) ✔. Seed aplicado el mismo día con `bun run db:seed:equivalencias -- --apply`: **14 filas**, 0 sin curso vigente.
+  Verificación: `to_regclass('course_equivalence')` ✔; sobre el récord real de 20235218, de 53 cursos aprobados pasan a emparejar **41** (27 por código + 14 por equivalencia) y quedan **12** sin emparejar, exactamente los de Estudios Generales que esperan la tabla oficial 2026-1 ↔ 2025-1 ✔.
+  ⚠️ El efecto NO es retroactivo: cada alumno reescribe su progreso en su próxima importación desde el portal.
 
 - **`drizzle/0001_flowery_jack_flag.sql` (HU27 — carnet de networking) — ✅ APLICADA a prod (2026-07-11)** con `bun run db:migrate`. Aditiva y no-destructiva: enum `social_platform` + tabla `user_social_link` + columna `app_user.networking_opt_in boolean default false NOT NULL`. Diseño en `specs/features/networking/networking.spec.md`. BD lista para que meltiruiz implemente HU27.
 - **Reconciliación de drift (2026-07-11)**: la BD viva tenía una columna `teacher.linkedin_link varchar(500)` agregada **directamente en la BD** (fuera de Drizzle y del schema.ts — un compañero empezó networking por su lado). Estaba 100% en NULL. Se **dropeó** (`ALTER TABLE teacher DROP COLUMN linkedin_link`) para eliminar el drift y consolidar el networking en el diseño de HU27 (`user_social_link` sobre `app_user`, que cubre alumnos **y** docentes). Backup previo de `teacher` (175 filas) tomado antes del drop.
