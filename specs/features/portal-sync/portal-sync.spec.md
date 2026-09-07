@@ -334,9 +334,9 @@ Un factor semanal en 0 o nulo **no** es fuente: una sección sin sesiones cae al
 | --- | --- | --- |
 | `course.weekly_hours` | `smallint NULL` | horas de clase semanales según la malla (columna TOT del plan de estudios). `NULL` = el curso no está en la malla cargada. |
 
-Migración **`drizzle/0009_course_weekly_hours.sql`** (0008 ya está tomada por `course_equivalence` y aplicada), idempotente (`ADD COLUMN IF NOT EXISTS`), con `chk_course_weekly_hours CHECK (weekly_hours IS NULL OR weekly_hours > 0)`.
+Migración **`drizzle/0010_course_weekly_hours.sql`** (0008 ya está tomada por `course_equivalence` y aplicada), idempotente (`ADD COLUMN IF NOT EXISTS`), con `chk_course_weekly_hours CHECK (weekly_hours IS NULL OR weekly_hours > 0)`.
 
-> **Aplicarla con `bun run db:apply drizzle/0009_course_weekly_hours.sql`, no con `db:migrate`.** Verificado el 2026-09-06 contra Neon: la BD tiene **10 filas selladas** en `drizzle.__drizzle_migrations` contra **8 entradas** en `drizzle/meta/_journal.json` (`0001_course_offering_total_hours` y `0002_app_user_linkedin_link` se aplicaron fuera del journal). `db:apply` va archivo por archivo en una transacción y no depende de ese journal desalineado.
+> **Aplicarla con `bun run db:apply drizzle/0010_course_weekly_hours.sql`, no con `db:migrate`.** Verificado el 2026-09-06 contra Neon: la BD tiene **10 filas selladas** en `drizzle.__drizzle_migrations` contra **8 entradas** en `drizzle/meta/_journal.json` (`0001_course_offering_total_hours` y `0002_app_user_linkedin_link` se aplicaron fuera del journal). `db:apply` va archivo por archivo en una transacción y no depende de ese journal desalineado.
 
 **Seed de referencia** `src/db/seed/malla_horas.ts`: las 71 filas del plan de estudios oficial 2026-1 de Ingeniería de Sistemas (código, horas TEO/PRA/TOT), matcheadas por `course.code`. Verificado: **71 de 71 cruzan** con `course.code` y los créditos coinciden al 100% con `course.default_credit`, o sea que el documento y la BD hablan del mismo catálogo. Solo escribe `weekly_hours`; no crea cursos ni toca ninguna otra columna. Mismo criterio que `course_equivalence`: dato de referencia extraído de un documento oficial de la Universidad, no dato mock.
 

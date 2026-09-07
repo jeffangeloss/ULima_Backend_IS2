@@ -9,7 +9,7 @@
 -- Aditiva y NULLABLE: `NULL` = el curso no está en la malla cargada.
 -- Idempotente: se puede re-aplicar sin daño.
 --
---   bun run db:apply drizzle/0009_course_weekly_hours.sql
+--   bun run db:apply drizzle/0010_course_weekly_hours.sql
 --
 -- Con db:apply y NO con db:migrate: la BD tiene 10 filas selladas en
 -- drizzle.__drizzle_migrations contra 8 entradas en drizzle/meta/_journal.json.

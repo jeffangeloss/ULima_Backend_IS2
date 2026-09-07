@@ -16,7 +16,7 @@
 //   bun run src/db/seed/malla_horas.ts            # DRY-RUN: imprime el plan, no escribe
 //   bun run src/db/seed/malla_horas.ts --apply    # aplica en una transacción
 //
-// Requiere la migración drizzle/0009_course_weekly_hours.sql ya aplicada.
+// Requiere la migración drizzle/0010_course_weekly_hours.sql ya aplicada.
 // Requiere datos móviles: el wifi de la ULima bloquea el 5432.
 
 import "dotenv/config";
