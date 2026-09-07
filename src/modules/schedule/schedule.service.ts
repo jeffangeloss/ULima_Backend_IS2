@@ -185,6 +185,7 @@ export class ScheduleService {
           inasistencia: Number(row.absent_hours ?? 0),
           total: Number(row.total_hours ?? 0),
           asistenciaDisponible: Number(row.total_hours ?? 0) > 0,
+          horasTranscurridas: Number(row.attended_hours ?? 0) + Number(row.absent_hours ?? 0),
           horarios: [],
         });
       }
@@ -309,6 +310,7 @@ export class ScheduleService {
           inasistencia: 0,
           total: 0,
           asistenciaDisponible: false,
+          horasTranscurridas: 0,
           horarios: [],
         });
       }

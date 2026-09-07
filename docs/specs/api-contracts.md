@@ -381,6 +381,7 @@ Retorna el horario semanal por bloques de tiempo para las secciones donde el est
         "inasistencia": 2,
         "total": 30,
         "asistenciaDisponible": true,
+        "horasTranscurridas": 8,
         "horarios": [
           {
             "dia": "Lunes",
@@ -401,6 +402,8 @@ Retorna el horario semanal por bloques de tiempo para las secciones donde el est
 > **`asistenciaDisponible`** (RS-BE-10, `specs/features/attendance-risk/attendance-risk.spec.md`): dice si esta matrícula tiene asistencia cargada. Es una bandera POSITIVA: `asistido`, `inasistencia` y `total` en 0 NO significan "cero faltas", significan "nunca se midió", y el cliente no puede distinguirlos mirando los números. Un cliente que ignore el campo y divida `asistido / total` obtiene `NaN`, que Flutter clampea al MÁXIMO y pinta como asistencia perfecta. Con `false` hay que mostrar estado "sin datos", nunca un porcentaje.
 >
 > Las filas de horario **docente** y de **asesoría** siempre lo emiten en `false`: son secciones o sesiones, y la asistencia es por matrícula.
+>
+> **`horasTranscurridas`** (RS-BE-16, `specs/features/asistencia-portal/asistencia-portal.spec.md`): horas ya DICTADAS (`asistido + inasistencia`), no las del ciclo. El porcentaje de asistencia se calcula sobre este número, nunca sobre `total`: dividir `asistido / total` daría 8/64 = 12.5% en la semana 2, que el alumno lee como "asististe al 12.5%".
 >
 > **Riesgo por inasistencias** (`/attendance-risk`): `status` admite `impedido | en_riesgo | normal | sin_datos`, y `absencePercentage` es **nullable** — llega `null` exactamente cuando `status` es `sin_datos`. El `summary` incluye `sin_datos` como contador propio, que NO se suma a `normal`; el cliente no debe calcular "normal" por resta.
 >

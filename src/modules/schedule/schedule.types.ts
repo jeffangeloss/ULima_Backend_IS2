@@ -27,6 +27,14 @@ export type SectionResponse = {
    * ese 0 se pintaba como una dona verde llena (RS-BE-10).
    */
   asistenciaDisponible: boolean;
+  /**
+   * Horas de clase ya DICTADAS (asistidas + faltas), no las del ciclo entero.
+   * RS-BE-16: sin esto el cliente divide `asistido / total` y en la semana 2
+   * muestra 8/64 = 12.5%, que el alumno lee como "asististe al 12.5%". Es la
+   * misma deshonestidad que arregló RS-BE-10, invertida. El porcentaje se
+   * calcula sobre este número.
+   */
+  horasTranscurridas: number;
   horarios: SessionDetail[];
 };
 
