@@ -100,6 +100,16 @@ export const appUser = pgTable("app_user", {
   // mostrar/compartir su carnet con sus redes. Default false = privado hasta que
   // acepte desde el perfil. Aplica a TODOS los usuarios (app_user es compartida).
   networkingOptIn: boolean("networking_opt_in").notNull().default(false),
+  // Foto de perfil. Se guarda el IDENTIFICADOR de Cloudinary, no la URL: con la
+  // URL guardada no se podría cambiar la transformación después (los avatares se
+  // piden recortados a la cara y en varios tamaños) ni borrar la imagen, y
+  // borrarla es lo que hace posible atender un "quítenme la foto".
+  // NULL = sin foto: la app pinta las iniciales, como siempre.
+  avatarPublicId: varchar("avatar_public_id", { length: 255 }),
+  // Versión que devuelve Cloudinary al subir. Entra en la URL y hace de
+  // rompe-caché: sin ella, reemplazar la foto dejaría la vieja en el CDN.
+  avatarVersion: varchar("avatar_version", { length: 20 }),
+  avatarUpdatedAt: timestamp("avatar_updated_at", { withTimezone: true }),
 });
 
 // HU networking (carnet): redes sociales que un usuario decide compartir en su

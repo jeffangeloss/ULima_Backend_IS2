@@ -57,6 +57,13 @@
       "when": 1788717739032,
       "tag": "0008_course_equivalence",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788754367295,
+      "tag": "0009_avatar",
+      "breakpoints": true
     }
   ]
 }

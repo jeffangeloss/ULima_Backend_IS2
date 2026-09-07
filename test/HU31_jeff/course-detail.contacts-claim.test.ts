@@ -73,7 +73,8 @@ app.route("/course-detail", createCourseDetailRoutes(controllerDoble));
 
 const DDL = `
   create table app_user (id integer primary key, code text, full_name text,
-    institutional_email text, token_version integer, networking_opt_in integer);
+    institutional_email text, token_version integer, networking_opt_in integer,
+    avatar_public_id text, avatar_version text);
   create table user_social_link (id integer primary key, user_id integer,
     platform text, url text, label text);
   create table student (id integer primary key, user_id integer, career_id integer);

@@ -64,6 +64,23 @@ describe("upsertTeacher — no vuelve a crear a alguien que ya está", () => {
     expect(consultas().some((c) => c.params.includes("PORTAL:PERCY-DIEZ-QUINONES-PANDURO"))).toBe(true);
   });
 
+  test("al reencontrar a la persona se REFRESCA su nombre con el del portal", async () => {
+    // Los docentes importados antes del 2026-09-06 quedaron como "JAVIER MORE
+    // SANCHEZ" (nombres primero) y al mostrarlos salía "JAVIER MORE, SANCHEZ".
+    // El portal ahora entrega "MORE SANCHEZ, JAVIER", con la coma que marca el
+    // corte: sin refrescar el nombre, esas filas nunca se arreglarían solas.
+    const { tx, consultas } = fakeTx((s) => {
+      if (es(s, "where teacher_code =")) return [];
+      if (es(s, "from teacher")) return [{ id: 183, full_name: "JAVIER MORE SANCHEZ", teacher_code: "PORTAL:JAVIER-MORE-SANCHEZ", user_id: null }];
+      return [];
+    });
+    const r = await repo.upsertTeacher(tx, "MORE SANCHEZ, JAVIER");
+    expect(r).toEqual({ id: 183, created: false });
+    const update = sqlsDe(consultas()).find((x) => es(x, "set full_name ="));
+    expect(update).toBeDefined();
+    expect(consultas().some((c) => c.params.includes("MORE SANCHEZ, JAVIER"))).toBe(true);
+  });
+
   test("una fila que YA tiene otro código se reusa pero NO se le pisa el código", async () => {
     // `DOC005` viene del seed de cuentas docentes: sobrescribirlo rompería el
     // vínculo que ese seed usa para encontrarla.

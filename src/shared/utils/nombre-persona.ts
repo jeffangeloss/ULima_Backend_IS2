@@ -38,3 +38,37 @@ export const mismaPersona = (a: unknown, b: unknown): boolean => {
   const clave = claveNombre(a);
   return clave !== "" && clave === claveNombre(b);
 };
+
+/**
+ * Parte un nombre guardado en apellidos y nombres.
+ *
+ * Los nombres se guardan como los entrega miUlima: APELLIDOS y después NOMBRES,
+ * con la convención peruana de **dos apellidos**. De los 367 usuarios, 310
+ * tienen exactamente cuatro palabras y todos siguen ese patrón.
+ *
+ * Es una CONVENCIÓN, no una deducción: desde el texto solo no hay forma de
+ * saber dónde terminan los apellidos. Con dos apellidos acierta en la enorme
+ * mayoría; con alguien de un solo apellido y tres nombres, no.
+ *
+ * Vivía copiada en siete archivos, todos tomando el ÚLTIMO token como apellido,
+ * que es al revés: con ese criterio la tarjeta de contacto mostraba
+ * "ANGELO, SANCHEZ PALACIOS JEFFERSON".
+ */
+export const partirNombre = (fullName: unknown): { firstName: string; lastName: string } => {
+  const crudo = String(fullName ?? "").trim();
+  // Forma "APELLIDOS, NOMBRES": la coma dice exactamente dónde está el corte,
+  // así que no hay que adivinar nada. Aparece en las filas de docentes
+  // sembradas a mano y en lo que imprime el horario oficial.
+  if (crudo.includes(",")) {
+    const [apellidos, ...resto] = crudo.split(",");
+    return { lastName: apellidos.trim(), firstName: resto.join(",").trim() };
+  }
+  const partes = crudo.split(/\s+/).filter(Boolean);
+  if (partes.length === 0) return { firstName: "", lastName: "" };
+  if (partes.length === 1) return { firstName: partes[0], lastName: "" };
+  const cuantosApellidos = partes.length === 2 ? 1 : 2;
+  return {
+    lastName: partes.slice(0, cuantosApellidos).join(" "),
+    firstName: partes.slice(cuantosApellidos).join(" "),
+  };
+};

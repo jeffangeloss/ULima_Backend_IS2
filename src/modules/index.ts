@@ -3,6 +3,7 @@ import { academicProfileRoutes } from "./academic-profile/index.js";
 import { advisingRoutes } from "./advising/index.js";
 import { alertsRoutes } from "./alerts/index.js";
 import { authRoutes } from "./auth/index.js";
+import { avatarRoutes } from "./avatar/index.js";
 import { courseDetailRoutes } from "./course-detail/index.js";
 import { curriculumRoutes } from "./curriculum/index.js";
 import { gradesRoutes } from "./grades/index.js";
@@ -30,5 +31,6 @@ export const registerModules = (app: Hono) => {
   app.route("/chatbot", chatbotRoutes);
   app.route("/attendance-risk", attendanceRiskRoutes);
   app.route("/networking", networkingRoutes);
+  app.route("/avatar", avatarRoutes);
   app.route("/portal-sync", portalSyncRoutes);
 };

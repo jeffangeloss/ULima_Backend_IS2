@@ -1,3 +1,6 @@
+import { construirUrlAvatar } from "../avatar/avatar.logic.js";
+import { config } from "../../config/app-config.js";
+import { partirNombre as splitName } from "../../shared/utils/nombre-persona.js";
 import { Hono, type Context } from "hono";
 import type { CourseDetailController } from "./course-detail.controller.js";
 import { sql } from "drizzle-orm";
@@ -7,33 +10,6 @@ import {
 } from "../../shared/middleware/auth-middleware.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 
-const splitName = (fullName: string) => {
-  if (fullName.includes(",")) {
-    const parts = fullName.split(",");
-    return {
-      lastName: parts[0].trim(),
-      firstName: parts.slice(1).join(",").trim(),
-    };
-  }
-  
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length > 2) {
-    return {
-      lastName: parts.slice(0, 2).join(" "),
-      firstName: parts.slice(2).join(" "),
-    };
-  } else if (parts.length === 2) {
-    return {
-      lastName: parts[0],
-      firstName: parts[1],
-    };
-  }
-  
-  return {
-    firstName: fullName,
-    lastName: "",
-  };
-};
 
 export const createCourseDetailRoutes = (controller: CourseDetailController) => {
   const app = new Hono<{ Variables: AuthVariables }>();
@@ -188,6 +164,8 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         t.teacher_code,
         t.full_name,
         au.networking_opt_in,
+        au.avatar_public_id,
+        au.avatar_version,
         usl.platform,
         usl.url,
         usl.label
@@ -203,6 +181,8 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         t.teacher_code,
         t.full_name,
         au.networking_opt_in,
+        au.avatar_public_id,
+        au.avatar_version,
         usl.platform,
         usl.url,
         usl.label
@@ -219,6 +199,8 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         au.full_name,
         au.institutional_email,
         au.networking_opt_in,
+        au.avatar_public_id,
+        au.avatar_version,
         s.career_id,
         sr.position,
         usl.platform,
@@ -232,6 +214,15 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
       where e.section_id = ${sectionId}
       order by au.full_name
     `) as unknown as Array<any>;
+
+    // La URL se construye al vuelo y nunca se guarda: con la URL persistida no
+    // se podría cambiar la transformación después ni borrar la imagen.
+    const urlAvatarDe = (row: any) =>
+      construirUrlAvatar({
+        cloudName: config.cloudinary.cloudName,
+        publicId: row?.avatar_public_id ?? null,
+        version: row?.avatar_version ?? null,
+      });
 
     const networkingFromRows = (items: Array<any>) => ({
       optIn: Boolean(items[0]?.networking_opt_in),
@@ -250,6 +241,9 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         ? {
             code: items[0].teacher_code ?? "",
             ...splitName(items[0].full_name),
+            // Un docente sin cuenta no tiene dónde guardar una foto: `avatarUrl`
+            // sale null y la app pinta sus iniciales, como siempre.
+            avatarUrl: urlAvatarDe(items[0]),
             networking: networkingFromRows(items),
           }
         : null;
@@ -306,6 +300,7 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
             setupComplete: true,
           },
           roleInSection: row.position === "delegate" ? "delegado" : row.position === "subdelegate" ? "subdelegado" : "estudiante",
+          avatarUrl: urlAvatarDe(row),
           networking: networkingFromRows(studentRows),
         };
       }),

@@ -1,14 +1,25 @@
 import { clean, stripTags, tdsOf, trsOf, type ParseResult } from "./html.js";
 import type { AulaVirtualRow } from "../portal-sync.types.js";
 
-/** "DIEZ QUIÑONES / PANDURO / PERCY" -> "PERCY DIEZ QUIÑONES PANDURO". */
+/**
+ * "DIEZ QUIÑONES / PANDURO / PERCY" -> "DIEZ QUIÑONES PANDURO, PERCY".
+ *
+ * El portal separa con barras los apellidos de los nombres, y esa es la ÚNICA
+ * señal de dónde termina el apellido: un apellido paterno puede ser compuesto
+ * ("DIEZ QUIÑONES") y desde el texto plano no hay forma de saberlo. Antes esto
+ * aplanaba a "NOMBRES APELLIDOS" y tiraba esa señal, así que al mostrarlo se
+ * partía por la convención de dos apellidos y salía "JAVIER MORE, SANCHEZ".
+ *
+ * Se conserva la coma a propósito: deja el corte explícito para siempre y
+ * `partirNombre` ya la respeta por encima de cualquier convención.
+ */
 export const normalizeTeacherName = (raw: string): string => {
   const parts = clean(raw).split("/").map((p) => clean(p)).filter(Boolean);
   if (!parts.length) return "";
-  if (parts.length === 1) return parts[0];
+  if (parts.length === 1) return parts[0].toUpperCase();
   const nombres = parts[parts.length - 1];
   const apellidos = parts.slice(0, -1).join(" ");
-  return clean(`${nombres} ${apellidos}`).toUpperCase();
+  return clean(`${apellidos}, ${nombres}`).toUpperCase();
 };
 
 /**

@@ -13,7 +13,7 @@ describe("parseAulaVirtual", () => {
     const plan = r.data.find((x) => x.courseCode === "650033");
     expect(plan?.courseName).toBe("PLANEAMIENTO ESTRATÉGICO");
     expect(plan?.sectionCode).toBe("952");
-    expect(plan?.teacherName).toBe("PERCY DIEZ QUIÑONES PANDURO");
+    expect(plan?.teacherName).toBe("DIEZ QUIÑONES PANDURO, PERCY");
   });
 
   test("parseAulaVirtual falla con ok:false sin tabla de cursos", () => {
@@ -22,10 +22,23 @@ describe("parseAulaVirtual", () => {
 });
 
 describe("normalizeTeacherName", () => {
-  test("APELLIDO / APELLIDO / NOMBRES -> NOMBRES APELLIDO APELLIDO", () => {
-    expect(normalizeTeacherName("DIEZ QUI&Ntilde;ONES / PANDURO / PERCY")).toBe("PERCY DIEZ QUIÑONES PANDURO");
-    expect(normalizeTeacherName("MORE / SANCHEZ / JAVIER")).toBe("JAVIER MORE SANCHEZ");
+  test("APELLIDO / APELLIDO / NOMBRES -> 'APELLIDOS, NOMBRES', conservando la coma", () => {
+    // Antes aplanaba a "NOMBRES APELLIDOS" y con eso se perdía la única señal
+    // que decía dónde termina el apellido: "JAVIER MORE SANCHEZ" se mostraba
+    // como "JAVIER MORE, SANCHEZ". La coma lo deja sin ambigüedad para siempre.
+    expect(normalizeTeacherName("DIEZ QUI&Ntilde;ONES / PANDURO / PERCY")).toBe("DIEZ QUIÑONES PANDURO, PERCY");
+    expect(normalizeTeacherName("MORE / SANCHEZ / JAVIER")).toBe("MORE SANCHEZ, JAVIER");
     expect(normalizeTeacherName("  ")).toBe("");
+  });
+
+  test("un apellido compuesto de tres palabras sobrevive intacto", () => {
+    // Sin la coma, la convención de dos apellidos cortaría en "DIEZ QUIÑONES".
+    expect(normalizeTeacherName("DIEZ QUIÑONES / PANDURO / PERCY").split(",")[0])
+      .toBe("DIEZ QUIÑONES PANDURO");
+  });
+
+  test("sin barras se devuelve tal cual: no se inventa un corte", () => {
+    expect(normalizeTeacherName("DOCENTE POR ASIGNAR")).toBe("DOCENTE POR ASIGNAR");
   });
 });
 

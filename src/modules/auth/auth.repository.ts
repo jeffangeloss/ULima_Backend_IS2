@@ -1,3 +1,6 @@
+import { construirUrlAvatar } from "../avatar/avatar.logic.js";
+import { config } from "../../config/app-config.js";
+import { partirNombre as splitName } from "../../shared/utils/nombre-persona.js";
 import type { db } from "../../db/index.js";
 import { sql } from "drizzle-orm";
 import type {
@@ -25,6 +28,8 @@ type UserRow = {
   curriculum_id: number;
   current_level: number | null;
   specialty_setup_completed: boolean;
+  avatar_public_id: string | null;
+  avatar_version: string | null;
 };
 
 type SpecialtyRow = {
@@ -63,16 +68,10 @@ type TeacherRow = {
   password_hash?: string;
   token_version: number;
   teacher_id: number;
+  avatar_public_id: string | null;
+  avatar_version: string | null;
 };
 
-
-const splitName = (fullName: string) => {
-  const parts = fullName.trim().split(/\s+/);
-  return {
-    firstName: parts.length > 1 ? parts.slice(0, -1).join(" ") : fullName,
-    lastName: parts.length > 1 ? parts[parts.length - 1] : "",
-  };
-};
 
 /**
  * PISO de ciclos que se dan por cumplidos. NO es una afirmación sobre las notas
@@ -141,6 +140,8 @@ export class AuthRepository {
         au.institutional_email,
         au.password_hash,
         au.token_version,
+        au.avatar_public_id,
+        au.avatar_version,
         s.id as student_id,
         s.career_id,
         s.curriculum_id,
@@ -170,6 +171,8 @@ export class AuthRepository {
         au.full_name,
         au.institutional_email,
         au.token_version,
+        au.avatar_public_id,
+        au.avatar_version,
         s.id as student_id,
         s.career_id,
         s.curriculum_id,
@@ -196,6 +199,8 @@ export class AuthRepository {
         au.full_name,
         au.institutional_email,
         au.token_version,
+        au.avatar_public_id,
+        au.avatar_version,
         s.id as student_id,
         s.career_id,
         s.curriculum_id,
@@ -225,6 +230,8 @@ export class AuthRepository {
         au.institutional_email,
         au.password_hash,
         au.token_version,
+        au.avatar_public_id,
+        au.avatar_version,
         t.id as teacher_id
       from app_user au
       join teacher t on t.user_id = au.id
@@ -253,6 +260,8 @@ export class AuthRepository {
         au.full_name,
         au.institutional_email,
         au.token_version,
+        au.avatar_public_id,
+        au.avatar_version,
         t.id as teacher_id
       from app_user au
       join teacher t on t.user_id = au.id
@@ -276,6 +285,8 @@ export class AuthRepository {
         au.full_name,
         au.institutional_email,
         au.token_version,
+        au.avatar_public_id,
+        au.avatar_version,
         t.id as teacher_id
       from app_user au
       join teacher t on t.user_id = au.id
@@ -307,6 +318,7 @@ export class AuthRepository {
       tokenVersion: Number(row.token_version),
       fullName: row.full_name,
       ...names,
+      avatarUrl: this.urlAvatar(row),
       institutionalEmail: row.institutional_email,
       email: row.institutional_email,
       role: "teacher",
@@ -472,6 +484,16 @@ export class AuthRepository {
     `);
   }
 
+  /** La URL se construye al vuelo y nunca se guarda: con la URL persistida no
+   *  se podría cambiar la transformación después ni borrar la imagen. */
+  private urlAvatar(row: { avatar_public_id?: string | null; avatar_version?: string | null }) {
+    return construirUrlAvatar({
+      cloudName: config.cloudinary.cloudName,
+      publicId: row.avatar_public_id ?? null,
+      version: row.avatar_version ?? null,
+    });
+  }
+
   private async buildUser(row: UserRow, role: AppRole): Promise<AuthUser> {
     const [specialties, currentCourses, approvedCourseIds] = await Promise.all([
       this.findActiveSpecialties(Number(row.student_id)),
@@ -501,6 +523,7 @@ export class AuthRepository {
       tokenVersion: Number(row.token_version),
       fullName: row.full_name,
       ...names,
+      avatarUrl: this.urlAvatar(row),
       institutionalEmail: row.institutional_email,
       email: row.institutional_email,
       role,
