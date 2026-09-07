@@ -403,6 +403,10 @@ Retorna el horario semanal por bloques de tiempo para las secciones donde el est
 > Las filas de horario **docente** y de **asesoría** siempre lo emiten en `false`: son secciones o sesiones, y la asistencia es por matrícula.
 >
 > **Riesgo por inasistencias** (`/attendance-risk`): `status` admite `impedido | en_riesgo | normal | sin_datos`, y `absencePercentage` es **nullable** — llega `null` exactamente cuando `status` es `sin_datos`. El `summary` incluye `sin_datos` como contador propio, que NO se suma a `normal`; el cliente no debe calcular "normal" por resta.
+>
+> Las tres rutas de `/attendance-risk` exigen, además del rol `teacher`, que la sección sea del docente autenticado (titular o JP): si no, responden **`403 NOT_SECTION_TEACHER`** con el mismo mensaje exista o no la sección, para no convertir el endpoint en un oráculo de enumeración. Ver RS-BE-11.
+>
+> `GET /course-detail/sections` devuelve las horas **del alumno autenticado**, no agregados del salón (RS-BE-12). `promedioSeccion` sigue siendo de la sección.
 
 ### GET /schedule/me/assessments
 Retorna la lista de evaluaciones programadas en el sílabo mapeadas a fechas y horarios reales basados en el cronograma semanal de clases del estudiante.

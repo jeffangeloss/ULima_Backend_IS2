@@ -47,7 +47,10 @@ const row = (over: Partial<AttendanceRiskRawRow> = {}): AttendanceRiskRawRow => 
 
 const serviceWith = (rows: AttendanceRiskRawRow[]) =>
   new AttendanceRiskService(
-    { findStudentsBySectionId: async () => rows } as unknown as AttendanceRiskRepository,
+    {
+      findStudentsBySectionId: async () => rows,
+      findModalSessionHours: async () => null,   // sin horario -> cae al 2 heredado (RS-BE-13)
+    } as unknown as AttendanceRiskRepository,
     noopEvents,
   );
 

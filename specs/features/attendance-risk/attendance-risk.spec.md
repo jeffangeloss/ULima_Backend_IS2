@@ -29,6 +29,15 @@ Con el denominador saliendo de `course_offering.total_hours` (48 h, 64 h), el se
   `[@test] ../../../test/HU_asistencia/attendance-risk.sin-datos.test.ts`
   `[@test] ../../../test/HU22_sam/impedidos.unitarias.test.ts`
   `[@test] ../../../test/HU30_sam/notificar.cajablanca.test.ts`
+- RS-BE-11: **El riesgo de una sección solo lo ve y lo notifica su docente.** No basta con el rol `teacher`: la sección debe tener al docente autenticado como profesor titular (`teacher_id`) o como JP (`jp_id`). La guarda va montada como middleware sobre el patrón de ruta, no dentro de cada handler, para que un endpoint nuevo nazca protegido.
+  `[@test] ../../../test/HU_asistencia/attendance-risk.ownership.test.ts`
+  `[@test] ../../../test/HU_asistencia/attendance-risk.rutas-guardadas.test.ts`
+- RS-BE-12: **Las horas que ve un alumno son las suyas.** `GET /course-detail/sections` filtra las matrículas por el alumno autenticado; nunca agrega horas sobre el resto del salón. `promedioSeccion` sí es de la sección y va por su propio join.
+  `[@test] ../../../test/HU_asistencia/course-detail.horas-propias.test.ts`
+- RS-BE-13: **La duración de una sesión sale del horario**, como moda de `schedule_session` de la sección. Solo si la sección no tiene horario importado se degrada al 2 heredado.
+  `[@test] ../../../test/HU_asistencia/attendance-risk.duracion-sesion.test.ts`
+- RS-BE-14: **Notificar a una sección es todo o nada.** Las alertas se insertan en una transacción; un fallo a mitad no deja alertas parciales.
+  `[@test] ../../../test/HU_asistencia/attendance-risk.alertas-atomicas.test.ts`
 
 ## Rules
 
@@ -78,15 +87,12 @@ Se implementan tal como estaban, pero **ningún documento del repo ni de la Univ
 
 - El límite 25% / 35% y el corte en `cycle >= 6`.
 - La ventana de `en_riesgo` es exactamente `{2, 3}` faltas: **un alumno a 1 falta del límite vuelve a clasificar como `normal` y nunca es avisado.** Parece un bug de negocio, no un diseño.
-- `sessionHours = 2` está hardcodeado (tres veces) para convertir horas en faltas. La duración real de cada sesión ya está en `schedule_session` y no se usa. Ese número viaja literal al mensaje que recibe el alumno.
+- El **fallback** de 2 h por sesión, que se usa cuando la sección no tiene horario importado (RS-BE-13 ya deriva el resto del horario real). Ese número viaja literal al mensaje que recibe el alumno y no hay documento que lo respalde.
 - El denominador `course_offering.total_hours` se calcula como `créditos × 16`, que subestima las horas reales entre 20% y 40% (ver RS-BE-9 en `portal-sync.spec.md`).
 
 ## Fuera de alcance de esta spec
 
-Pendientes verificados que **no** se tocaron acá y siguen abiertos:
+Pendientes verificados que **no** se tocaron acá y siguen abiertos (el IDOR, el filtro por alumno de `course-detail` y la atomicidad de `createAlerts` estaban en esta lista y ya se cerraron: RS-BE-11, RS-BE-12 y RS-BE-14):
 
-- `attendance-risk.routes.ts` solo exige `requireRole("teacher")`, sin comprobar que la sección sea del docente. Cualquier token docente puede leer y notificar cualquier sección (IDOR).
-- `course-detail.routes.ts` agrega `min/max` sobre **todas** las matrículas de la sección sin filtrar por alumno: le muestra al alumno números del salón como si fueran suyos.
 - `schedule.repository.ts` devuelve `'0'` literal para las horas en la rama docente, no leído de la base.
-- `createAlerts` no es transaccional: un fallo a mitad deja alertas parciales insertadas.
 - Nadie escribe todavía las horas de asistencia. Traerlas del Aula Virtual depende de un spike no ejecutado.

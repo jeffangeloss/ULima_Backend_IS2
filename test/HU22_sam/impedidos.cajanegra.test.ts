@@ -58,6 +58,7 @@ const clasificar = async (
 
   const repositorio = {
     findStudentsBySectionId: async () => [alumno], // stub: devuelve solo nuestro alumno de prueba
+    findModalSessionHours: async () => null,   // sin horario -> cae al 2 heredado (RS-BE-13)
   } as unknown as AttendanceRiskRepository;
 
   const servicio = new AttendanceRiskService(repositorio, eventosFalsos);

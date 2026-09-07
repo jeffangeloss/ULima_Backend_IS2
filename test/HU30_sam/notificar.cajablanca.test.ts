@@ -71,6 +71,7 @@ const spyService = (rows: StudentNotifyRow[]) => {
   const captured: { studentId: number; type: string; title: string; message: string }[] = [];
   const repo = {
     findStudentDetailsBySectionId: async () => rows,
+    findModalSessionHours: async () => null,   // sin horario -> cae al 2 heredado (RS-BE-13)
     createAlerts: async (data: typeof captured) => {
       captured.push(...data);
       return data.length;

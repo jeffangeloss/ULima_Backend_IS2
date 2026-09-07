@@ -48,7 +48,10 @@ const notifyRow = (over: Partial<StudentNotifyRow> = {}): StudentNotifyRow => ({
 
 const serviceWith = (rows: AttendanceRiskRawRow[]) =>
   new AttendanceRiskService(
-    { findStudentsBySectionId: async () => rows } as unknown as AttendanceRiskRepository,
+    {
+      findStudentsBySectionId: async () => rows,
+      findModalSessionHours: async () => null,   // sin horario -> cae al 2 heredado (RS-BE-13)
+    } as unknown as AttendanceRiskRepository,
     noopEvents,
   );
 
@@ -87,6 +90,7 @@ describe("notifyStudents no alerta sobre datos ausentes", () => {
     const service = new AttendanceRiskService(
       {
         findStudentDetailsBySectionId: async () => rows,
+        findModalSessionHours: async () => null,   // sin horario -> cae al 2 heredado (RS-BE-13)
         createAlerts: async (d: typeof captured) => { captured.push(...d); return d.length; },
       } as unknown as AttendanceRiskRepository,
       noopEvents,

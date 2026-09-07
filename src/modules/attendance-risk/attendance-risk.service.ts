@@ -1,4 +1,5 @@
 import type { EventBus } from "../../events/index.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 import type { AttendanceRiskRepository } from "./attendance-risk.repository.js";
 import type {
   AttendanceRiskResponse,
@@ -137,15 +138,44 @@ const computeSummary = (students: AttendanceRiskStudentResponse[]): AttendanceRi
   return { impedido, en_riesgo, normal, sin_datos, total: students.length };
 };
 
+/** Degradación cuando la sección no tiene horario importado. Ver RS-BE-13. */
+const DEFAULT_SESSION_HOURS = 2;
+
 export class AttendanceRiskService {
   constructor(
     readonly repository: AttendanceRiskRepository,
     readonly events: EventBus,
   ) {}
 
+  /**
+   * RS-BE-11. Toda ruta del módulo pasa por acá antes de tocar datos: la sección
+   * debe ser del docente autenticado. Antes solo se exigía el ROL `teacher`, así
+   * que cualquier docente podía leer el riesgo de cualquier sección y disparar
+   * `notify`, que inserta alertas académicas a alumnos ajenos.
+   *
+   * El mensaje es el mismo exista o no la sección: uno distinto para cada caso
+   * convertiría el endpoint en un oráculo para enumerar secciones.
+   */
+  async assertTeacherOwnsSection(teacherId: number, sectionId: number): Promise<void> {
+    const pertenece = await this.repository.teacherBelongsToSection(teacherId, sectionId);
+    if (!pertenece) {
+      throw new HttpError(403, "No tienes acceso a esta sección.", "NOT_SECTION_TEACHER");
+    }
+  }
+
+  /**
+   * RS-BE-13. Duración de una sesión, del horario real. El 2 sobrevive solo como
+   * degradación para secciones sin horario importado: es lo que había antes y no
+   * hay documento de la Universidad que lo respalde (ver §Reglas sin fuente).
+   */
+  private async resolveSessionHours(sectionId: number): Promise<number> {
+    const horas = await this.repository.findModalSessionHours(sectionId);
+    return horas && horas > 0 ? horas : DEFAULT_SESSION_HOURS;
+  }
+
   async getAttendanceRisk(sectionId: number): Promise<AttendanceRiskResponse> {
     const rows = await this.repository.findStudentsBySectionId(sectionId);
-    const sessionHours = 2;
+    const sessionHours = await this.resolveSessionHours(sectionId);
     const students: AttendanceRiskStudentResponse[] = rows.map(row => classifyStudent(row, sessionHours));
 
     return { students, summary: computeSummary(students) };
@@ -153,7 +183,7 @@ export class AttendanceRiskService {
 
   async getAttendanceRiskSummary(sectionId: number): Promise<{ summary: AttendanceRiskSummary }> {
     const rows = await this.repository.findStudentsBySectionId(sectionId);
-    const sessionHours = 2;
+    const sessionHours = await this.resolveSessionHours(sectionId);
     const students: AttendanceRiskStudentResponse[] = rows.map(row => classifyStudent(row, sessionHours));
 
     return { summary: computeSummary(students) };
@@ -161,7 +191,7 @@ export class AttendanceRiskService {
 
   async notifyStudents(sectionId: number): Promise<{ notified: number; message: string }> {
     const rows = await this.repository.findStudentDetailsBySectionId(sectionId);
-    const sessionHours = 2;
+    const sessionHours = await this.resolveSessionHours(sectionId);
     const alerts: { studentId: number; type: string; title: string; message: string }[] = [];
 
     let sinDatos = 0;
