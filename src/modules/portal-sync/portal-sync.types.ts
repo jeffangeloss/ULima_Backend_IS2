@@ -95,3 +95,24 @@ export interface SyncStatus {
   enrollmentsInActivePeriod: number;
   needsImport: boolean;
 }
+
+/**
+ * Asistencia de UN curso, tal como la publica el panel Asistencia del Aula
+ * Virtual para el alumno autenticado (RS-BE-15).
+ *
+ * CINCO CAMPOS Y NINGUNO DE TEXTO LIBRE. La ausencia de campos para la sesión
+ * individual, la marca y la columna "Observación" es la garantía de
+ * minimización de datos, no un olvido: esa página trae el nombre del alumno, el
+ * del docente y observaciones que mencionan a terceros. No agregar campos acá
+ * sin pasar por la spec.
+ */
+export type AsistenciaCurso = {
+  courseCode: string;
+  sectionCode: string;
+  /** "Total horas programadas" del portal. Es el denominador del alumno. */
+  totalHours: number;
+  /** "Total horas asistidas". */
+  attendedHours: number;
+  /** Horas del bloque "Total inasistencias"; NUNCA derivado de los otros dos. */
+  absentHours: number;
+};

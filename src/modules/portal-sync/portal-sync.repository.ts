@@ -135,6 +135,40 @@ export const resolveOfferingTotalHours = (
   return { hours: Math.max(1, Math.ceil(src.credits || 0)) * weeks, source: "credits" };
 };
 
+/**
+ * RS-BE-15. Decide si un triple de horas del portal se puede escribir, y lo
+ * pasa a texto con dos decimales.
+ *
+ * Existe porque `chk_enrollment_attendance_hours` (attended + absent <= total)
+ * se evalúa al cerrar CADA statement y no admite DEFERRABLE, y la importación
+ * entera corre en UNA transacción: un 23514 acá haría rollback de matrícula,
+ * horario, notas y progreso. Se valida en JS, igual que `updateStudentLevel`
+ * hace con `chk_student_current_level`.
+ *
+ * Se compara en centésimas enteras para no arrastrar el error del punto
+ * flotante (0.1 + 0.2 > 0.3 rechazaría un triple legítimo).
+ *
+ * `total <= 0` se rechaza a propósito: `enrollment.total_hours = 0` es el
+ * centinela de RS-BE-10 ("nunca se escribió asistencia"), y escribirlo sería
+ * mentir en la dirección contraria.
+ */
+export const resolveAttendanceHours = (
+  c: { totalHours: number; attendedHours: number; absentHours: number },
+):
+  | { ok: true; hours: { total: string; attended: string; absent: string } }
+  | { ok: false; reason: string } => {
+  const cent = (n: number) => (Number.isFinite(n) ? Math.round(n * 100) : Number.NaN);
+  const [T, A, F] = [cent(c.totalHours), cent(c.attendedHours), cent(c.absentHours)];
+  if (![T, A, F].every(Number.isInteger)) return { ok: false, reason: "algún total no es un número" };
+  if (T <= 0) return { ok: false, reason: "el portal no reporta horas programadas" };
+  if (A < 0 || F < 0) return { ok: false, reason: "una hora reportada es negativa" };
+  // numeric(5,2) llega hasta 999.99; más alto sería 22003 al escribir.
+  if (T > 99_999) return { ok: false, reason: "las horas reportadas no entran en el campo" };
+  if (A + F > T) return { ok: false, reason: "asistidas más faltas superan las programadas" };
+  const txt = (n: number) => (n / 100).toFixed(2);
+  return { ok: true, hours: { total: txt(T), attended: txt(A), absent: txt(F) } };
+};
+
 /** El ciclo global solo AVANZA: nunca se retrocede por la importación de un alumno. */
 export const periodCodeIsNewer = (incoming: string, current: string | null): boolean =>
   current === null || incoming >= current;
@@ -575,6 +609,39 @@ export class PortalSyncRepository {
       ) h
       where co.id = h.oid and h.horas_semana > 0
     `);
+  }
+
+  /**
+   * RS-BE-15. Escribe las tres horas de asistencia de UNA matrícula.
+   *
+   * UNA sola sentencia con las tres columnas: escribir `attended` por separado,
+   * con `total` todavía en el DEFAULT '0', violaría el CHECK al cerrar ese
+   * statement. Y el WHERE repite la condición del CHECK como cinturón: si el
+   * triple fuera incoherente, actualiza 0 filas y el service lo cuenta como
+   * omitido, en vez de levantar un 23514 que aborta la transacción entera.
+   *
+   * Es ASIGNACIÓN, no `greatest` ni acumulación: el portal publica el acumulado
+   * a la fecha y el docente puede corregir una marca, así que este es el único
+   * upsert del módulo que debe poder BAJAR. La idempotencia sale gratis.
+   */
+  async updateAttendanceHours(
+    tx: Tx,
+    enrollmentId: number,
+    h: { total: string; attended: string; absent: string },
+  ): Promise<boolean> {
+    const filas = (await tx.execute(sql`
+      update enrollment
+         set total_hours    = ${h.total}::numeric,
+             attended_hours = ${h.attended}::numeric,
+             absent_hours   = ${h.absent}::numeric
+       where id = ${enrollmentId}
+         and ${h.total}::numeric > 0
+         and ${h.attended}::numeric >= 0
+         and ${h.absent}::numeric >= 0
+         and ${h.attended}::numeric + ${h.absent}::numeric <= ${h.total}::numeric
+      returning id
+    `)) as unknown as Array<unknown>;
+    return filas.length > 0;
   }
 
   /** El docente solo se pisa si el guardado es el placeholder. jp_id nunca se toca. */
