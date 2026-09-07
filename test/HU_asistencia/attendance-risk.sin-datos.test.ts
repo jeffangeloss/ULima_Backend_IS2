@@ -128,3 +128,21 @@ describe("notifyStudents no alerta sobre datos ausentes", () => {
     expect(captured[0].studentId).toBe(9);
   });
 });
+
+describe("el denominador es el del alumno, no el de la oferta", () => {
+  test("con horas propias escritas, manda enrollment_total_hours", async () => {
+    // RS-BE-15 llena enrollment.total_hours con lo que publica la página del
+    // propio alumno. course_offering.total_hours es por OFERTA y usa max()
+    // entre secciones, así que no puede representar el denominador de una
+    // sección concreta: una vez que existe el propio, ese gana.
+    const consultas: string[] = [];
+    const { PgDialect } = await import("drizzle-orm/pg-core");
+    const { PortalSyncRepository: _ } = await import("../../src/modules/portal-sync/portal-sync.repository.js");
+    const { AttendanceRiskRepository } = await import("../../src/modules/attendance-risk/attendance-risk.repository.js");
+    const repo = new AttendanceRiskRepository({
+      execute: async (q: never) => { consultas.push(new PgDialect().sqlToQuery(q).sql.toLowerCase()); return []; },
+    } as never);
+    await repo.findStudentsBySectionId(1);
+    expect(consultas[0]).toContain("nullif(e.total_hours");
+  });
+});

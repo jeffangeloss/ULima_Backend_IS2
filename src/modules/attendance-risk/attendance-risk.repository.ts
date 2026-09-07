@@ -51,7 +51,13 @@ export class AttendanceRiskRepository {
         au.full_name,
         s.current_level,
         e.absent_hours,
-        COALESCE(co.total_hours, e.total_hours) as total_section_hours,
+        -- RS-BE-15: una vez que existe el total del PROPIO alumno (lo escribe la
+        -- importación desde su página del portal), ese es el denominador. El de
+        -- la oferta usa max() entre secciones, así que no representa a ninguna
+        -- sección en particular y queda solo como respaldo. La versión anterior
+        -- era COALESCE(co.total_hours, e.total_hours), cuya segunda rama era
+        -- código muerto: co.total_hours es NOT NULL DEFAULT '0' y el join INNER.
+        COALESCE(NULLIF(e.total_hours, 0), co.total_hours) as total_section_hours,
         e.total_hours as enrollment_total_hours,
         cc.cycle
       FROM enrollment e
@@ -75,7 +81,13 @@ export class AttendanceRiskRepository {
         au.full_name,
         s.current_level,
         e.absent_hours,
-        COALESCE(co.total_hours, e.total_hours) as total_section_hours,
+        -- RS-BE-15: una vez que existe el total del PROPIO alumno (lo escribe la
+        -- importación desde su página del portal), ese es el denominador. El de
+        -- la oferta usa max() entre secciones, así que no representa a ninguna
+        -- sección en particular y queda solo como respaldo. La versión anterior
+        -- era COALESCE(co.total_hours, e.total_hours), cuya segunda rama era
+        -- código muerto: co.total_hours es NOT NULL DEFAULT '0' y el join INNER.
+        COALESCE(NULLIF(e.total_hours, 0), co.total_hours) as total_section_hours,
         e.total_hours as enrollment_total_hours,
         c.name as course_name,
         sec.code as section_code,

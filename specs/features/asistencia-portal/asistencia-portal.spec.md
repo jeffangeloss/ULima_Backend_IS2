@@ -52,7 +52,8 @@ Los tres agregados mapean 1:1 con las tres columnas. Y «Total horas programadas
   `[@test] ../../../test/HU31_jeff/parser.asistencia.test.ts`
   `[@test] ../../../test/HU31_jeff/repository.asistencia.test.ts`
 - RS-BE-16: El porcentaje de asistencia que ve el alumno se calcula sobre las **horas transcurridas**, no sobre el ciclo entero. La API expone `horasTranscurridas` (= asistidas + inasistencias) junto a las tres horas.
-  `[@test] ../../../test/HU31_jeff/schedule.horas-transcurridas.test.ts`
+  `[@test] ../../../test/HU_asistencia/attendance-risk.sin-datos.test.ts`
+  (el cálculo del porcentaje vive en el cliente: `ULima_Frontend_IS2/test/HU_asistencia/seccion_asistencia_test.dart`)
 
 ## Rules
 
