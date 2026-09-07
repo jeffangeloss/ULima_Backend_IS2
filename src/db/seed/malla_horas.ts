@@ -127,13 +127,11 @@ async function main() {
   console.log(`  a escribir: ${cambios.length}`);
   console.log(`  sin match:  ${faltantes.length}`);
   if (faltantes.length) {
-    console.log("
-  ⚠ códigos del plan que NO existen en course (se omiten):");
+    console.log("\n⚠ códigos del plan que NO existen en course (se omiten):");
     for (const f of faltantes) console.log(`     ${f.code}  ${f.name}`);
   }
   if (cambios.length) {
-    console.log("
-  cambios:");
+    console.log("\ncambios:");
     for (const c of cambios) {
       const antes = porCode.get(c.code)!.weekly_hours;
       console.log(`     ${c.code}  ${String(antes ?? "null").padStart(4)} -> ${String(c.weeklyHours).padStart(2)} h/sem   ${c.name}`);
@@ -141,13 +139,11 @@ async function main() {
   }
 
   if (!APPLY) {
-    console.log("
-DRY-RUN: no se escribió nada. Repetir con --apply.");
+    console.log("\nDRY-RUN: no se escribió nada. Repetir con --apply.");
     return;
   }
   if (cambios.length === 0) {
-    console.log("
-Nada que escribir.");
+    console.log("\nNada que escribir.");
     return;
   }
 
