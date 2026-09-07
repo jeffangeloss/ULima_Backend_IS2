@@ -6,6 +6,7 @@ import {
   googleLoginSchema,
   passwordResetRequestSchema,
   passwordResetConfirmSchema,
+  passwordResetVerifySchema,
 } from "./auth.schemas.js";
 import { authMiddleware } from "../../shared/middleware/auth-middleware.js";
 import type { AppRole } from "./auth.types.js";
@@ -26,6 +27,11 @@ export const createAuthRoutes = (controller: AuthController) => {
   app.post("/password-reset/request", async (c) => {
     const body = await validateJson(c, passwordResetRequestSchema);
     return c.json(await controller.requestPasswordReset(body));
+  });
+
+  app.post("/password-reset/verify", async (c) => {
+    const body = await validateJson(c, passwordResetVerifySchema);
+    return c.json(await controller.verifyPasswordResetCode(body));
   });
 
   app.post("/password-reset/confirm", async (c) => {

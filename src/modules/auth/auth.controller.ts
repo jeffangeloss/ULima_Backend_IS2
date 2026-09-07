@@ -24,6 +24,10 @@ export class AuthController {
     return this.service.requestPasswordReset(input);
   }
 
+  verifyPasswordResetCode(input: { identifier: string; code: string }) {
+    return this.service.verifyPasswordResetCode(input);
+  }
+
   confirmPasswordReset(input: { identifier: string; code: string; newPassword: string }) {
     return this.service.confirmPasswordReset(input);
   }

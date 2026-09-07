@@ -108,7 +108,7 @@ targets:
 - Tabla `password_reset_token`: `id`, `user_id` (FK `app_user`), `token_hash` (SHA-256 hex del OTP, `varchar(64)`), `expires_at` (timestamptz), `used_at` (timestamptz, null), `attempts` (default 0), `created_at` (timestamptz, default now). Índice por `user_id`.
 - OTP de 6 dígitos generado con crypto seguro; solo se persiste su hash SHA-256.
   `[@test] ../../../test/password-reset.logic.test.ts`
-- Política: expiración 30 minutos, máximo 5 intentos, un solo uso.
+- Política: expiración 30 minutos, máximo 6 intentos (RS-AUTH-22: eran 5; un flujo correcto gasta 2 desde que existe `/password-reset/verify`), un solo uso.
   `[@test] ../../../test/password-reset.logic.test.ts`
 - La nueva contraseña debe tener mínimo 8 caracteres (`validateNewPassword`).
   `[@test] ../../../test/password-reset.logic.test.ts`

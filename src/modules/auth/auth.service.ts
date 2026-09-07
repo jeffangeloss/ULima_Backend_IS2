@@ -388,6 +388,56 @@ export class AuthService {
    * código responde el mismo 400 genérico ("Código inválido o expirado.") sin
    * distinguir si el usuario existe. En éxito invalida todas las sesiones.
    */
+  /**
+   * Comprueba el código SIN consumir el token (RS-AUTH-17 a RS-AUTH-19).
+   *
+   * Existe porque el frontend dejaba pasar cualquier código de seis dígitos a
+   * la pantalla de contraseña nueva: solo validaba el formato en local, y el
+   * código real recién se contrastaba al confirmar, cuando el usuario ya había
+   * escrito la contraseña dos veces y gastado un intento sin saberlo.
+   *
+   * NO marca el token como usado: `/confirm` tiene que poder gastarlo después
+   * con el mismo código. Sí reserva un intento, por la misma razón que
+   * `/confirm` — sin la reserva atómica, N peticiones concurrentes podrían
+   * saltarse el límite leyendo un `attempts` obsoleto. Por eso RS-AUTH-22 sube
+   * el máximo a 6: un flujo correcto ahora gasta dos.
+   *
+   * Nunca es un permiso: `/confirm` vuelve a validar por su cuenta, así que un
+   * cliente que la llame directo se comporta exactamente como antes.
+   */
+  async verifyPasswordResetCode(input: { identifier: string; code: string }) {
+    try {
+      const user = await this.repository.findUserForPasswordReset(input.identifier);
+      if (!user) throw this.invalidResetCodeError();
+
+      const token = await this.repository.findLatestPasswordResetToken(user.id);
+      if (!token) throw this.invalidResetCodeError();
+
+      const consumed = await this.repository.consumePasswordResetAttempt(token.id, MAX_RESET_ATTEMPTS);
+      if (!consumed) throw this.invalidResetCodeError();
+
+      const validation = validateResetToken({
+        tokenHash: consumed.tokenHash,
+        expiresAt: consumed.expiresAt,
+        usedAt: consumed.usedAt,
+        // El intento en curso ya quedó reservado; se descuenta para que la
+        // validación pura no lo cuente dos veces.
+        attempts: consumed.attempts - 1,
+        now: new Date(),
+        candidateOtp: input.code,
+      });
+
+      if (validation.status !== "ok") throw this.invalidResetCodeError();
+
+      // No se devuelve cuántos intentos quedan: sería un oráculo.
+      return { valid: true as const };
+    } catch (e) {
+      if (e instanceof HttpError) throw e;
+      console.error('DB Error in auth.service verifyPasswordResetCode', e);
+      throw new HttpError(500, "Error interno del servidor.", "INTERNAL_ERROR");
+    }
+  }
+
   async confirmPasswordReset(input: { identifier: string; code: string; newPassword: string }) {
     try {
       // Este error sí puede ser específico: no revela existencia de la cuenta.

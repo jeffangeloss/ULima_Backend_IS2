@@ -4,13 +4,19 @@ import { createHash, randomInt, timingSafeEqual } from "node:crypto";
  * Lógica pura del flujo de restablecimiento de contraseña (HU20).
  * Sin acceso a base de datos ni efectos: todo es testeable con `bun test`.
  *
- * Política: OTP de 6 dígitos, expiración de 30 minutos, máximo 5 intentos,
+ * Política: OTP de 6 dígitos, expiración de 30 minutos, máximo 6 intentos,
  * un solo uso, contraseña nueva de mínimo 8 caracteres.
  */
 
 export const OTP_LENGTH = 6;
 export const OTP_EXPIRATION_MINUTES = 30;
-export const MAX_RESET_ATTEMPTS = 5;
+/**
+ * Intentos por token. Son 6 y no 5 desde RS-AUTH-22: un flujo correcto gasta
+ * DOS (uno en `/password-reset/verify`, otro en `/password-reset/confirm`), así
+ * que con 6 el presupuesto de equivocaciones del usuario sigue siendo 4, el
+ * mismo que cuando solo existía `/confirm`.
+ */
+export const MAX_RESET_ATTEMPTS = 6;
 export const MIN_PASSWORD_LENGTH = 8;
 
 /** Genera un OTP de 6 dígitos con aleatoriedad criptográficamente segura. */

@@ -13,7 +13,7 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
 
 ## Principios Globales
 
-- Todas las rutas, salvo `GET /`, `GET /health`, `POST /auth/login`, `POST /auth/google`, `POST /auth/password-reset/request` y `POST /auth/password-reset/confirm`, usan `Authorization: Bearer <token>`. Este requisito está **enforced** por `authMiddleware` en cada módulo (incluidos `course-detail`, `grades` y `section-management`).
+- Todas las rutas, salvo `GET /`, `GET /health`, `POST /auth/login`, `POST /auth/google`, `POST /auth/password-reset/request`, `POST /auth/password-reset/verify` y `POST /auth/password-reset/confirm`, usan `Authorization: Bearer <token>`. Este requisito está **enforced** por `authMiddleware` en cada módulo (incluidos `course-detail`, `grades` y `section-management`).
 - El usuario autenticado es estudiante **o docente** (HU18).
 - Roles permitidos: `student`, `delegate`, `subdelegate`, `teacher`.
 - `teacher` es el rol técnico compartido por profesor y jefe de práctica (JP); su etiqueta se deriva de `section.teacher_id` vs `section.jp_id`. El JWT docente lleva `teacherId` en vez de `studentId`.
@@ -63,6 +63,11 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
 - `POST /auth/password-reset/request` (público)
   - Request: `{ "identifier": "string" }` (código de alumno o correo institucional)
   - Response (siempre `200`, exista o no la cuenta): `{ "message": "Si la cuenta existe, enviamos un código a tu correo institucional." }`
+- `POST /auth/password-reset/verify` (público)
+  - Body: `{ "identifier": "20230001", "code": "123456" }`
+  - `200` → `{ "valid": true }`
+  - `400` `INVALID_RESET_CODE`: "Código inválido o expirado." (mismatch, expirado, usado, intentos agotados o cuenta inexistente — indistinguibles a propósito)
+  - Comprueba el código sin gastar el token: `/confirm` sigue necesitándolo después. Sí reserva un intento, así que un flujo correcto gasta 2 de los 6.
 - `POST /auth/password-reset/confirm` (público)
   - Request: `{ "identifier": "string", "code": "string", "newPassword": "string" }`
   - Response `200`: `{ "message": "Contraseña actualizada correctamente." }`
