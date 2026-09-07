@@ -4,6 +4,7 @@ import {
   PortalSyncRepository, defaultPeriodDates, hasPublishedCalendar, pickBestRecordRow, progressStatusFor,
   shouldActivatePeriod, teacherCodeFor,
   levelFromCoverage, levelNeverGoesDown,
+  academicWeekCount, resolveOfferingTotalHours,
   type ProgressStatus,
   careerNamesDiffer,
   courseColorHex,
@@ -308,6 +309,10 @@ export class PortalSyncService {
       // guardarlos sin consentimiento. Va acá porque `upsertPeriod` es el
       // único cierre de ciclo que existe hoy en el repo (no hay cron).
       summary.claimsDeleted += await this.repository.deleteClaimsOfInactivePeriods(tx, p.id);
+      // RS-BE-9: las horas del ciclo son `horas semanales x semanas`, y las
+      // semanas salen del span real del período, no de un 16 fijo (2026-1 dura 17).
+      const weeks = academicWeekCount(p.startDate, p.endDate);
+      const touchedOfferingIds = new Set<number>();
       if (p.created) {
         await this.repository.ensureAcademicWeeks(tx, p.id, p.startDate, p.endDate);
         if (!hasPublishedCalendar(p.code)) {
@@ -355,7 +360,15 @@ export class PortalSyncService {
         const c = await this.repository.upsertCourse(tx, row.courseCode, courseName, row.credits);
         if (c.created) summary.coursesCreated++;
 
-        const off = await this.repository.upsertOffering(tx, p.id, c.id, row.credits);
+        // Paso 7 (RS-BE-9): acá todavía no hay horario, así que el total sale de
+        // la malla y, si el curso no está en ella, de los créditos. El paso 8.b
+        // lo corrige después con el horario real.
+        const { hours: offeringHours } = resolveOfferingTotalHours(
+          { curriculumWeeklyHours: c.weeklyHours, credits: row.credits },
+          weeks,
+        );
+        const off = await this.repository.upsertOffering(tx, p.id, c.id, offeringHours);
+        touchedOfferingIds.add(off.id);
 
         // Sílabo, si el portal publicó uno para este curso (§3.5). Después de
         // que la oferta existe, como exige la clave `course_offering_id` de
@@ -410,6 +423,12 @@ export class PortalSyncService {
           await this.repository.upsertScheduleSession(tx, sectionId, s, courseColorHex(s.courseCode));
           summary.sessionsUpserted++;
         }
+        // Paso 8.b (RS-BE-9): recién ahora existen las sesiones, así que se
+        // recalcula `total_hours` con el horario real. Pisa la estimación del
+        // paso 7 aunque dé un número menor: el horario lo publica el portal.
+        await this.repository.recomputeOfferingHoursFromSchedule(
+          tx, [...touchedOfferingIds], weeks,
+        );
       }
 
       const withdrawn = await this.repository.withdrawMissingEnrollments(

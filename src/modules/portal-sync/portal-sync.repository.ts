@@ -511,14 +511,28 @@ export class PortalSyncRepository {
       values (${code}, ${name}, ${credit})
       on conflict (code) do update
         set name = case when length(excluded.name) > length(course.name) then excluded.name else course.name end
-      returning id, (xmax = 0) as "created"
-    `)) as unknown as Array<{ id: number; created: boolean }>;
-    return { id: Number(rows[0].id), created: Boolean(rows[0].created) };
+      returning id, (xmax = 0) as "created", weekly_hours
+    `)) as unknown as Array<{ id: number; created: boolean; weekly_hours: number | null }>;
+    return {
+      id: Number(rows[0].id),
+      created: Boolean(rows[0].created),
+      // RS-BE-9: horas semanales de la malla oficial, o null si el curso no está
+      // en ella. Quien decide con esto es `resolveOfferingTotalHours`.
+      weeklyHours: rows[0].weekly_hours == null ? null : Number(rows[0].weekly_hours),
+    };
   }
 
-  /** total_hours = créditos x 16: attendance-risk descarta secciones con total_hours <= 0. */
-  async upsertOffering(tx: Tx, periodId: number, courseId: number, credits: number) {
-    const hours = Math.max(1, Math.ceil(credits || 0)) * 16;
+  /**
+   * Escribe la oferta con el total YA RESUELTO por `resolveOfferingTotalHours`
+   * (RS-BE-9). Acá no se calcula nada: antes vivía adentro un `créditos x 16`
+   * que subestimaba las horas entre 20% y 40%.
+   *
+   * El `greatest` conserva el valor más alto ante una re-importación; el paso
+   * 8.b sí pisa, porque el horario real es más confiable que esta estimación.
+   * attendance-risk descarta secciones con total_hours <= 0.
+   */
+  async upsertOffering(tx: Tx, periodId: number, courseId: number, totalHours: number) {
+    const hours = Math.max(1, Math.round(totalHours));
     const rows = (await tx.execute(sql`
       insert into course_offering (academic_period_id, course_id, total_hours)
       values (${periodId}, ${courseId}, ${hours})
@@ -527,6 +541,40 @@ export class PortalSyncRepository {
       returning id, (xmax = 0) as "created"
     `)) as unknown as Array<{ id: number; created: boolean }>;
     return { id: Number(rows[0].id), created: Boolean(rows[0].created) };
+  }
+
+  /**
+   * Paso 8.b (RS-BE-9). Recién después de cargar las sesiones existe el horario,
+   * así que acá se recalcula `total_hours` con la suma real por semana.
+   *
+   * Es el único punto que PISA el valor en vez de usar `greatest`: el horario lo
+   * publica el portal y es más confiable que la estimación del paso 7, aunque dé
+   * un número menor. Entre secciones de una misma oferta con horarios distintos
+   * gana la mayor: quedarse corto infla el % de inasistencia y adelanta el
+   * umbral de impedido, que es el error caro.
+   */
+  async recomputeOfferingHoursFromSchedule(
+    tx: Tx, offeringIds: number[], weeks: number,
+  ): Promise<void> {
+    if (offeringIds.length === 0) return;
+    await tx.execute(sql`
+      update course_offering co
+      set total_hours = h.horas_semana * ${weeks}
+      from (
+        select sec.course_offering_id as oid,
+               max(s.horas) as horas_semana
+        from (
+          select ss.section_id,
+                 sum(extract(epoch from (ss.end_time - ss.start_time)) / 3600.0) as horas
+          from schedule_session ss
+          group by ss.section_id
+        ) s
+        join section sec on sec.id = s.section_id
+        where sec.course_offering_id = any(${intArray(offeringIds)})
+        group by sec.course_offering_id
+      ) h
+      where co.id = h.oid and h.horas_semana > 0
+    `);
   }
 
   /** El docente solo se pisa si el guardado es el placeholder. jp_id nunca se toca. */

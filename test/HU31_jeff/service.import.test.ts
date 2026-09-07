@@ -45,6 +45,7 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     // sobreescribir upsertCourse/upsertOffering para que hagan eco del código,
     // o ejercitará sin querer el camino de deduplicación por oferta.
     upsertOffering: async () => ({ id: 30, created: true }),
+    recomputeOfferingHoursFromSchedule: async () => {},   // RS-BE-9 paso 8.b
     upsertSection: async () => ({ id: 40, created: true }),
     upsertScheduleSession: async () => {},
     upsertEnrollment: async () => ({ id: 50, created: true }),
@@ -244,6 +245,7 @@ describe("PortalSyncService.importFromPortal", () => {
     const repo = fakeRepo({
       upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
       upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      recomputeOfferingHoursFromSchedule: async () => {},   // RS-BE-9 paso 8.b
       upsertSection: async (_tx, offeringId: number) => {
         const id = 1000 + (sectionCallCounter += 1);
         if (offeringId === 650033) idsFor650033.push(id);
@@ -307,6 +309,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     const repo = fakeRepo({
       upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
       upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      recomputeOfferingHoursFromSchedule: async () => {},   // RS-BE-9 paso 8.b
     } as never);
     const client = fakeClient({ fetchSyllabus: async () => silabo } as Partial<PortalClient>);
     const svc = new PortalSyncService(repo, client);
@@ -387,6 +390,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     const repo = fakeRepo({
       upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
       upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      recomputeOfferingHoursFromSchedule: async () => {},   // RS-BE-9 paso 8.b
       upsertSyllabus: async (_tx, offeringId: number) => (offeringId === 650033 ? null : { id: 1, created: true }),
     } as never);
     const client = fakeClient({ fetchSyllabus: async () => silabo } as Partial<PortalClient>);
@@ -403,6 +407,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     const repo = fakeRepo({
       upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
       upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      recomputeOfferingHoursFromSchedule: async () => {},   // RS-BE-9 paso 8.b
       upsertSyllabus: async (_tx, _offeringId: number, entry: { url: string }) => {
         urls.push(entry.url);
         return { id: 1, created: true };
@@ -429,6 +434,7 @@ describe("PortalSyncService.importFromPortal — sílabos", () => {
     const repo = fakeRepo({
       upsertCourse: async (_tx, code: string) => ({ id: Number(code), created: true }),
       upsertOffering: async (_tx, _periodId, courseId: number) => ({ id: courseId, created: true }),
+      recomputeOfferingHoursFromSchedule: async () => {},   // RS-BE-9 paso 8.b
       upsertSyllabus: async (_tx, offeringId: number) => {
         upsertSyllabusCalls.push(offeringId);
         return { id: 1, created: true };
