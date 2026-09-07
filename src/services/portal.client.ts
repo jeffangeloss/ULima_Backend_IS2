@@ -60,6 +60,25 @@ export const PORTAL_PATHS = {
    *  interpolarse; un aula basura revienta acá y nunca llega a la red. */
   nominaDelegado: (aula: string) =>
     `av/servlets/ComandoListarAulaDelegadoAulaVirtual?prm_sNuAula=${assertAula(aula)}`,
+
+  // ── Panel de asistencia (RS-BE-15) ───────────────────────────────────────
+  // Mismo camino de dos saltos que el de delegados.
+
+  /** Sidebar del panel. Un `OpenAsistenciaAlumno('<aula>')` por curso, más los
+   *  mismos arrays JS `aNuAula`/`aCurs`/`aSecc`, así que lo parsea `parseAulas`. */
+  cursosAsistencia: "av/servlets/ComandoListarCursosXOpcionAulaVirtualAsistencia",
+
+  /**
+   * Asistencia del ALUMNO AUTENTICADO en un aula. El servlet deduce al alumno
+   * de la sesión: `OpenAsistenciaAlumno(Aula, Alumno)` en `aVirtualBB.js`
+   * ignora su segundo argumento y solo manda `prm_sNuAula`.
+   *
+   * NO usar `ComandoListarAsistenciaAulaVirtualCursos`, que existe en el portal
+   * y acepta `prm_sCoUserAlum=<código>`: pedir la asistencia de un tercero es
+   * exactamente la superficie de IDOR que esta feature no toca.
+   */
+  asistenciaAlumno: (aula: string) =>
+    `av/servlets/ComandoListarAsistenciaAulaVirtualAlumno?prm_sNuAula=${assertAula(aula)}`,
 } as const;
 
 /** Vista Domino de sílabos. Vive en un host DISTINTO de `webaloe` (ver

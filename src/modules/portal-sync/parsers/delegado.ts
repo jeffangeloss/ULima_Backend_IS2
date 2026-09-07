@@ -45,8 +45,10 @@ const jsArray = (html: string, name: string): Map<number, string> => {
 };
 
 /** Aulas que el sidebar realmente ofrece abrir. */
-const aulasAbiertas = (html: string): Set<string> =>
-  new Set([...html.matchAll(/OpenDelegado\(\s*['"](\d+)['"]\s*\)/gi)].map((m) => m[1]));
+const aulasAbiertas = (html: string, fnEnlace: string): Set<string> =>
+  new Set(
+    [...html.matchAll(new RegExp(`${fnEnlace}\\(\\s*['"](\\d+)['"]`, "gi"))].map((m) => m[1]),
+  );
 
 /**
  * Sidebar de delegados -> el aula de cada curso, con el par que lo identifica.
@@ -71,11 +73,17 @@ const aulasAbiertas = (html: string): Set<string> =>
  * sidebar: los arrays los llena el JSP siempre, pero el enlace solo se emite
  * para los cursos que de verdad tienen panel de delegados.
  */
-export const parseAulas = (html: string): ParseResult<DelegadoAula[]> => {
+export const parseAulas = (
+  html: string,
+  /** RS-BE-15: el sidebar de Asistencia emite los MISMOS arrays JS pero enlaza
+   *  con `OpenAsistenciaAlumno`. Se parametriza para reusar este parser entero
+   *  en vez de escribir un gemelo; el default deja intacto al de delegados. */
+  fnEnlace = "OpenDelegado",
+): ParseResult<DelegadoAula[]> => {
   const aulas = jsArray(html, "aNuAula");
   const cursos = jsArray(html, "aCurs");
   const secciones = jsArray(html, "aSecc");
-  const abiertas = aulasAbiertas(html);
+  const abiertas = aulasAbiertas(html, fnEnlace);
 
   const out: DelegadoAula[] = [];
   for (const i of [...aulas.keys()].sort((a, b) => a - b)) {
@@ -93,7 +101,7 @@ export const parseAulas = (html: string): ParseResult<DelegadoAula[]> => {
   // página de login con HTTP 200, y así se ve. Se falla, como todos los demás
   // parsers del módulo, en vez de reportar un sidebar vacío.
   if (!out.length) {
-    return { ok: false, reason: "el sidebar de delegados no trae ninguna aula utilizable" };
+    return { ok: false, reason: "el sidebar no trae ninguna aula utilizable" };
   }
   return { ok: true, data: out };
 };
