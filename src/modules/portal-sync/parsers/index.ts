@@ -7,3 +7,4 @@ export { parseRecordAcademico } from "./record.js";
 export { parseImpedimentos, parseInfoAcademica } from "./info-academica.js";
 export { parseSyllabusEntry } from "./silabo.js";
 export { parseAulas, parseDelegados } from "./delegado.js";
+export { parseAsistenciaCurso } from "./asistencia.js";

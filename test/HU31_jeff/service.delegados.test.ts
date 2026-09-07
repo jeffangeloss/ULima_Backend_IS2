@@ -98,6 +98,7 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     upsertTeacher: async () => ({ id: 10, created: true }),
     upsertCourse: async () => ({ id: 20, created: true }),
     upsertOffering: async () => ({ id: 30, created: true }),
+    recomputeOfferingHoursFromSchedule: async () => {},   // RS-BE-9 paso 8.b
     upsertSection: async () => ({ id: 40, created: true }),
     upsertScheduleSession: async () => {},
     upsertEnrollment: async () => ({ id: 50, created: true }),
@@ -149,6 +150,7 @@ const conCapturas = (over: Partial<PortalSyncRepository> = {}) => {
   const repo = fakeRepo({
     upsertCourse: async (_tx: unknown, code: string) => ({ id: Number(code), created: true }),
     upsertOffering: async (_tx: unknown, _p: number, courseId: number) => ({ id: courseId, created: true }),
+    recomputeOfferingHoursFromSchedule: async () => {},   // RS-BE-9 paso 8.b
     upsertSection: async (_tx: unknown, offeringId: number, sectionCode: string) => {
       const id = 1000 + cap.secciones.length;
       cap.secciones.push({ id, offeringId, sectionCode });

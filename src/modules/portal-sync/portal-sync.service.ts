@@ -4,6 +4,7 @@ import {
   PortalSyncRepository, defaultPeriodDates, hasPublishedCalendar, pickBestRecordRow, progressStatusFor,
   shouldActivatePeriod, teacherCodeFor,
   levelFromCoverage, levelNeverGoesDown,
+  academicWeekCount, resolveOfferingTotalHours, resolveAttendanceHours,
   type ProgressStatus,
   careerNamesDiffer,
   courseColorHex,
@@ -11,11 +12,11 @@ import {
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
   parseInfoAcademica, parseRecordAcademico, parseSyllabusEntry,
-  parseAulas, parseDelegados,
+  parseAulas, parseDelegados, parseAsistenciaCurso,
 } from "./parsers/index.js";
 import { PORTAL_PATHS } from "../../services/portal.client.js";
 import type {
-  DelegadosNomina,
+  AsistenciaCurso, DelegadosNomina,
   ImportResult, ImportSummary, PortalCookies, RecordRow, SyllabusEntry, SyncStatus, SyncWarning,
 } from "./portal-sync.types.js";
 
@@ -25,6 +26,7 @@ const emptySummary = (): ImportSummary => ({
   progressUpserted: 0, progressSkipped: 0, progressViaEquivalence: 0,
   alertsCreated: 0, syllabiUpserted: 0,
   claimsUpserted: 0, claimsDeleted: 0, representativesPromoted: 0, alertsDeleted: 0,
+  attendanceUpdated: 0, attendanceSkipped: 0,
 });
 
 /** `approved` > `in_progress` > `failed`. `student_course_status` también tiene
@@ -293,6 +295,53 @@ export class PortalSyncService {
       });
     }
 
+    // ── Asistencia del Aula Virtual (RS-BE-15) ───────────────────────────────
+    // Fase HERMANA y SECUENCIAL a la de delegados, no fusionada: fusionarlas
+    // llevaría el pico a 10 peticiones concurrentes sobre un solo JSESSIONID de
+    // WebSphere, y no hay medición de cómo responde a eso.
+    //
+    // Degrada igual que delegados: cada petición y cada parseo en su propio
+    // try, y un fallo acá NUNCA aborta la importación. La asistencia es
+    // secundaria y no puede borrar notas, horario ni matrícula.
+    const asistenciaByCourse = new Map<string, AsistenciaCurso>();
+    try {
+      const sidebar = await this.client.fetchPage(PORTAL_PATHS.cursosAsistencia, cookies);
+      const aulas = parseAulas(sidebar, "OpenAsistenciaAlumno");
+      if (!aulas.ok) {
+        warnings.push({ code: "PARSER_FAILED", block: "asistencia", message: aulas.reason });
+      } else {
+        await Promise.all(aulas.data.map(async (a) => {
+          const donde = `${a.courseCode}/${a.sectionCode}`;
+          let html: string;
+          try {
+            html = await this.client.fetchPage(PORTAL_PATHS.asistenciaAlumno(a.aula), cookies);
+          } catch {
+            warnings.push({
+              code: "ASISTENCIA_UNAVAILABLE", block: "asistencia",
+              message: `No se pudo traer la asistencia de ${donde}.`,
+            });
+            return;
+          }
+          // `userCode` ya se verificó contra `app_user`: si la página declara
+          // otro alumno, el parser la rechaza sin imprimir ningún código.
+          const parsed = parseAsistenciaCurso(html, a.aula, userCode);
+          if (!parsed.ok) {
+            warnings.push({
+              code: "PARSER_FAILED", block: "asistencia",
+              message: `No se entendió la asistencia de ${donde}: ${parsed.reason}`,
+            });
+            return;
+          }
+          asistenciaByCourse.set(`${parsed.data.courseCode}|${parsed.data.sectionCode}`, parsed.data);
+        }));
+      }
+    } catch {
+      warnings.push({
+        code: "ASISTENCIA_UNAVAILABLE", block: "asistencia",
+        message: "No se pudo abrir el panel de asistencia en miUlima.",
+      });
+    }
+
     const activeBeforeTx = await this.repository.findActivePeriod();
     // La fecha de inicio del período entrante se conoce ANTES del upsert (sale
     // de KNOWN_PERIOD_CALENDARS/defaultPeriodDates, no de la BD): la misma
@@ -308,6 +357,10 @@ export class PortalSyncService {
       // guardarlos sin consentimiento. Va acá porque `upsertPeriod` es el
       // único cierre de ciclo que existe hoy en el repo (no hay cron).
       summary.claimsDeleted += await this.repository.deleteClaimsOfInactivePeriods(tx, p.id);
+      // RS-BE-9: las horas del ciclo son `horas semanales x semanas`, y las
+      // semanas salen del span real del período, no de un 16 fijo (2026-1 dura 17).
+      const weeks = academicWeekCount(p.startDate, p.endDate);
+      const touchedOfferingIds = new Set<number>();
       if (p.created) {
         await this.repository.ensureAcademicWeeks(tx, p.id, p.startDate, p.endDate);
         if (!hasPublishedCalendar(p.code)) {
@@ -355,7 +408,15 @@ export class PortalSyncService {
         const c = await this.repository.upsertCourse(tx, row.courseCode, courseName, row.credits);
         if (c.created) summary.coursesCreated++;
 
-        const off = await this.repository.upsertOffering(tx, p.id, c.id, row.credits);
+        // Paso 7 (RS-BE-9): acá todavía no hay horario, así que el total sale de
+        // la malla y, si el curso no está en ella, de los créditos. El paso 8.b
+        // lo corrige después con el horario real.
+        const { hours: offeringHours } = resolveOfferingTotalHours(
+          { curriculumWeeklyHours: c.weeklyHours, credits: row.credits },
+          weeks,
+        );
+        const off = await this.repository.upsertOffering(tx, p.id, c.id, offeringHours);
+        touchedOfferingIds.add(off.id);
 
         // Sílabo, si el portal publicó uno para este curso (§3.5). Después de
         // que la oferta existe, como exige la clave `course_offering_id` de
@@ -399,6 +460,27 @@ export class PortalSyncService {
         if (await this.repository.promoteClaimIfAny(tx, sec.id, enr.id, userCode)) {
           summary.representativesPromoted++;
         }
+
+        // Horas de asistencia (RS-BE-15). Acá y no en un paso aparte porque
+        // este es el único punto donde ya existe el `enrollment.id`. Si el
+        // portal no reportó este curso, la fila NO se toca: nunca se escribe 0
+        // por ausencia, que convertiría al alumno en `sin_datos` y borraría un
+        // impedido legítimo.
+        const asis = asistenciaByCourse.get(`${row.courseCode}|${row.sectionCode}`);
+        if (asis) {
+          const horas = resolveAttendanceHours(asis);
+          if (!horas.ok) {
+            summary.attendanceSkipped++;
+            warnings.push({
+              code: "PARSER_FAILED", block: "asistencia",
+              message: `No se escribió la asistencia de ${row.courseCode}/${row.sectionCode}: ${horas.reason}.`,
+            });
+          } else if (await this.repository.updateAttendanceHours(tx, enr.id, horas.hours)) {
+            summary.attendanceUpdated++;
+          } else {
+            summary.attendanceSkipped++;
+          }
+        }
       }
 
       if (horario.ok) {
@@ -410,6 +492,12 @@ export class PortalSyncService {
           await this.repository.upsertScheduleSession(tx, sectionId, s, courseColorHex(s.courseCode));
           summary.sessionsUpserted++;
         }
+        // Paso 8.b (RS-BE-9): recién ahora existen las sesiones, así que se
+        // recalcula `total_hours` con el horario real. Pisa la estimación del
+        // paso 7 aunque dé un número menor: el horario lo publica el portal.
+        await this.repository.recomputeOfferingHoursFromSchedule(
+          tx, [...touchedOfferingIds], weeks,
+        );
       }
 
       const withdrawn = await this.repository.withdrawMissingEnrollments(

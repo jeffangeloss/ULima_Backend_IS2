@@ -40,13 +40,17 @@ const row = (over: Partial<AttendanceRiskRawRow> = {}): AttendanceRiskRawRow => 
   current_level: 5,
   absent_hours: "0",
   total_section_hours: "100",
+  enrollment_total_hours: "100",
   cycle: 3,
   ...over,
 });
 
 const serviceWith = (rows: AttendanceRiskRawRow[]) =>
   new AttendanceRiskService(
-    { findStudentsBySectionId: async () => rows } as unknown as AttendanceRiskRepository,
+    {
+      findStudentsBySectionId: async () => rows,
+      findModalSessionHours: async () => null,   // sin horario -> cae al 2 heredado (RS-BE-13)
+    } as unknown as AttendanceRiskRepository,
     noopEvents,
   );
 
@@ -113,13 +117,16 @@ describe("PU-I2 · en_riesgo, faltas restantes y guarda de división por cero (H
   });
 
   // Cobertura complementaria: protege el dato extremo de cero horas.
-  test("sección con 0 horas dictadas -> normal con 0% (sin NaN ni división por cero)", async () => {
+  // RS-BE-10: sigue sin dividir por cero, pero el veredicto ya no es "normal".
+  // Sin denominador no hay porcentaje, y un 0% ahí se leía como asistencia
+  // perfecta justo cuando no se sabe nada.
+  test("sección con 0 horas dictadas -> sin_datos (sin NaN ni división por cero)", async () => {
     const res = await serviceWith([
       row({ absent_hours: "4", total_section_hours: "0" }),
     ]).getAttendanceRisk(1);
 
-    expect(res.students[0].status).toBe("normal");
-    expect(res.students[0].absencePercentage).toBe(0);
+    expect(res.students[0].status).toBe("sin_datos");
+    expect(res.students[0].absencePercentage).toBeNull();
   });
 
   // ⭐ UNITARIA OFICIAL 2/4 — splitName: rama del formato "Apellidos, Nombres".
@@ -201,12 +208,12 @@ describe("PU-I3 · computeSummary: conteos del resumen del docente (HU22)", () =
 
     const { summary } = await serviceWith(rows).getAttendanceRiskSummary(1);
 
-    expect(summary).toEqual({ impedido: 2, en_riesgo: 1, normal: 2, total: 5 });
+    expect(summary).toEqual({ impedido: 2, en_riesgo: 1, normal: 2, sin_datos: 0, total: 5 });
   });
 
   test("sección sin alumnos -> resumen en cero", async () => {
     const { summary } = await serviceWith([]).getAttendanceRiskSummary(1);
 
-    expect(summary).toEqual({ impedido: 0, en_riesgo: 0, normal: 0, total: 0 });
+    expect(summary).toEqual({ impedido: 0, en_riesgo: 0, normal: 0, sin_datos: 0, total: 0 });
   });
 });

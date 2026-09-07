@@ -33,7 +33,7 @@ import type {
  * | CN3  | 25 / 100, ciclo 3  (LÍMITE)      | normal (comparación estricta '>')  |
  * | CN4  | 21 / 100, ciclo 3                | en_riesgo a 2 faltas               |
  * | CN5  | 17 / 100, ciclo 3                | normal (a 4 faltas del límite)     |
- * | CN6  | 4 / 0, ciclo 3     (LÍMITE)      | normal, 0% (sin división por cero) |
+ * | CN6  | 4 / 0, ciclo 3     (LÍMITE)      | sin_datos, % nulo (sin división por cero) |
  */
 
 // EventBus dummy: el test no evalúa eventos, solo la clasificación.
@@ -52,11 +52,13 @@ const clasificar = async (
     current_level: ciclo,
     absent_hours: String(horasAusentes),        // el repo real entrega horas como string (Postgres)
     total_section_hours: String(horasTotales),
+    enrollment_total_hours: String(horasTotales),
     cycle: ciclo,                               // el ciclo decide el límite (25% vs 35%)
   };
 
   const repositorio = {
     findStudentsBySectionId: async () => [alumno], // stub: devuelve solo nuestro alumno de prueba
+    findModalSessionHours: async () => null,   // sin horario -> cae al 2 heredado (RS-BE-13)
   } as unknown as AttendanceRiskRepository;
 
   const servicio = new AttendanceRiskService(repositorio, eventosFalsos);
@@ -106,12 +108,14 @@ describe("CAJA NEGRA · getAttendanceRisk (HU22)", () => {
     expect(resultado.missingFaltas).toBeNull();
   });
 
-  test("CN6: una sección sin horas devuelve normal y 0%", async () => {
+  test("CN6: una sección sin horas devuelve sin_datos y % nulo", async () => {
     // VALOR LÍMITE: total_section_hours = 0. No debe dividir por cero.
+    // RS-BE-10: sin denominador no se puede afirmar nada, y el 0% anterior se
+    // leía en la app como asistencia perfecta.
     const resultado = await clasificar(4, 0, 3);
 
-    expect(resultado.status).toBe("normal");
-    expect(resultado.absencePercentage).toBe(0);       // 0% por la guarda, no NaN
+    expect(resultado.status).toBe("sin_datos");
+    expect(resultado.absencePercentage).toBeNull();    // ausencia de dato, no 0%
     expect(resultado.missingFaltas).toBeNull();
   });
 });

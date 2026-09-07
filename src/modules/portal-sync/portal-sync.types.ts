@@ -61,7 +61,10 @@ export type WarningCode =
   // La nómina de un aula no se pudo DESCARGAR (red, 5xx, timeout o el 409
   // de sesión inválida). Distinto de PARSER_FAILED, que es "llegó pero no
   // se entendió": el primero no dice nada sobre el portal, el segundo sí.
-  | "DELEGADOS_UNAVAILABLE";
+  | "DELEGADOS_UNAVAILABLE"
+  // La página de asistencia de un aula no se pudo DESCARGAR. Misma distinción
+  // que arriba respecto de PARSER_FAILED.
+  | "ASISTENCIA_UNAVAILABLE";
 export interface SyncWarning { code: WarningCode; block: string; message: string }
 
 export interface ImportSummary {
@@ -76,6 +79,12 @@ export interface ImportSummary {
   alertsCreated: number; syllabiUpserted: number;
   claimsUpserted: number; claimsDeleted: number; representativesPromoted: number;
   alertsDeleted: number;
+  /** Matrículas cuyas horas de asistencia se escribieron (RS-BE-15). */
+  attendanceUpdated: number;
+  /** Matrículas con asistencia disponible que NO se escribió: triple incoherente
+   *  o el UPDATE no tocó ninguna fila. Se cuenta para que "0 actualizadas" se
+   *  pueda distinguir de "el portal no reportó nada". */
+  attendanceSkipped: number;
 }
 
 export interface ImportResult {
@@ -95,3 +104,24 @@ export interface SyncStatus {
   enrollmentsInActivePeriod: number;
   needsImport: boolean;
 }
+
+/**
+ * Asistencia de UN curso, tal como la publica el panel Asistencia del Aula
+ * Virtual para el alumno autenticado (RS-BE-15).
+ *
+ * CINCO CAMPOS Y NINGUNO DE TEXTO LIBRE. La ausencia de campos para la sesión
+ * individual, la marca y la columna "Observación" es la garantía de
+ * minimización de datos, no un olvido: esa página trae el nombre del alumno, el
+ * del docente y observaciones que mencionan a terceros. No agregar campos acá
+ * sin pasar por la spec.
+ */
+export type AsistenciaCurso = {
+  courseCode: string;
+  sectionCode: string;
+  /** "Total horas programadas" del portal. Es el denominador del alumno. */
+  totalHours: number;
+  /** "Total horas asistidas". */
+  attendedHours: number;
+  /** Horas del bloque "Total inasistencias"; NUNCA derivado de los otros dos. */
+  absentHours: number;
+};

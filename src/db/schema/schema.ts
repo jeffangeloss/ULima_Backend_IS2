@@ -9,6 +9,7 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  smallint,
   text,
   time,
   timestamp,
@@ -196,8 +197,17 @@ export const course = pgTable("course", {
   name: varchar("name", { length: 150 }).notNull(),
   defaultCredit: integer("default_credit").notNull(),
   originFaculty: varchar("origin_faculty", { length: 120 }),
+  // RS-BE-9: horas de clase SEMANALES del plan de estudios oficial (columna TOT).
+  // NULL = el curso no está en la malla cargada. No confundir con los créditos:
+  // PARADIGMAS son 3 créditos y 5 h/sem, y usar el crédito como proxy subestima
+  // el denominador del % de inasistencia entre 20% y 40%.
+  weeklyHours: smallint("weekly_hours"),
 }, (t) => ({
   chkCourseDefaultCredit: check("chk_course_default_credit", sql`${t.defaultCredit} > 0`),
+  chkCourseWeeklyHours: check(
+    "chk_course_weekly_hours",
+    sql`${t.weeklyHours} IS NULL OR ${t.weeklyHours} > 0`,
+  ),
 }));
 
 export const curriculumCourse = pgTable("curriculum_course", {

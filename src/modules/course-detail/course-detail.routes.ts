@@ -55,6 +55,11 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
   };
 
   app.get("/sections", async (c) => {
+    // RS-BE-12: las horas son del alumno autenticado, no del salón. El `?? 0` es
+    // el mismo centinela que usa `exigirPertenencia`: los id arrancan en 1, así
+    // que un docente (sin studentId) no empata con ninguna matrícula y recibe
+    // horas en 0 con `asistenciaDisponible: false`, que es lo honesto.
+    const studentId = (c.get("studentId") as number | undefined) ?? 0;
     const rows = await db.execute(sql`
       select
         sec.id as section_id,
@@ -63,15 +68,16 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         c.id as course_id,
         c.name as course_name,
         coalesce(avg(sscore.value), 0) as promedio,
-        coalesce(min(e.attended_hours), 0) as attended_hours,
-        coalesce(max(e.absent_hours), 0) as absent_hours,
-        coalesce(max(e.total_hours), 0) as total_hours
+        coalesce(max(mia.attended_hours), 0) as attended_hours,
+        coalesce(max(mia.absent_hours), 0) as absent_hours,
+        coalesce(max(mia.total_hours), 0) as total_hours
       from section sec
       join teacher t on t.id = sec.teacher_id
       join course_offering co on co.id = sec.course_offering_id
       join course c on c.id = co.course_id
       left join enrollment e on e.section_id = sec.id
       left join student_score sscore on sscore.enrollment_id = e.id
+      left join enrollment mia on mia.section_id = sec.id and mia.student_id = ${studentId}
       group by sec.id, sec.code, t.teacher_code, c.id, c.name
       order by c.name, sec.code
     `) as unknown as Array<any>;
@@ -87,6 +93,8 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         asistido: Number(row.attended_hours ?? 0),
         inasistencia: Number(row.absent_hours ?? 0),
         total: Number(row.total_hours ?? 0),
+        asistenciaDisponible: Number(row.total_hours ?? 0) > 0,
+        horasTranscurridas: Number(row.attended_hours ?? 0) + Number(row.absent_hours ?? 0),
       })),
     });
   });

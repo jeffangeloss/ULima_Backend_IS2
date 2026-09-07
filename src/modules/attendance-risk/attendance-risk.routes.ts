@@ -7,6 +7,12 @@ export const createAttendanceRiskRoutes = (controller: AttendanceRiskController)
 
   app.use("*", authMiddleware);
   app.use("*", requireRole("teacher"));
+  // RS-BE-11: además del ROL, la sección tiene que ser suya. Va sobre el patrón
+  // de ruta (no sobre "*") para que `:sectionId` esté disponible en el param.
+  app.use("/sections/:sectionId/*", async (c, next) => {
+    await controller.assertOwnership(c);
+    await next();
+  });
 
   app.get("/sections/:sectionId/attendance-risk", (c) =>
     controller.getAttendanceRisk(c)

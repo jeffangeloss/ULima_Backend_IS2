@@ -10,6 +10,7 @@ targets:
   - ../../../src/server.ts
   - ../../../src/shared/middleware/rate-limit.ts
   - ../../../src/db/schema/schema.ts
+  - ../../../src/db/seed/malla_horas.ts
   - ../../../src/db/seed/equivalencias.ts
   - ../../../src/db/seed/equivalencias.logic.ts
   - ../../../drizzle/**
@@ -19,6 +20,10 @@ targets:
 # Portal Sync
 
 > Estado: **aprobada e implementada**. Revisada el 2026-09-02 contra el esquema real, los fixtures del portal y las convenciones del repo; las correcciones de esa revisión ya están incorporadas. Se agregó el sílabo (nueva fuente Domino, `cactus.ulima.edu.pe`) el mismo día, aprobado por el owner (ver §SSO, §Sílabos, §Decisiones); ese lote pasó por una revisión independiente y sus hallazgos también están incorporados (`on conflict do nothing` sin target, presupuesto de ejecución corregido y limitaciones conocidas en §Sincronización paso 12). Pendiente: aplicar en la base de datos real la migración `drizzle/0004_portal_sync_final_grade.sql` y correr la verificación manual end-to-end contra el portal miUlima (ver §Verification). Quedan además decisiones sueltas sin resolver que no bloquean el desarrollo (ver §Decisiones pendientes).
+>
+> **RS-BE-9 (§Horas de clase del ciclo): APROBADA el 2026-09-06 e implementada.** Corrige `course_offering.total_hours`, que se calculaba como `créditos × 16` y subestimaba las horas de clase entre 20% y 40%. Cableado completo: `resolveOfferingTotalHours` decide, `upsertCourse` trae `course.weekly_hours`, el paso 7 escribe la estimación y el paso 8.b la pisa con el horario real. **Ejecutado contra la base el 2026-09-06**: migración `0009` aplicada con `db:apply`; `src/db/seed/malla_horas.ts --apply` cargó los 74 cursos del plan; y `src/db/seed/backfill_total_hours.ts --apply` corrigió las 74 ofertas del período activo (62 venían en 0, 12 del `créditos × 16`). Ninguna bajó de total. El período cerrado 2026-1 quedó intacto. Verificado además contra el propio portal: su «Total horas programadas» coincide 5/5 con los valores resultantes.
+
+> **Orden obligatorio: la migración va ANTES del deploy de este código.** `upsertCourse` pide `weekly_hours` en su `returning`, así que contra una base sin la columna la importación falla entera (error de SQL, no degradación). No es que caiga a créditos: revienta. Con la columna creada pero el seed sin correr, `weekly_hours` es `NULL` en todos los cursos y la precedencia sí cae a créditos, que es el comportamiento anterior — ese estado intermedio es seguro.
 >
 > **Ampliación 2026-09-06 — equivalencias de malla (§Equivalencias de malla).** Segundo intento de emparejamiento del récord contra la malla vigente, para los cursos cuyo código quedó en el plan anterior (26 de los 53 aprobados del récord real medido). Implementado, probado y **aplicado en la BD el 2026-09-06** (migración `drizzle/0008_course_equivalence.sql` + seed de 14 filas; ver `MIGRATIONS.md`). Verificado contra el récord real de 20235218: de 53 cursos aprobados pasan a emparejar 41 (27 por código + 14 por equivalencia) y quedan 12 sin emparejar. Esos 12 son los de Estudios Generales: esperan la tabla oficial 2026-1 ↔ 2025-1 y **no se inventan**. El efecto no es retroactivo — cada alumno lo recoge en su próxima importación.
 
@@ -87,11 +92,12 @@ Que un curso no tenga sílabo publicado (`viewentry` vacío) es normal, no un er
 - RS-BE-1: El alumno autenticado en ULima++ puede importar sus datos del ciclo activo desde miUlima usando la sesión que abrió en el WebView.
 - RS-BE-2: La importación es **idempotente**: repetirla no duplica ni borra datos, solo actualiza.
 - RS-BE-3: Los datos compartidos (período, curso, oferta, docente, sección, sesiones) se reutilizan por **clave natural** mediante upsert atómico; los datos del alumno (matrícula, progreso) se crean solo para él.
-- RS-BE-4: La importación **nunca** toca datos propios de la app: `simulated_grades`, `student_curriculum_simulation`, `student_specialty`, `announcement`, `course_advising_session`, `advising_rsvp`, `user_social_link`, `section_representative`, `schedule_session.color_hex` ni las horas de asistencia de `enrollment`.
+- RS-BE-4: La importación **nunca** toca datos propios de la app: `simulated_grades`, `student_curriculum_simulation`, `student_specialty`, `announcement`, `course_advising_session`, `advising_rsvp`, `user_social_link`, `section_representative` ni `schedule_session.color_hex`. **Enmendado el 2026-09-06 (RS-BE-15):** las horas de asistencia de `enrollment` salieron de esta lista y ahora SÍ se importan, pero solo desde el panel Asistencia del Aula Virtual y solo las del alumno autenticado. Ver `specs/features/asistencia-portal/asistencia-portal.spec.md`.
 - RS-BE-5: La app puede consultar si el alumno **necesita** importar.
 - RS-BE-6: El backend aborta sin escribir nada si no puede **probar** que la sesión del portal pertenece al alumno autenticado.
 - RS-BE-7: Ni la contraseña ni el TOTP ni las cookies del portal se persisten ni se registran en logs. Las cookies viven solo en memoria durante la petición.
 - RS-BE-8: La importación nunca puede dejar al alumno sin acceso a la app.
+- RS-BE-9: `course_offering.total_hours` son **horas de clase reales** del ciclo (`horas semanales × semanas del período`), no un derivado de los créditos. La fuente se elige por precedencia: horario importado > malla oficial > créditos como último recurso. `[@test] ../../../test/HU31_jeff/repository.hours.test.ts`
 
 ## Arquitectura
 
@@ -263,9 +269,10 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
 
    Los duplicados ya creados se repararon con `src/db/seed/fusionar-docentes.ts` (human-gated, 11 grupos, 26 secciones y 20 asesorías repuntadas). El placeholder para cursos sin docente usa `teacher_code = 'PORTAL:SIN-DOCENTE'` y se reporta `TEACHER_MISSING`. `institutional_email` se deja `NULL` (es unique). Crear docentes desde el portal es dato real, no inventado; el placeholder sí es dato sintético y figura en §Decisiones pendientes.
    `[@test] ../../../test/HU31_jeff/repository.catalog.test.ts`
-7. **Oferta y sección** — `course_offering` por `uq_course_offering (academic_period_id, course_id)`, con `total_hours` = créditos × 16 (`attendance-risk` descarta toda sección con `total_hours <= 0`). `section` por `uq_section_offering_code (course_offering_id, code)`; `teacher_id` se actualiza solo si el actual es el placeholder. `jp_id` no se toca.
+7. **Oferta y sección** — `course_offering` por `uq_course_offering (academic_period_id, course_id)`, con `total_hours` resuelto por `resolveOfferingTotalHours` (ver §Horas de clase del ciclo; `attendance-risk` descarta toda sección con `total_hours <= 0`). En este paso todavía no hay horario cargado, así que el valor sale de la malla o, si el curso no está en ella, de los créditos; el paso 8.b lo corrige después con el horario real. `section` por `uq_section_offering_code (course_offering_id, code)`; `teacher_id` se actualiza solo si el actual es el placeholder. `jp_id` no se toca.
 8. **Sesiones de horario** — clave natural real `uq_schedule_session (section_id, day_of_week, start_time)`, **sin `end_time`**: `ON CONFLICT (section_id, day_of_week, start_time) DO UPDATE SET end_time = excluded.end_time, classroom = excluded.classroom`. `color_hex` no se toca. Las sesiones que ya no aparecen no se borran.
-9. **Matrícula** — `enrollment` por `uq_enrollment_student_section`, `status = active`. Las horas de asistencia no se tocan. **Retiro**: solo se marcan `withdrawn` las matrículas del alumno **cuya sección pertenece al período importado** (join `section → course_offering → academic_period`; `enrollment` no tiene columna de período). **Nunca se ejecuta el retiro si dejaría al alumno con cero matrículas activas**: ambos logins exigen `hasActiveEnrollment` y lo dejarían fuera de la app sin poder volver a importar (RS-BE-8). En ese caso no se retira nada y se reporta `WITHDRAW_SKIPPED_WOULD_LOCK_OUT`. La lista de secciones a conservar (`keep`) es TODA sección tocada en la importación, sin colapsar por curso: dos filas del mismo curso con distinta sección (columna `GR.`) deben conservarse ambas.
+   **8.b Recálculo de horas** — recién acá existen las sesiones, así que después de cargarlas se recalcula `course_offering.total_hours` de las ofertas tocadas en esta importación, usando la suma real de `schedule_session` (ver §Horas de clase del ciclo). Es el único paso que **pisa** el valor en vez de usar `greatest`: el horario es más confiable que la estimación del paso 7, aunque dé un número menor.
+9. **Matrícula** — `enrollment` por `uq_enrollment_student_section`, `status = active`. Las horas de asistencia **no se tocan en este paso**: las escribe el bloque de asistencia, en este mismo bucle y justo después del upsert, que es el único punto donde ya existe el `enrollment.id` (RS-BE-15). **Retiro**: solo se marcan `withdrawn` las matrículas del alumno **cuya sección pertenece al período importado** (join `section → course_offering → academic_period`; `enrollment` no tiene columna de período). **Nunca se ejecuta el retiro si dejaría al alumno con cero matrículas activas**: ambos logins exigen `hasActiveEnrollment` y lo dejarían fuera de la app sin poder volver a importar (RS-BE-8). En ese caso no se retira nada y se reporta `WITHDRAW_SKIPPED_WOULD_LOCK_OUT`. La lista de secciones a conservar (`keep`) es TODA sección tocada en la importación, sin colapsar por curso: dos filas del mismo curso con distinta sección (columna `GR.`) deben conservarse ambas.
    `[@test] ../../../test/HU31_jeff/repository.student.test.ts`
    `[@test] ../../../test/HU31_jeff/service.import.test.ts`
 10. **Progreso** — `student_course_progress` por `uq_student_course_progress (student_id, curriculum_course_id)`, con `curriculum_id` (`NOT NULL`) = `student.curriculum_id`. Estado: `approved` si `grade >= 11`, `failed` si `grade < 11`, `in_progress` si no hay nota y la fila es del período activo. Filas de ciclos pasados sin nota numérica se omiten y se reportan. Con varias filas del mismo curso (columna `VEZ`) gana la de **mayor `VEZ`**; a igual `VEZ`, la de ciclo más reciente.
@@ -292,6 +299,48 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
     `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
     `[@test] ../../../test/HU31_jeff/repository.syllabus.test.ts`
     `[@test] ../../../test/HU31_jeff/service.import.test.ts`
+
+### Horas de clase del ciclo (`total_hours`)
+
+`course_offering.total_hours` es el **denominador** del porcentaje de inasistencia de `attendance-risk`, que decide el umbral de impedido (25% hasta ciclo 5, 35% desde ciclo 6) y dispara las alertas de HU30. Hasta ahora se calculaba como `créditos × 16`, y eso está mal: los créditos no son horas de clase.
+
+**Medido el 2026-09-06 contra la BD real** (las 12 ofertas del período activo 2026-2 que tienen datos) y contra el plan de estudios oficial 2026-1 de Ingeniería de Sistemas:
+
+| Curso | `créditos × 16` (actual) | Horas reales (`TOT × 16`) | Error |
+| --- | --- | --- | --- |
+| PARADIGMAS DE PROGRAMACIÓN | 48 h | 80 h | −40% |
+| ANÁLISIS Y DISEÑO DE ALGORITMOS | 48 h | 80 h | −40% |
+| PROPUESTA DE INVESTIGACIÓN | 48 h | 80 h | −40% |
+| INGENIERÍA DE SOFTWARE II | 64 h | 96 h | −33% |
+| SEMINARIO DE INVESTIGACIÓN I | 64 h | 96 h | −33% |
+| CIBERSEGURIDAD, SEGURIDAD DE SISTEMAS | 64 h | 80 h | −20% |
+| ERP, PLANEAMIENTO, DEVOPS, ANALÍTICA, GESTIÓN DE PROYECTOS | 48 h | 64 h | −25% |
+
+Las 12 dan exactamente `default_credit × 16`, sin una sola excepción. Un denominador chico **infla** el porcentaje de inasistencia: en PARADIGMAS el alumno aparece impedido a las 12 h de falta cuando el límite real son 20 h. Hoy no se nota porque `enrollment.absent_hours` está en 0 para todo el período activo, pero se activaría el día que entre asistencia real, y `attendance-risk.notifyStudents` manda esas alertas a alumnos de verdad (ver RS-BE-10 en `specs/features/attendance-risk/attendance-risk.spec.md`).
+
+**Fuente de verdad: el horario.** La suma de `schedule_session` de la sección coincide **12 de 12** con la columna TOT del plan oficial. El dato correcto ya está en la BD; solo no se estaba usando.
+
+**Precedencia** (`resolveOfferingTotalHours`, función pura en `portal-sync.repository.ts`), siempre `horas semanales × semanas del período` (`academicWeekCount`, no un 16 fijo: 2026-1 dura 17 semanas):
+
+1. `schedule` — suma real de `schedule_session` de la sección. Se aplica en el paso 8.b.
+2. `curriculum` — `course.weekly_hours` de la malla oficial. Cubre las ofertas sin horario importado (62 de 74 en el período activo).
+3. `credits` — créditos como proxy de horas semanales. Último recurso, y una degradación conocida.
+
+Un factor semanal en 0 o nulo **no** es fuente: una sección sin sesiones cae al escalón siguiente en vez de fijar el total en 0 (con 0, `attendance-risk` descarta la sección entera).
+
+**Columna nueva** (cambio de BD aditivo, requiere aprobación explícita):
+
+| columna | tipo | nota |
+| --- | --- | --- |
+| `course.weekly_hours` | `smallint NULL` | horas de clase semanales según la malla (columna TOT del plan de estudios). `NULL` = el curso no está en la malla cargada. |
+
+Migración **`drizzle/0010_course_weekly_hours.sql`** (0008 ya está tomada por `course_equivalence` y aplicada), idempotente (`ADD COLUMN IF NOT EXISTS`), con `chk_course_weekly_hours CHECK (weekly_hours IS NULL OR weekly_hours > 0)`.
+
+> **Aplicarla con `bun run db:apply drizzle/0010_course_weekly_hours.sql`, no con `db:migrate`.** Verificado el 2026-09-06 contra Neon: la BD tiene **10 filas selladas** en `drizzle.__drizzle_migrations` contra **8 entradas** en `drizzle/meta/_journal.json` (`0001_course_offering_total_hours` y `0002_app_user_linkedin_link` se aplicaron fuera del journal). `db:apply` va archivo por archivo en una transacción y no depende de ese journal desalineado.
+
+**Seed de referencia** `src/db/seed/malla_horas.ts`: las 71 filas del plan de estudios oficial 2026-1 de Ingeniería de Sistemas (código, horas TEO/PRA/TOT), matcheadas por `course.code`. Verificado: **71 de 71 cruzan** con `course.code` y los créditos coinciden al 100% con `course.default_credit`, o sea que el documento y la BD hablan del mismo catálogo. Solo escribe `weekly_hours`; no crea cursos ni toca ninguna otra columna. Mismo criterio que `course_equivalence`: dato de referencia extraído de un documento oficial de la Universidad, no dato mock.
+
+**Backfill.** Las ofertas ya escritas conservan su `créditos × 16` hasta que alguien vuelva a importar. Corregirlas de una vez requiere un `UPDATE` sobre datos existentes y va como paso aprobado aparte, no dentro de la importación. Cualquier `UPDATE` masivo debe llevar `and ap.is_active = true`: sin eso se pisan las 257 filas con horas del período cerrado 2026-1, cuyo origen nadie conoce y que sirven como conjunto de contraste.
 
 ### Equivalencias de malla (`course_equivalence`)
 

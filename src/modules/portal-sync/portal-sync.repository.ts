@@ -95,6 +95,80 @@ export const academicWeekCount = (startDate: string, endDate: string): number =>
   return Math.max(1, Math.ceil(spanDays / 7));
 };
 
+/** De dónde salieron las horas del ciclo, en orden de confianza decreciente. */
+export type TotalHoursSource = "schedule" | "curriculum" | "credits";
+
+/**
+ * Horas de clase del ciclo completo para una oferta: `horas semanales x semanas`.
+ * Las tres fuentes difieren solo en de dónde sale el factor semanal:
+ *
+ *   1. `schedule`   — la suma real de `schedule_session` de la sección. Es el
+ *                     dato más confiable porque lo publica el propio portal.
+ *   2. `curriculum` — `course.weekly_hours`, la columna TOT del plan de estudios
+ *                     oficial. Cubre las ofertas que todavía no tienen horario.
+ *   3. `credits`    — los créditos como proxy de las horas semanales. Es un mal
+ *                     proxy y se conserva solo como último recurso: subestimaba
+ *                     las horas entre 20% y 40% (PARADIGMAS son 5 h/sem = 80 h,
+ *                     no 3 créditos x 16 = 48 h). Un denominador chico infla el
+ *                     % de inasistencia y adelanta el umbral de impedido, así
+ *                     que llegar acá es una degradación, no el caso normal.
+ *
+ * Un factor semanal en 0 o nulo NO es fuente: una sección sin sesiones cargadas
+ * cae al escalón siguiente en vez de fijar el total en 0 (con 0, attendance-risk
+ * descarta la sección entera). Ver RS-BE-9.
+ */
+export const resolveOfferingTotalHours = (
+  src: {
+    scheduleWeeklyHours?: number | null;
+    curriculumWeeklyHours?: number | null;
+    credits: number;
+  },
+  weeks: number,
+): { hours: number; source: TotalHoursSource } => {
+  if (src.scheduleWeeklyHours) {
+    return { hours: src.scheduleWeeklyHours * weeks, source: "schedule" };
+  }
+  if (src.curriculumWeeklyHours) {
+    return { hours: src.curriculumWeeklyHours * weeks, source: "curriculum" };
+  }
+  // chk_course_default_credit exige > 0, igual que en upsertCourse.
+  return { hours: Math.max(1, Math.ceil(src.credits || 0)) * weeks, source: "credits" };
+};
+
+/**
+ * RS-BE-15. Decide si un triple de horas del portal se puede escribir, y lo
+ * pasa a texto con dos decimales.
+ *
+ * Existe porque `chk_enrollment_attendance_hours` (attended + absent <= total)
+ * se evalúa al cerrar CADA statement y no admite DEFERRABLE, y la importación
+ * entera corre en UNA transacción: un 23514 acá haría rollback de matrícula,
+ * horario, notas y progreso. Se valida en JS, igual que `updateStudentLevel`
+ * hace con `chk_student_current_level`.
+ *
+ * Se compara en centésimas enteras para no arrastrar el error del punto
+ * flotante (0.1 + 0.2 > 0.3 rechazaría un triple legítimo).
+ *
+ * `total <= 0` se rechaza a propósito: `enrollment.total_hours = 0` es el
+ * centinela de RS-BE-10 ("nunca se escribió asistencia"), y escribirlo sería
+ * mentir en la dirección contraria.
+ */
+export const resolveAttendanceHours = (
+  c: { totalHours: number; attendedHours: number; absentHours: number },
+):
+  | { ok: true; hours: { total: string; attended: string; absent: string } }
+  | { ok: false; reason: string } => {
+  const cent = (n: number) => (Number.isFinite(n) ? Math.round(n * 100) : Number.NaN);
+  const [T, A, F] = [cent(c.totalHours), cent(c.attendedHours), cent(c.absentHours)];
+  if (![T, A, F].every(Number.isInteger)) return { ok: false, reason: "algún total no es un número" };
+  if (T <= 0) return { ok: false, reason: "el portal no reporta horas programadas" };
+  if (A < 0 || F < 0) return { ok: false, reason: "una hora reportada es negativa" };
+  // numeric(5,2) llega hasta 999.99; más alto sería 22003 al escribir.
+  if (T > 99_999) return { ok: false, reason: "las horas reportadas no entran en el campo" };
+  if (A + F > T) return { ok: false, reason: "asistidas más faltas superan las programadas" };
+  const txt = (n: number) => (n / 100).toFixed(2);
+  return { ok: true, hours: { total: txt(T), attended: txt(A), absent: txt(F) } };
+};
+
 /** El ciclo global solo AVANZA: nunca se retrocede por la importación de un alumno. */
 export const periodCodeIsNewer = (incoming: string, current: string | null): boolean =>
   current === null || incoming >= current;
@@ -478,14 +552,28 @@ export class PortalSyncRepository {
       values (${code}, ${name}, ${credit})
       on conflict (code) do update
         set name = case when length(excluded.name) > length(course.name) then excluded.name else course.name end
-      returning id, (xmax = 0) as "created"
-    `)) as unknown as Array<{ id: number; created: boolean }>;
-    return { id: Number(rows[0].id), created: Boolean(rows[0].created) };
+      returning id, (xmax = 0) as "created", weekly_hours
+    `)) as unknown as Array<{ id: number; created: boolean; weekly_hours: number | null }>;
+    return {
+      id: Number(rows[0].id),
+      created: Boolean(rows[0].created),
+      // RS-BE-9: horas semanales de la malla oficial, o null si el curso no está
+      // en ella. Quien decide con esto es `resolveOfferingTotalHours`.
+      weeklyHours: rows[0].weekly_hours == null ? null : Number(rows[0].weekly_hours),
+    };
   }
 
-  /** total_hours = créditos x 16: attendance-risk descarta secciones con total_hours <= 0. */
-  async upsertOffering(tx: Tx, periodId: number, courseId: number, credits: number) {
-    const hours = Math.max(1, Math.ceil(credits || 0)) * 16;
+  /**
+   * Escribe la oferta con el total YA RESUELTO por `resolveOfferingTotalHours`
+   * (RS-BE-9). Acá no se calcula nada: antes vivía adentro un `créditos x 16`
+   * que subestimaba las horas entre 20% y 40%.
+   *
+   * El `greatest` conserva el valor más alto ante una re-importación; el paso
+   * 8.b sí pisa, porque el horario real es más confiable que esta estimación.
+   * attendance-risk descarta secciones con total_hours <= 0.
+   */
+  async upsertOffering(tx: Tx, periodId: number, courseId: number, totalHours: number) {
+    const hours = Math.max(1, Math.round(totalHours));
     const rows = (await tx.execute(sql`
       insert into course_offering (academic_period_id, course_id, total_hours)
       values (${periodId}, ${courseId}, ${hours})
@@ -494,6 +582,73 @@ export class PortalSyncRepository {
       returning id, (xmax = 0) as "created"
     `)) as unknown as Array<{ id: number; created: boolean }>;
     return { id: Number(rows[0].id), created: Boolean(rows[0].created) };
+  }
+
+  /**
+   * Paso 8.b (RS-BE-9). Recién después de cargar las sesiones existe el horario,
+   * así que acá se recalcula `total_hours` con la suma real por semana.
+   *
+   * Es el único punto que PISA el valor en vez de usar `greatest`: el horario lo
+   * publica el portal y es más confiable que la estimación del paso 7, aunque dé
+   * un número menor. Entre secciones de una misma oferta con horarios distintos
+   * gana la mayor: quedarse corto infla el % de inasistencia y adelanta el
+   * umbral de impedido, que es el error caro.
+   */
+  async recomputeOfferingHoursFromSchedule(
+    tx: Tx, offeringIds: number[], weeks: number,
+  ): Promise<void> {
+    if (offeringIds.length === 0) return;
+    await tx.execute(sql`
+      update course_offering co
+      set total_hours = h.horas_semana * ${weeks}
+      from (
+        select sec.course_offering_id as oid,
+               max(s.horas) as horas_semana
+        from (
+          select ss.section_id,
+                 sum(extract(epoch from (ss.end_time - ss.start_time)) / 3600.0) as horas
+          from schedule_session ss
+          group by ss.section_id
+        ) s
+        join section sec on sec.id = s.section_id
+        where sec.course_offering_id = any(${intArray(offeringIds)})
+        group by sec.course_offering_id
+      ) h
+      where co.id = h.oid and h.horas_semana > 0
+    `);
+  }
+
+  /**
+   * RS-BE-15. Escribe las tres horas de asistencia de UNA matrícula.
+   *
+   * UNA sola sentencia con las tres columnas: escribir `attended` por separado,
+   * con `total` todavía en el DEFAULT '0', violaría el CHECK al cerrar ese
+   * statement. Y el WHERE repite la condición del CHECK como cinturón: si el
+   * triple fuera incoherente, actualiza 0 filas y el service lo cuenta como
+   * omitido, en vez de levantar un 23514 que aborta la transacción entera.
+   *
+   * Es ASIGNACIÓN, no `greatest` ni acumulación: el portal publica el acumulado
+   * a la fecha y el docente puede corregir una marca, así que este es el único
+   * upsert del módulo que debe poder BAJAR. La idempotencia sale gratis.
+   */
+  async updateAttendanceHours(
+    tx: Tx,
+    enrollmentId: number,
+    h: { total: string; attended: string; absent: string },
+  ): Promise<boolean> {
+    const filas = (await tx.execute(sql`
+      update enrollment
+         set total_hours    = ${h.total}::numeric,
+             attended_hours = ${h.attended}::numeric,
+             absent_hours   = ${h.absent}::numeric
+       where id = ${enrollmentId}
+         and ${h.total}::numeric > 0
+         and ${h.attended}::numeric >= 0
+         and ${h.absent}::numeric >= 0
+         and ${h.attended}::numeric + ${h.absent}::numeric <= ${h.total}::numeric
+      returning id
+    `)) as unknown as Array<unknown>;
+    return filas.length > 0;
   }
 
   /** El docente solo se pisa si el guardado es el placeholder. jp_id nunca se toca. */

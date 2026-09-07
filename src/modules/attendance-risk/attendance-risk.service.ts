@@ -1,5 +1,6 @@
 import { partirNombre as splitName } from "../../shared/utils/nombre-persona.js";
 import type { EventBus } from "../../events/index.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 import type { AttendanceRiskRepository } from "./attendance-risk.repository.js";
 import type {
   AttendanceRiskResponse,
@@ -12,6 +13,7 @@ import type {
 const classifyStudent = (row: {
   absent_hours: string;
   total_section_hours: string;
+  enrollment_total_hours: string;
   current_level: number | null;
   full_name: string;
   code: string;
@@ -23,7 +25,14 @@ const classifyStudent = (row: {
   const limit = cycle >= 6 ? 35 : 25;
   const { firstName, lastName } = splitName(row.full_name);
 
-  if (totalSectionHours <= 0) {
+  // Sin dato NO es sin faltas. Dos formas de no saber, ambas terminan igual:
+  //  - la matrícula nunca recibió horas (enrollment.total_hours = 0). El CHECK
+  //    chk_enrollment_attendance_hours garantiza que toda fila con dato real
+  //    tiene total > 0, así que el 0 es prueba de ausencia, no de perfección.
+  //  - la sección no tiene denominador, y sin denominador no hay porcentaje.
+  // Antes ambas caían en `normal` con 0%, que es la lectura opuesta a la real.
+  const enrollmentHours = Number(row.enrollment_total_hours);
+  if (!Number.isFinite(enrollmentHours) || enrollmentHours <= 0 || totalSectionHours <= 0) {
     return {
       code: row.code,
       firstName,
@@ -32,8 +41,8 @@ const classifyStudent = (row: {
       cycle,
       absentHours,
       totalHours: totalSectionHours,
-      absencePercentage: 0,
-      status: "normal",
+      absencePercentage: null,
+      status: "sin_datos",
       missingFaltas: null,
     };
   }
@@ -92,13 +101,18 @@ const computeSummary = (students: AttendanceRiskStudentResponse[]): AttendanceRi
   let impedido = 0;
   let en_riesgo = 0;
   let normal = 0;
+  let sin_datos = 0;
   for (const s of students) {
     if (s.status === "impedido") impedido++;
     else if (s.status === "en_riesgo") en_riesgo++;
+    else if (s.status === "sin_datos") sin_datos++;
     else normal++;
   }
-  return { impedido, en_riesgo, normal, total: students.length };
+  return { impedido, en_riesgo, normal, sin_datos, total: students.length };
 };
+
+/** Degradación cuando la sección no tiene horario importado. Ver RS-BE-13. */
+const DEFAULT_SESSION_HOURS = 2;
 
 export class AttendanceRiskService {
   constructor(
@@ -106,9 +120,35 @@ export class AttendanceRiskService {
     readonly events: EventBus,
   ) {}
 
+  /**
+   * RS-BE-11. Toda ruta del módulo pasa por acá antes de tocar datos: la sección
+   * debe ser del docente autenticado. Antes solo se exigía el ROL `teacher`, así
+   * que cualquier docente podía leer el riesgo de cualquier sección y disparar
+   * `notify`, que inserta alertas académicas a alumnos ajenos.
+   *
+   * El mensaje es el mismo exista o no la sección: uno distinto para cada caso
+   * convertiría el endpoint en un oráculo para enumerar secciones.
+   */
+  async assertTeacherOwnsSection(teacherId: number, sectionId: number): Promise<void> {
+    const pertenece = await this.repository.teacherBelongsToSection(teacherId, sectionId);
+    if (!pertenece) {
+      throw new HttpError(403, "No tienes acceso a esta sección.", "NOT_SECTION_TEACHER");
+    }
+  }
+
+  /**
+   * RS-BE-13. Duración de una sesión, del horario real. El 2 sobrevive solo como
+   * degradación para secciones sin horario importado: es lo que había antes y no
+   * hay documento de la Universidad que lo respalde (ver §Reglas sin fuente).
+   */
+  private async resolveSessionHours(sectionId: number): Promise<number> {
+    const horas = await this.repository.findModalSessionHours(sectionId);
+    return horas && horas > 0 ? horas : DEFAULT_SESSION_HOURS;
+  }
+
   async getAttendanceRisk(sectionId: number): Promise<AttendanceRiskResponse> {
     const rows = await this.repository.findStudentsBySectionId(sectionId);
-    const sessionHours = 2;
+    const sessionHours = await this.resolveSessionHours(sectionId);
     const students: AttendanceRiskStudentResponse[] = rows.map(row => classifyStudent(row, sessionHours));
 
     return { students, summary: computeSummary(students) };
@@ -116,7 +156,7 @@ export class AttendanceRiskService {
 
   async getAttendanceRiskSummary(sectionId: number): Promise<{ summary: AttendanceRiskSummary }> {
     const rows = await this.repository.findStudentsBySectionId(sectionId);
-    const sessionHours = 2;
+    const sessionHours = await this.resolveSessionHours(sectionId);
     const students: AttendanceRiskStudentResponse[] = rows.map(row => classifyStudent(row, sessionHours));
 
     return { summary: computeSummary(students) };
@@ -124,13 +164,22 @@ export class AttendanceRiskService {
 
   async notifyStudents(sectionId: number): Promise<{ notified: number; message: string }> {
     const rows = await this.repository.findStudentDetailsBySectionId(sectionId);
-    const sessionHours = 2;
+    const sessionHours = await this.resolveSessionHours(sectionId);
     const alerts: { studentId: number; type: string; title: string; message: string }[] = [];
+
+    let sinDatos = 0;
 
     for (const row of rows) {
       const absentHours = Number(row.absent_hours);
       const totalSectionHours = Number(row.total_section_hours);
-      if (totalSectionHours <= 0) continue;
+      // Nunca se alerta sobre una matrícula sin asistencia cargada: el mensaje
+      // dice "estás a N faltas del límite", y con datos ausentes ese N sería
+      // inventado. Es correo académico a una persona real. Ver RS-BE-10.
+      const enrollmentHours = Number(row.enrollment_total_hours);
+      if (!Number.isFinite(enrollmentHours) || enrollmentHours <= 0 || totalSectionHours <= 0) {
+        sinDatos++;
+        continue;
+      }
 
       const absencePercentage = (absentHours / totalSectionHours) * 100;
       const cycle = row.cycle;
@@ -159,9 +208,17 @@ export class AttendanceRiskService {
     }
 
     const notified = await this.repository.createAlerts(alerts);
-    const msg = notified > 0
-      ? `Se ${notified === 1 ? "ha" : "han"} notificado a ${notified} alumno${notified === 1 ? "" : "s"}.`
-      : "No hay alumnos que notificar.";
+    // "No hay alumnos que notificar" era una afirmación sobre la realidad
+    // académica del salón. Cuando la causa es que no hay datos cargados, decirlo
+    // así es falso: hay que distinguir "nadie en riesgo" de "nadie medido".
+    let msg: string;
+    if (notified > 0) {
+      msg = `Se ${notified === 1 ? "ha" : "han"} notificado a ${notified} alumno${notified === 1 ? "" : "s"}.`;
+    } else if (sinDatos > 0) {
+      msg = `No se notificó a nadie: ${sinDatos} alumno${sinDatos === 1 ? "" : "s"} sin datos de asistencia cargados.`;
+    } else {
+      msg = "No hay alumnos que notificar.";
+    }
     return { notified, message: msg };
   }
 }

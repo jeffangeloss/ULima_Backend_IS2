@@ -58,6 +58,7 @@ const nrow = (over: Partial<StudentNotifyRow> = {}): StudentNotifyRow => ({
   current_level: 5,
   absent_hours: "0",
   total_section_hours: "100",
+  enrollment_total_hours: "100",
   course_name: "Ingenieria de Software",
   section_code: "801",
   cycle: 3,
@@ -70,6 +71,7 @@ const spyService = (rows: StudentNotifyRow[]) => {
   const captured: { studentId: number; type: string; title: string; message: string }[] = [];
   const repo = {
     findStudentDetailsBySectionId: async () => rows,
+    findModalSessionHours: async () => null,   // sin horario -> cae al 2 heredado (RS-BE-13)
     createAlerts: async (data: typeof captured) => {
       captured.push(...data);
       return data.length;
@@ -88,7 +90,8 @@ describe("CAJA BLANCA · AttendanceRiskService.notifyStudents (HU30)", () => {
 
     expect(captured).toHaveLength(0);
     expect(res.notified).toBe(0);
-    expect(res.message).toBe("No hay alumnos que notificar.");
+    // RS-BE-10: la causa acá no es que nadie esté en riesgo, es que no hay dato.
+    expect(res.message).toBe("No se notificó a nadie: 1 alumno sin datos de asistencia cargados.");
   });
 
   // ⭐ Camino central de negocio: demuestra umbral estricto, payload de alerta
