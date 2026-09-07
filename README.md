@@ -13,8 +13,8 @@
 [![Base](https://img.shields.io/badge/Base-PostgreSQL_en_Neon-00E599?style=for-the-badge&logo=postgresql&logoColor=white)](#-el-modelo-de-datos)
 [![ORM](https://img.shields.io/badge/ORM-Drizzle_·_35_tablas-C5F74F?style=for-the-badge&logo=drizzle&logoColor=black)](#-el-modelo-de-datos)
 
-[![Superficie](https://img.shields.io/badge/Superficie-16_módulos_·_74_endpoints-1F3A5F?style=for-the-badge&logo=fastapi&logoColor=white)](#-la-api)
-[![Verificación](https://img.shields.io/badge/Verificación-92_suites_·_16_429_líneas-6D28D9?style=for-the-badge&logo=testinglibrary&logoColor=white)](#-pruebas-y-calidad)
+[![Superficie](https://img.shields.io/badge/Superficie-16_módulos_·_75_endpoints-1F3A5F?style=for-the-badge&logo=fastapi&logoColor=white)](#-la-api)
+[![Verificación](https://img.shields.io/badge/Verificación-93_suites_·_16_429_líneas-6D28D9?style=for-the-badge&logo=testinglibrary&logoColor=white)](#-pruebas-y-calidad)
 [![Frontend](https://img.shields.io/badge/Frontend-ULima%2B%2B_Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://github.com/jeffangeloss/ULima_Frontend_IS2)
 
 </div>
@@ -1798,7 +1798,7 @@ del portal **no** devuelve cupo.
 
 ---
 
-### El catálogo: 74 endpoints
+### El catálogo: 75 endpoints
 
 #### Raíz — 3 endpoints públicos
 
