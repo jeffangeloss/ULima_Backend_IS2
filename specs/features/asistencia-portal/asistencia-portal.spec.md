@@ -13,7 +13,7 @@ targets:
 
 # Asistencia del Aula Virtual
 
-> Estado: **PENDIENTE DE APROBACIÓN.** Diseño cerrado el 2026-09-06 sobre fixtures reales del spike (`spike-portal/out_deleg/asistencia/`, 5 cursos de una cuenta real). Enmienda RS-BE-4 y el paso 9 de `portal-sync.spec.md`, que hoy prohíben tocar las horas de asistencia.
+> Estado: **APROBADA el 2026-09-07 e implementada.** Diseño cerrado sobre fixtures reales del spike (5 cursos de una cuenta real). Enmienda RS-BE-4 y el paso 9 de `portal-sync.spec.md`, que hasta ahora prohibían tocar las horas de asistencia. **Pendiente**: la verificación de tiempos de §Verification, y re-sondear cerca de la semana 6 para ver el formato del agregado con faltas reales.
 
 ## Contexto
 
