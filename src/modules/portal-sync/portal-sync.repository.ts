@@ -95,6 +95,46 @@ export const academicWeekCount = (startDate: string, endDate: string): number =>
   return Math.max(1, Math.ceil(spanDays / 7));
 };
 
+/** De dónde salieron las horas del ciclo, en orden de confianza decreciente. */
+export type TotalHoursSource = "schedule" | "curriculum" | "credits";
+
+/**
+ * Horas de clase del ciclo completo para una oferta: `horas semanales x semanas`.
+ * Las tres fuentes difieren solo en de dónde sale el factor semanal:
+ *
+ *   1. `schedule`   — la suma real de `schedule_session` de la sección. Es el
+ *                     dato más confiable porque lo publica el propio portal.
+ *   2. `curriculum` — `course.weekly_hours`, la columna TOT del plan de estudios
+ *                     oficial. Cubre las ofertas que todavía no tienen horario.
+ *   3. `credits`    — los créditos como proxy de las horas semanales. Es un mal
+ *                     proxy y se conserva solo como último recurso: subestimaba
+ *                     las horas entre 20% y 40% (PARADIGMAS son 5 h/sem = 80 h,
+ *                     no 3 créditos x 16 = 48 h). Un denominador chico infla el
+ *                     % de inasistencia y adelanta el umbral de impedido, así
+ *                     que llegar acá es una degradación, no el caso normal.
+ *
+ * Un factor semanal en 0 o nulo NO es fuente: una sección sin sesiones cargadas
+ * cae al escalón siguiente en vez de fijar el total en 0 (con 0, attendance-risk
+ * descarta la sección entera). Ver RS-BE-9.
+ */
+export const resolveOfferingTotalHours = (
+  src: {
+    scheduleWeeklyHours?: number | null;
+    curriculumWeeklyHours?: number | null;
+    credits: number;
+  },
+  weeks: number,
+): { hours: number; source: TotalHoursSource } => {
+  if (src.scheduleWeeklyHours) {
+    return { hours: src.scheduleWeeklyHours * weeks, source: "schedule" };
+  }
+  if (src.curriculumWeeklyHours) {
+    return { hours: src.curriculumWeeklyHours * weeks, source: "curriculum" };
+  }
+  // chk_course_default_credit exige > 0, igual que en upsertCourse.
+  return { hours: Math.max(1, Math.ceil(src.credits || 0)) * weeks, source: "credits" };
+};
+
 /** El ciclo global solo AVANZA: nunca se retrocede por la importación de un alumno. */
 export const periodCodeIsNewer = (incoming: string, current: string | null): boolean =>
   current === null || incoming >= current;
