@@ -4,7 +4,7 @@ import { Hono } from "hono";
 /**
  * RS-BE-17/RS-BE-18 a nivel de ENDPOINT (Task 4 de la feature "registro de
  * alumno"). La lógica de negocio de `AuthService.register` ya está probada en
- * `registro.service.test.ts` (feliz, 409, 401, 502) y `registro.atomicidad.test.ts`
+ * `registro.service.test.ts` (feliz, 409, 401, 502, 504) y `registro.atomicidad.test.ts`
  * (todo o nada). Lo que falta y prueba este archivo es la CADENA
  * routes -> controller -> service -> errorHandler:
  *
@@ -56,6 +56,22 @@ const entrada = {
   passcode: "123456",
   password: "clave-nueva-sintetica",
 };
+
+/**
+ * Un `code` de cuerpo DISTINTO por petición.
+ *
+ * La ruta pasa por `registerRateLimit` (5 intentos por código por hora) y ese
+ * contador vive en un `Map` de módulo compartido por todo el proceso de test.
+ * Con un código fijo, esta suite se quedaría a un test de distancia de
+ * empezar a fallar por 429 sin que nadie tocara el endpoint. El rango 2023
+ * 9xxx es exclusivo de este archivo (el de límite de tasa usa 2023 1xxx).
+ * Códigos SINTÉTICOS: no son códigos reales de alumno (repo público).
+ *
+ * Que el código del cuerpo varíe no afecta a ningún test: la identidad la
+ * pone el portal, que siempre certifica `CODIGO_EN_EL_PORTAL_DEFECTO`.
+ */
+let siguienteCodigo = 20239100;
+const codigoDeCuerpo = () => String(siguienteCodigo++);
 
 const emptySummary = (): ImportSummary => ({
   coursesCreated: 0, teachersCreated: 0, sectionsCreated: 0, sectionsUpdated: 0,
@@ -194,7 +210,7 @@ const pedirRegistro = (app: Hono, body: unknown) =>
 describe("POST /auth/register", () => {
   test("camino feliz responde 201 con el contrato { token, tokenType, expiresIn, user, summary }", async () => {
     const { app } = armarApp();
-    const res = await pedirRegistro(app, entrada);
+    const res = await pedirRegistro(app, { ...entrada, code: codigoDeCuerpo() });
     expect(res.status).toBe(201);
 
     const body = await res.json() as {
@@ -219,7 +235,7 @@ describe("POST /auth/register", () => {
 
   test("el 409 real de AuthService.register llega como USER_ALREADY_EXISTS, no como 500", async () => {
     const { app, estaPortalLlamado } = armarApp({ yaExiste: true });
-    const res = await pedirRegistro(app, entrada);
+    const res = await pedirRegistro(app, { ...entrada, code: codigoDeCuerpo() });
     expect(res.status).toBe(409);
     expect((await res.json() as { error: { code: string } }).error.code).toBe("USER_ALREADY_EXISTS");
     // El 409 se responde ANTES de pedirle nada al portal (RS-BE-17): si la
@@ -248,14 +264,37 @@ describe("POST /auth/register", () => {
     app2.onError(errorHandler);
     app2.route("/auth", createAuthRoutes(controller));
 
-    const res = await pedirRegistro(app2, entrada);
+    const res = await pedirRegistro(app2, { ...entrada, code: codigoDeCuerpo() });
     expect(res.status).toBe(502);
     expect((await res.json() as { error: { code: string } }).error.code).toBe("PORTAL_UNAVAILABLE");
   });
 
+  test("un 504 PORTAL_TIMEOUT llega con su propio status, no aplastado a 401 ni a 502", async () => {
+    // Gemelo del test del 502. `portal.client.ts` emite 504 PORTAL_TIMEOUT
+    // para un `AbortError`, que es el fallo más probable de miUlima; con el
+    // criterio viejo salía como 401 PORTAL_AUTH_FAILED y mandaba a la persona
+    // a cambiar su contraseña universitaria sin motivo.
+    const authRepository = { codeExists: async () => false } as unknown as AuthRepository;
+    const portalClient = {
+      login: async () => {
+        throw new HttpError(504, "miUlima tardó demasiado en responder.", "PORTAL_TIMEOUT");
+      },
+      logout: async () => {},
+    } as unknown as PortalClient;
+    const service = new AuthService(authRepository, new EventBus(), undefined, {} as PortalSyncRepository, portalClient);
+    service.setRegistrar({ importFromPortal: async () => { throw new Error("no debería llamarse"); } });
+    const app3 = new Hono();
+    app3.onError(errorHandler);
+    app3.route("/auth", createAuthRoutes(new AuthController(service)));
+
+    const res = await pedirRegistro(app3, { ...entrada, code: codigoDeCuerpo() });
+    expect(res.status).toBe(504);
+    expect((await res.json() as { error: { code: string } }).error.code).toBe("PORTAL_TIMEOUT");
+  });
+
   test("la respuesta NUNCA incluye password_hash, portalPassword ni passcode", async () => {
     const { app } = armarApp();
-    const cuerpo = await (await pedirRegistro(app, entrada)).text();
+    const cuerpo = await (await pedirRegistro(app, { ...entrada, code: codigoDeCuerpo() })).text();
     for (const secreto of ["passwordHash", "password_hash", "portalPassword", "passcode", entrada.portalPassword, entrada.password]) {
       expect(cuerpo).not.toContain(secreto);
     }

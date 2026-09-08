@@ -4,7 +4,8 @@ import type { Registrar } from "../../src/modules/auth/auth.service.js";
 import type { AuthRepository } from "../../src/modules/auth/auth.repository.js";
 import type { PortalSyncRepository } from "../../src/modules/portal-sync/portal-sync.repository.js";
 import type { PortalClient } from "../../src/services/portal.client.js";
-import type { ImportSummary } from "../../src/modules/portal-sync/portal-sync.types.js";
+import type { ImportSummary, SyncWarning } from "../../src/modules/portal-sync/portal-sync.types.js";
+import jwt from "jsonwebtoken";
 import { EventBus } from "../../src/events/index.js";
 import { HttpError } from "../../src/shared/errors/http-error.js";
 
@@ -60,11 +61,22 @@ type Creada = { code: string; email: string; passwordHash: string };
  */
 function armar(opts: {
   yaExiste?: boolean;
+  /** `codeExists` responde true SOLO para este código. Sirve para separar el
+   *  409 del código del cuerpo del 409 del código que certifica el portal. */
+  yaExisteSoloElCodigo?: string;
   loginFalla?: boolean;
-  /** Para simular un portal caído (502) en vez de credenciales rechazadas. */
-  loginLanza?: HttpError;
+  /** Para simular un portal caído (502) o un timeout (504) en vez de
+   *  credenciales rechazadas. */
+  loginLanza?: unknown;
   matriculasEnElPortal?: number;
   codigoEnElPortal?: string;
+  /** Token ya re-firmado que devuelve la importación (portal-sync relee el
+   *  cargo vigente y lo mete DENTRO del JWT). `null` = registrar sin `auth`. */
+  tokenDeLaImportacion?: string | null;
+  warningsDeLaImportacion?: SyncWarning[];
+  /** La relectura del usuario posterior al commit falla o vuelve vacía. */
+  findByIdLanza?: boolean;
+  findByIdVacio?: boolean;
 } = {}) {
   const codigoEnElPortal = opts.codigoEnElPortal ?? CODIGO_EN_EL_PORTAL_DEFECTO;
   const enrollments = opts.matriculasEnElPortal ?? 5;
@@ -77,6 +89,7 @@ function armar(opts: {
   const authRepository = {
     codeExists: async (code: string) => {
       if (opts.yaExiste) return true;
+      if (opts.yaExisteSoloElCodigo) return code === opts.yaExisteSoloElCodigo;
       // Solo mira lo persistido, nunca lo `staged`.
       return creadas.some((c) => c.code === code);
     },
@@ -86,6 +99,8 @@ function armar(opts: {
     // {id, studentId, code, role}, para que un test pueda distinguir uno de
     // otro.
     findById: async (userId: number, role: string) => {
+      if (opts.findByIdLanza) throw new Error("la BD se cayó justo después del commit");
+      if (opts.findByIdVacio) return null;
       const ultimo = creadas[creadas.length - 1];
       if (!ultimo) return null;
       return {
@@ -160,8 +175,8 @@ function armar(opts: {
           period: { id: 1, code: "2026-1", created: false },
           identity: { portalCode: codigoEnElPortal, fullName: NOMBRE_EN_EL_PORTAL, career: CARRERA },
           summary,
-          warnings: [],
-          token: null,
+          warnings: opts.warningsDeLaImportacion ?? [],
+          token: opts.tokenDeLaImportacion ?? null,
         };
       } finally {
         // Simula el `finally` REAL de `PortalSyncService.importFromPortal`:
@@ -245,6 +260,115 @@ describe("AuthService.register", () => {
   // token. Sin esto, el cliente Flutter tendría que hacer un login o una
   // llamada de perfil extra tras registrarse, y `setupComplete` —que decide
   // si va al onboarding de especialidades— ni siquiera estaría.
+  // Bloqueante 2 de la revisión final. `portal.client.ts` emite DOS códigos de
+  // fallo de red (`portalFailure`): 502 PORTAL_UNAVAILABLE y 504
+  // PORTAL_TIMEOUT para un `AbortError`. El criterio viejo dejaba pasar solo
+  // el 502, así que el timeout —el fallo MÁS probable de miUlima, que corre
+  // con un `AbortController`— salía como 401 y mandaba a la persona a cambiar
+  // su contraseña universitaria sin motivo. Gemelo del test del 502 de arriba.
+  test("timeout del portal (504 PORTAL_TIMEOUT) NO se reporta como credenciales rechazadas", async () => {
+    const { service } = armar({
+      loginLanza: new HttpError(504, "miUlima tardó demasiado en responder.", "PORTAL_TIMEOUT"),
+    });
+    await expect(service.register(entrada)).rejects.toMatchObject({
+      code: "PORTAL_TIMEOUT",
+      statusCode: 504,
+    });
+  });
+
+  test("un fallo del propio backend tampoco se disfraza de credenciales rechazadas", async () => {
+    // El criterio es lista blanca: solo PORTAL_LOGIN_REJECTED se traduce. Un
+    // TypeError del backend (no un HttpError) llega tal cual y termina en 500,
+    // que es lo que es — no en un 401 que culpa a la contraseña de la persona.
+    const { service } = armar({ loginLanza: new TypeError("bug del backend") });
+    await expect(service.register(entrada)).rejects.toThrow(TypeError);
+  });
+
+  // Punto 4 de la revisión final. El 409 temprano mira el código del CUERPO;
+  // lo que se INSERTA es el del portal. Si difieren y el del portal ya tiene
+  // cuenta, sin el segundo chequeo el INSERT reventaba contra la constraint
+  // única y salía un 500 que la spec no contempla.
+  test("si el codigo del PORTAL ya tiene cuenta (y el del body no), es 409 y no un 500", async () => {
+    const { service, creadas } = armar({
+      codigoEnElPortal: "20230001",
+      yaExisteSoloElCodigo: "20230001",
+    });
+    await expect(
+      service.register({ ...entrada, code: "20239999" }),
+    ).rejects.toMatchObject({ code: "USER_ALREADY_EXISTS", statusCode: 409 });
+    // El 409 se lanza DESDE DENTRO de la transacción, así que tampoco queda
+    // nada escrito a medias.
+    expect(creadas).toHaveLength(0);
+  });
+
+  // Punto 3 de la revisión final: `importFromPortal` re-firma el token con el
+  // cargo VIGENTE releído de la BD ya confirmada. Descartarlo y firmar uno
+  // nuevo con `role: "student"` fijo le daba un token de alumno raso a alguien
+  // que la propia importación acababa de reconocer como delegado.
+  test("usa el token re-firmado por la importacion, no uno propio con rol fijo", async () => {
+    const tokenDeDelegado = jwt.sign(
+      { sub: 55, studentId: 77, code: CODIGO_EN_EL_PORTAL_DEFECTO, role: "delegate", tokenVersion: 1 },
+      "secreto-sintetico-de-test",
+    );
+    const { service } = armar({ tokenDeLaImportacion: tokenDeDelegado });
+
+    const r = await service.register(entrada);
+    expect(r.token).toBe(tokenDeDelegado);
+    // Y el `user` dice lo mismo que el JWT: el cliente elige la pestaña de
+    // delegado por el `user`, no por el token.
+    expect(r.user.role).toBe("delegate");
+  });
+
+  test("si la importacion no re-firma token (registrar sin auth), se firma uno propio de student", async () => {
+    const { service } = armar({ tokenDeLaImportacion: null });
+    const r = await service.register(entrada);
+    expect(typeof r.token).toBe("string");
+    expect(r.user.role).toBe("student");
+  });
+
+  test("los warnings de la importacion viajan en la respuesta, no mueren en silencio", async () => {
+    // La spec dice que el CAREER_MISMATCH "se registra". Hasta acá lo
+    // calculaba la importación y no quedaba constancia en ningún lado.
+    const { service } = armar({
+      warningsDeLaImportacion: [{
+        code: "CAREER_MISMATCH", block: "matricula",
+        message: "El portal reporta otra carrera. No se modificó la carrera.",
+      }],
+    });
+    const r = await service.register(entrada);
+    expect(r.warnings.map((w) => w.code)).toContain("CAREER_MISMATCH");
+  });
+
+  // Punto 5 de la revisión final. Después del commit la cuenta YA existe: si
+  // algo posterior lanza, la persona ve un error, reintenta y choca con el
+  // 409 — cuenta inutilizable y sin camino de reintento, justo lo que RS-BE-18
+  // quiere evitar. Los dos tests de abajo cubren las dos formas de fallar de
+  // la relectura.
+  test("si la relectura del usuario LANZA despues del commit, igual devuelve una respuesta utilizable", async () => {
+    const { service } = armar({ findByIdLanza: true });
+    const r = await service.register(entrada);
+    expect(typeof r.token).toBe("string");
+    // El respaldo se arma con lo que `provision` insertó: código y correo del
+    // PORTAL, nunca los del cuerpo.
+    expect(r.user.code).toBe(CODIGO_EN_EL_PORTAL_DEFECTO);
+    expect(r.user.institutionalEmail).toBe(`${CODIGO_EN_EL_PORTAL_DEFECTO}@aloe.ulima.edu.pe`);
+    expect(r.user.fullName).toBe(NOMBRE_EN_EL_PORTAL);
+    expect(r.user.studentId).toBe(77);
+    expect(r.user).not.toHaveProperty("passwordHash");
+  });
+
+  test("si la relectura del usuario vuelve VACIA despues del commit, tampoco se responde 500", async () => {
+    const { service } = armar({ findByIdVacio: true });
+    const r = await service.register(entrada);
+    expect(r.user.code).toBe(CODIGO_EN_EL_PORTAL_DEFECTO);
+    expect(r.user.role).toBe("student");
+    // Forma completa de AuthUser, no un objeto a medio llenar: el cliente no
+    // tiene que distinguir este caso del normal.
+    expect(r.user).toHaveProperty("setupComplete");
+    expect(r.user).toHaveProperty("courseProgress");
+    expect(r.user).toHaveProperty("specialties");
+  });
+
   test("el user de la respuesta trae los mismos campos que el de login, no solo id/studentId/code/role", async () => {
     const { service } = armar({});
     const r = await service.register(entrada);
