@@ -1130,4 +1130,61 @@ export class PortalSyncRepository {
     }>;
     return rows[0] ?? null;
   }
+
+  /**
+   * La única carrera y malla del sistema. Hoy hay exactamente una de cada una y
+   * los 365 alumnos cuelgan de ellas, así que el registro no tiene que mapear
+   * el nombre de carrera del portal a un id: usa esta y lo VERIFICA.
+   */
+  async findSoleCareerAndCurriculum(tx: Tx) {
+    const rows = (await tx.execute(sql`
+      select c.id as "careerId", cu.id as "curriculumId", c.name as "careerName"
+      from career c cross join curriculum cu
+      order by c.id, cu.id
+      limit 1
+    `)) as unknown as Array<{ careerId: number; curriculumId: number; careerName: string }>;
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Alta de cuenta de alumno (RS-BE-17). Devuelve la MISMA forma que
+   * `findStudent` a propósito: así el cuerpo de la importación no distingue si
+   * el alumno ya existía o se acaba de crear.
+   *
+   * Va dentro de la transacción de la importación, no en una propia: si la
+   * importación falla, la cuenta se revierte con ella (RS-BE-18).
+   */
+  async createStudentAccount(
+    tx: Tx,
+    input: {
+      code: string; fullName: string; email: string;
+      passwordHash: string; careerId: number; curriculumId: number;
+      /** Nombre de la carrera, ya resuelto por `findSoleCareerAndCurriculum`.
+       *  Entra como parámetro para no consultar dos veces y para que el objeto
+       *  devuelto sea idéntico al de `findStudent`, sin campos a medio llenar. */
+      careerName: string;
+    },
+  ) {
+    const u = (await tx.execute(sql`
+      insert into app_user (code, full_name, institutional_email, password_hash)
+      values (${input.code}, ${input.fullName}, ${input.email}, ${input.passwordHash})
+      returning id
+    `)) as unknown as Array<{ id: number }>;
+    const userId = Number(u[0].id);
+
+    const s = (await tx.execute(sql`
+      insert into student (user_id, career_id, curriculum_id)
+      values (${userId}, ${input.careerId}, ${input.curriculumId})
+      returning id
+    `)) as unknown as Array<{ id: number }>;
+
+    return {
+      id: Number(s[0].id),
+      userId,
+      careerId: input.careerId,
+      curriculumId: input.curriculumId,
+      currentLevel: null as number | null,
+      careerName: input.careerName,
+    };
+  }
 }

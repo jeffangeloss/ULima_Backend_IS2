@@ -12,6 +12,10 @@ export class AuthController {
     return this.service.loginWithGoogle(input);
   }
 
+  register(input: { code: string; portalPassword: string; passcode: string; password: string }) {
+    return this.service.register(input);
+  }
+
   logout(userId: number) {
     return this.service.logout(userId);
   }

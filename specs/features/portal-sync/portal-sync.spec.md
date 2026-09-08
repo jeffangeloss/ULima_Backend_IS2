@@ -132,7 +132,13 @@ Ver `docs/specs/api-contracts.md`, sección **Portal Sync**.
   - código distinto → `403 PORTAL_IDENTITY_MISMATCH`;
   - código ilegible o parser fallido → `422 PORTAL_IDENTITY_UNVERIFIABLE`.
   Esta es la **única** excepción a la regla de degradar parsers a `warnings`.
+
+  **Enmendado por `specs/features/registro/registro.spec.md` (RS-BE-17/RS-BE-18).** Este paso tiene ahora dos modos, según si `runImport` recibe o no un hook de aprovisionamiento (`provision`):
+  - **Sin hook (importación normal, sin cambios)**: hay una cuenta autenticada previa. La comprobación de arriba se mantiene intacta — el código del portal debe coincidir con `app_user.code`, o aborta con `403`/`422` como siempre. Es lo que impide que alguien importe el ciclo de otro.
+  - **Con hook (registro, RS-BE-17)**: no existe cuenta previa contra la cual comparar. El código del portal **es** la identidad: `provision` crea `app_user` y `student` dentro de la misma transacción, con los datos que el portal certificó, y la importación sigue con los ids que ese hook devuelve. No hay `PORTAL_IDENTITY_MISMATCH` posible en este modo porque no hay nada previo con qué contrastar.
+  Un segundo hook opcional, `validate`, corre como último paso dentro de la misma transacción — lo usa el registro para exigir al menos una matrícula del ciclo activo (`403 NOT_ENROLLED`) antes de confirmar; si `validate` lanza, la transacción entera revierte (RS-BE-18), cuenta recién creada incluida.
   `[@test] ../../../test/HU31_jeff/service.import.test.ts`
+  `[@test] ../../../test/HU33_jeff/service.registro-import.test.ts`
 - Si el portal responde `inicio.jsp` o `solicitarValidarToken.jsp` en cualquier descarga → **`409 PORTAL_SESSION_INVALID`**. Se usa 409 y **no 401** a propósito: `ApiClient` del frontend trata todo 401 como expiración del JWT de ULima++ y cierra la sesión del usuario.
   `[@test] ../../../test/HU31_jeff/portal.client.test.ts`
 - Portal 5xx o error de conexión → `502 PORTAL_UNAVAILABLE`; exceso de `PORTAL_TIMEOUT_MS` → `504 PORTAL_TIMEOUT`.

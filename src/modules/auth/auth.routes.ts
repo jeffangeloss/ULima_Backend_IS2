@@ -7,8 +7,10 @@ import {
   passwordResetRequestSchema,
   passwordResetConfirmSchema,
   passwordResetVerifySchema,
+  registerSchema,
 } from "./auth.schemas.js";
 import { authMiddleware } from "../../shared/middleware/auth-middleware.js";
+import { registerConcurrencyLimit, registerRateLimit } from "../../shared/middleware/rate-limit.js";
 import type { AppRole } from "./auth.types.js";
 
 export const createAuthRoutes = (controller: AuthController) => {
@@ -22,6 +24,21 @@ export const createAuthRoutes = (controller: AuthController) => {
   app.post("/google", async (c) => {
     const body = await validateJson(c, googleLoginSchema);
     return c.json(await controller.loginWithGoogle(body));
+  });
+
+  // RS-BE-17: pública, sin token — el portal de miUlima es quien certifica la
+  // identidad, no un JWT que todavía no existe para quien se está registrando.
+  //
+  // Los dos limitadores van en este orden a propósito:
+  //   1. `registerRateLimit` (por `code`) rechaza barato, sin tocar el portal.
+  //      Va primero para que un bucle contra un mismo código no consuma
+  //      además el cupo de concurrencia.
+  //   2. `registerConcurrencyLimit` (global, sin clave) acota cuántas
+  //      secuencias de login contra miUlima quedan colgadas a la vez, que es
+  //      lo que un contador por clave no puede acotar.
+  app.post("/register", registerRateLimit, registerConcurrencyLimit, async (c) => {
+    const body = await validateJson(c, registerSchema);
+    return c.json(await controller.register(body), 201);
   });
 
   app.post("/password-reset/request", async (c) => {

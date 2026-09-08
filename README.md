@@ -13,8 +13,8 @@
 [![Base](https://img.shields.io/badge/Base-PostgreSQL_en_Neon-00E599?style=for-the-badge&logo=postgresql&logoColor=white)](#-el-modelo-de-datos)
 [![ORM](https://img.shields.io/badge/ORM-Drizzle_·_35_tablas-C5F74F?style=for-the-badge&logo=drizzle&logoColor=black)](#-el-modelo-de-datos)
 
-[![Superficie](https://img.shields.io/badge/Superficie-16_módulos_·_75_endpoints-1F3A5F?style=for-the-badge&logo=fastapi&logoColor=white)](#-la-api)
-[![Verificación](https://img.shields.io/badge/Verificación-93_suites_·_16_429_líneas-6D28D9?style=for-the-badge&logo=testinglibrary&logoColor=white)](#-pruebas-y-calidad)
+[![Superficie](https://img.shields.io/badge/Superficie-16_módulos_·_76_endpoints-1F3A5F?style=for-the-badge&logo=fastapi&logoColor=white)](#-la-api)
+[![Verificación](https://img.shields.io/badge/Verificación-99_suites_·_16_429_líneas-6D28D9?style=for-the-badge&logo=testinglibrary&logoColor=white)](#-pruebas-y-calidad)
 [![Frontend](https://img.shields.io/badge/Frontend-ULima%2B%2B_Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://github.com/jeffangeloss/ULima_Frontend_IS2)
 
 </div>
@@ -244,7 +244,7 @@ Todo el arranque de la aplicación cabe en un archivo. Este es su contenido, en 
 
 > **1 · No hay middleware global de autenticación.** La cadena global tiene exactamente dos eslabones: `cors` y `logger`. `authMiddleware` y `requireRole` se montan **dentro de cada `*.routes.ts`**, con `app.use("*", ...)` cuando el módulo entero es homogéneo o ruta por ruta cuando no lo es (`auth`, `official-grades`, `schedule`, `chat` y `advising/student` lo hacen por ruta). La consecuencia es literal: `GET /`, `GET /health` y `GET /version` son los únicos endpoints del backend sin JWT, y lo son porque están declarados **antes** de `registerModules(app)`.
 
-> **2 · Tampoco hay rate-limit global.** Los dos limitadores (`chatbotRateLimit` y `portalSyncRateLimit`) se montan en dos rutas concretas: `POST /chatbot/sessions/:id/ask` y `POST /portal-sync/import`. Ningún otro endpoint tiene límite de tasa.
+> **2 · Tampoco hay rate-limit global.** Los cuatro limitadores (`chatbotRateLimit`, `portalSyncRateLimit`, `registerRateLimit` y `registerConcurrencyLimit`) se montan en tres rutas concretas: `POST /chatbot/sessions/:id/ask`, `POST /portal-sync/import` y `POST /auth/register`. Ningún otro endpoint tiene límite de tasa.
 
 > **3 · Lo que no está y podría esperarse.** Sin `secureHeaders`, sin compresión, sin `requestId`, sin body-limit, sin timeout de request. El backend confía en que Vercel ponga lo que falta.
 
@@ -641,7 +641,7 @@ ULima_Backend_IS2/
 │   │   ├── firebase.service.ts       # 169 · custom tokens, membresía del chat y lectura de RTDB
 │   │   └── index.ts                  # 1 línea: `export {}` — barril muerto
 │   ├── shared/                       # 12 archivos · 442 líneas
-│   │   ├── middleware/               # auth-middleware.ts 101 · rate-limit.ts 103 · validate-dto.ts 34 · error-handler.ts 29
+│   │   ├── middleware/               # auth-middleware.ts 101 · rate-limit.ts 242 · validate-dto.ts 34 · error-handler.ts 29
 │   │   ├── errors/                   # app-error.ts 10 · http-error.ts 14 — HttpError se instancia 113 veces en src/
 │   │   ├── types/                    # auth.ts 4 · http.ts 11
 │   │   ├── utils/                    # nombre-persona.ts 40 (la regla ÚNICA para partir nombres) + index.ts 1
@@ -1659,7 +1659,7 @@ ambos están documentadas en [su propia tabla](#el-contrato-documentado-vs-el-c�
 | **Framework** | Hono; una única app, `registerModules(app)` en [`src/server.ts`](src/server.ts)`:63` |
 | **Versionado** | Ninguno. No hay `/v1`, no hay `Accept-Version` |
 | **Formato** | JSON en petición y respuesta. `Content-Type: application/json` |
-| **Autenticación** | `Authorization: Bearer <jwt>` en **todo** salvo los 7 públicos |
+| **Autenticación** | `Authorization: Bearer <jwt>` en **todo** salvo los 9 públicos |
 | **Algoritmo del JWT** | HS256, `JWT_SECRET`, expiración `JWT_EXPIRES_IN` — por defecto **86400 s** ([`src/config/env.ts`](src/config/env.ts)`:35-37`) |
 | **CORS** | `allowMethods` GET/POST/PUT/DELETE/OPTIONS, `allowHeaders` `Content-Type` y `Authorization`; `origin` = `CORS_ORIGINS` o `*` si la variable falta ([`src/server.ts`](src/server.ts)`:16-23`) |
 | **Región de despliegue** | `iad1` (`vercel.json`) |
@@ -1667,7 +1667,7 @@ ambos están documentadas en [su propia tabla](#el-contrato-documentado-vs-el-c�
 > ⚠️ El dominio `…-tau.vercel.app` que aparece en documentación antigua está **muerto**. El
 > despliegue vivo es `…-one.vercel.app`.
 
-#### Los 7 endpoints públicos — la lista exacta
+#### Los 9 endpoints públicos — la lista exacta
 
 No hay más. Cualquier otra ruta sin `Authorization` responde **401 `MISSING_TOKEN`**.
 
@@ -1676,13 +1676,15 @@ No hay más. Cualquier otra ruta sin `Authorization` responde **401 `MISSING_TOK
 | `GET /` | Registrado en [`src/server.ts`](src/server.ts)`:28`, antes de `registerModules`, sin middleware |
 | `GET /health` | Ídem, `:48` |
 | `GET /version` | Ídem, `:54` |
-| `POST /auth/login` | El router de `auth` **no** tiene `app.use("*", authMiddleware)`; esta ruta no lo declara ([`src/modules/auth/auth.routes.ts`](src/modules/auth/auth.routes.ts)`:16`) |
-| `POST /auth/google` | Ídem, `:21` |
-| `POST /auth/password-reset/request` | Ídem, `:26` |
-| `POST /auth/password-reset/confirm` | Ídem, `:31` |
+| `POST /auth/login` | El router de `auth` **no** tiene `app.use("*", authMiddleware)`; esta ruta no lo declara ([`src/modules/auth/auth.routes.ts`](src/modules/auth/auth.routes.ts)`:19`) |
+| `POST /auth/google` | Ídem, `:24` |
+| `POST /auth/register` | Ídem, `:39`. Sin JWT porque todavía no existe la cuenta — es el endpoint que la crea (RS-BE-17). Es el **único** público con límite de tasa: `registerRateLimit` (5 por `code` por hora) y `registerConcurrencyLimit` (4 en vuelo) |
+| `POST /auth/password-reset/request` | Ídem, `:44` |
+| `POST /auth/password-reset/verify` | Ídem, `:49` |
+| `POST /auth/password-reset/confirm` | Ídem, `:54` |
 
 El módulo `auth` es el único que declara la autenticación **ruta por ruta** en vez de con un
-`app.use` global. Es deliberado: cuatro de sus siete endpoints existen precisamente para
+`app.use` global. Es deliberado: seis de sus nueve endpoints existen precisamente para
 usuarios que todavía no tienen token.
 
 #### El sobre de error
@@ -1779,12 +1781,14 @@ excepciones: `PUT /alerts/me/:alertId/read` parsea con `parseInt` + `isNaN` y em
 
 #### Límites de tasa
 
-Solo dos endpoints los tienen, y ninguno es global.
+Solo tres endpoints los tienen, y ninguno es global.
 
 | Ámbito | Cuota | Ventana | Archivo |
 |:---|---:|:---|:---|
 | `POST /chatbot/sessions/:id/ask` | **20** por alumno | 1 h | [`rate-limit.ts`](src/shared/middleware/rate-limit.ts)`:13-47`, env `CHATBOT_RATE_LIMIT` |
 | `POST /portal-sync/import` | **5** por alumno | 1 h | [`rate-limit.ts`](src/shared/middleware/rate-limit.ts)`:70-103`, constante `PORTAL_MAX_PER_HOUR` |
+| `POST /auth/register` | **5** por `code` del cuerpo | 1 h | [`rate-limit.ts`](src/shared/middleware/rate-limit.ts)`:162-205`, constante `REGISTER_MAX_PER_HOUR`. **Sin devolución de cupo**: el login rechazado es la señal del abuso que frena |
+| `POST /auth/register` | **4** en vuelo a la vez | — | [`rate-limit.ts`](src/shared/middleware/rate-limit.ts)`:219-242`, constante `REGISTER_MAX_IN_FLIGHT`. Sin clave: acota cuántas secuencias de login contra miUlima quedan colgadas |
 
 El del chatbot emite `X-RateLimit-Remaining` y `X-RateLimit-Reset`. El de portal-sync
 **devuelve el cupo** cuando la respuesta es 409 `PORTAL_LOGIN_REJECTED` (`refundPortalQuota`,
@@ -1798,7 +1802,7 @@ del portal **no** devuelve cupo.
 
 ---
 
-### El catálogo: 75 endpoints
+### El catálogo: 76 endpoints
 
 #### Raíz — 3 endpoints públicos
 
@@ -1813,7 +1817,7 @@ del portal **no** devuelve cupo.
 > están montados**: `/official-grades`, `/chat`, `/chatbot`, `/attendance-risk` y `/networking`.
 > Es un array literal que nadie actualizó al añadirlos.
 
-#### 1 · `/auth` — 7 endpoints
+#### 1 · `/auth` — 9 endpoints
 
 [`src/modules/auth/auth.routes.ts`](src/modules/auth/auth.routes.ts) · sin `app.use` global.
 
@@ -1821,7 +1825,9 @@ del portal **no** devuelve cupo.
 |:---|:---|:---|:---|:---|
 | POST | `/auth/login` | — | público | Login con `code` + `password`. Si el código no es de alumno, reintenta como docente (HU18). Exige matrícula activa al alumno, recalcula el cargo e incrementa `tokenVersion` |
 | POST | `/auth/google` | — | público | Login con `idToken` de Google. `@aloe.ulima.edu.pe` → alumno, `@ulima.edu.pe` → docente. Vincula `google_id` de forma idempotente e incrementa `tokenVersion` |
+| POST | `/auth/register` | — | público | RS-BE-17/18: alta de cuenta para un alumno sin fila en `app_user`, autenticando contra miUlima. El portal certifica la matrícula y entrega los datos con los que se crea la cuenta **y** se importa el ciclo, todo en una sola transacción (todo o nada). Limitado a 5 intentos por `code` por hora y 4 registros simultáneos |
 | POST | `/auth/password-reset/request` | — | público | Pide OTP por código o correo institucional. Responde **siempre 200** con un mensaje genérico — anti-enumeración de cuentas |
+| POST | `/auth/password-reset/verify` | — | público | Comprueba el OTP **sin gastar el token de reset**: `/confirm` lo sigue necesitando después. Sí reserva un intento (de los 6 de `MAX_RESET_ATTEMPTS`) |
 | POST | `/auth/password-reset/confirm` | — | público | Canjea el OTP y cambia la contraseña. Reserva el intento de forma atómica antes de comparar e **invalida todas las sesiones** |
 | POST | `/auth/password-reset/request-me` | Bearer | cualquiera | Pide OTP para el usuario del JWT; devuelve el correo enmascarado. Sin body |
 | GET | `/auth/me` | Bearer | cualquiera | Usuario actual. Para alumno **recalcula** el cargo con `findActiveRepresentation` en vez de repetir el claim del token |
@@ -6419,7 +6425,7 @@ es por **capa**.
 |:---|:---|:---|
 | Controllers | 14 de 16 | Solo `chat.controller.ts` (HU23) y `advising/student/student.controller.ts` (HU13) tienen pruebas |
 | Routes | 14 de 16 | Solo `chat.routes.ts` por su `deleteParamsSchema`, y `course-detail.routes.ts` cargada dinámicamente en `course-detail.contacts-claim.test.ts` |
-| Middleware | 4 de 5 | `auth-middleware.ts`, `rate-limit.ts`, `validate-dto.ts` y `middleware/index.ts` sin pruebas directas. `error-handler.ts` sí se ejercita, pero de refilón, montado con `app.onError` en una prueba de HU31 |
+| Middleware | 3 de 5 | `auth-middleware.ts`, `validate-dto.ts` y `middleware/index.ts` sin pruebas directas. `error-handler.ts` y `rate-limit.ts` sí se ejercitan, montados sobre la app real en pruebas de HU31 y HU33 (`registro.rate-limit.test.ts` cubre los dos limitadores del registro; los del chatbot y portal-sync siguen sin prueba propia) |
 | Eventos | 5 de 5 | Los tres observers, `event-bus.ts` y `event-types.ts`: cero |
 | Servicios completos | 6 | `schedule.service.ts`, `advising/teacher/teacher.service.ts` y `teacher.repository.ts`, `curriculum.repository.ts`, `chatbot.repository.ts`, `official-grades.schemas.ts` |
 | Esquemas Zod sin caja negra | 10 | `academic-profile`, `student`, `teacher`, `alerts`, `attendance-risk`, `auth`, `chatbot`, `curriculum`, `official-grades`, `schedule` |
@@ -7215,6 +7221,25 @@ antes de apoyarse en ellas.
 > Los endpoints protegidos exigen JWT y rol, pero **aún no validan que cada alumno solo acceda a
 > sus propios datos**. Caso concreto: `GET /grades/me/courses` deriva el alumno del `?code=` que
 > manda el cliente en vez del `studentId` del JWT. Deuda declarada explícitamente en las specs.
+
+> **8 · El límite de tasa de `POST /auth/register` es por instancia, no distribuido.**
+> El endpoint ya no está desprotegido: pasa por `registerRateLimit` (5 intentos por `code` por
+> hora, sin devolución de cupo) y `registerConcurrencyLimit` (4 registros en vuelo). Eso cierra
+> el bucle que permitía usar el backend como relay para probar credenciales contra miUlima —y,
+> peor, **bloquearle a un tercero su cuenta universitaria**— desde una sola conexión.
+> Lo que queda: los contadores viven en un `Map` en memoria del proceso, así que en Vercel cada
+> instancia lleva el suyo y el techo real es `5 x instancias vivas` por código. Es la misma
+> limitación que ya tenía `portalSyncRateLimit`. Un límite global de verdad exige un contador
+> compartido (Redis o tabla) y no está hecho: `specs/features/registro/registro.spec.md`
+> §Límite de tasa.
+
+> **9 · `CORS_ORIGINS` sigue sin definirse en Vercel.**
+> Comprobado con `vercel env ls` el 2026-09-08: la variable no existe en Production, Preview ni
+> Development, así que [`src/server.ts`](src/server.ts)`:19` cae a `origin: "*"` y el backend
+> responde `Access-Control-Allow-Origin: *`. Con `POST /auth/register` ya público, eso permite
+> que cualquier sitio web dispare registros desde el navegador de una víctima. Es una acción de
+> despliegue pendiente desde el 2026-06-15 (`BR-PLATFORM-08`, `OBS-SEG-6`), no un defecto de
+> código.
 
 ### La documentación se contradice con el código en varios puntos
 

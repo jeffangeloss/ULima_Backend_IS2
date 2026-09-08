@@ -5,7 +5,8 @@ import { OAuth2Client } from "google-auth-library";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { config } from "../../config/app-config.js";
-import type { AppRole, PasswordResetUser } from "./auth.types.js";
+import type { AppRole, AuthUser, PasswordResetUser } from "./auth.types.js";
+import { partirNombre } from "../../shared/utils/nombre-persona.js";
 import {
   generateOtp,
   hashOtp,
@@ -17,6 +18,18 @@ import {
   validateResetToken,
 } from "./password-reset.logic.js";
 import { sendPasswordResetEmail } from "../../shared/email/resend-client.js";
+// `PortalClient` es de `services/`, no de `portal-sync`: no participa del
+// ciclo (portal-sync/index.ts -> auth/index.ts), así que se importa normal,
+// valor incluido, igual que `googleClient` más abajo.
+import { portalClient as defaultPortalClient } from "../../services/portal.client.js";
+import type { PortalClient } from "../../services/portal.client.js";
+// RS-BE-17/18 (registro). Todo lo que sigue es SOLO de tipos y a propósito:
+// `portal-sync/index.ts` ya importa `authService`, así que un import de
+// RUNTIME de `auth` hacia `portal-sync` cerraría el ciclo. `import type` no
+// deja rastro en el JS compilado.
+import type { PortalSyncRepository } from "../portal-sync/portal-sync.repository.js";
+import type { ProvisionFn, ValidateFn } from "../portal-sync/portal-sync.service.js";
+import type { ImportResult, PortalCookies } from "../portal-sync/portal-sync.types.js";
 
 type GoogleIdTokenPayload = {
   email?: string;
@@ -30,6 +43,102 @@ export type GoogleTokenVerifier = {
     getPayload(): GoogleIdTokenPayload | undefined;
   }>;
 };
+
+/**
+ * RS-BE-17/RS-BE-18 (registro). Lo único que `auth` necesita de
+ * `portal-sync`: un tipo ESTRUCTURAL, a propósito, para no importar
+ * `portal-sync/index.ts` (que ya importa `authService`) y cerrar un ciclo.
+ * Lo implementa `PortalSyncService`; lo inyecta `portal-sync/index.ts` al
+ * arrancar, vía `setRegistrar`, DESPUÉS de construirse (ver más abajo).
+ */
+export type Registrar = {
+  importFromPortal(
+    userId: number,
+    studentId: number,
+    entrada: { cookies?: PortalCookies; credentials?: { password: string; passcode: string } },
+    provision?: ProvisionFn,
+    validate?: ValidateFn,
+  ): Promise<ImportResult>;
+};
+
+/**
+ * Lo que `provision` deja anotado sobre la cuenta que acaba de insertar.
+ *
+ * Lleva de más (`fullName`, `email`, `careerId`, `curriculumId`) a propósito:
+ * con eso alcanza para armar la respuesta entera sin volver a consultar la
+ * BD, que es lo que permite que nada posterior al commit pueda lanzar.
+ */
+type CuentaCreada = {
+  userId: number;
+  studentId: number;
+  code: string;
+  fullName: string;
+  email: string;
+  careerId: number;
+  curriculumId: number;
+};
+
+/**
+ * Rol que lleva DENTRO el token re-firmado por la importación.
+ *
+ * El token lo firmó este mismo backend hace un instante, así que se decodifica
+ * sin verificar: no es una entrada de terceros. Sirve para que `user.role` y
+ * el `role` del JWT digan lo mismo — de lo contrario un delegado recién
+ * registrado recibiría un token de delegado y un `user` que se declara
+ * `student`, y el cliente elige la pestaña por el `user`.
+ *
+ * Ante cualquier duda cae a `student`, el rol sin privilegios.
+ */
+const rolDelToken = (token: string | null): AppRole => {
+  if (!token) return "student";
+  try {
+    const payload = jwt.decode(token) as { role?: unknown } | null;
+    return payload?.role === "delegate" || payload?.role === "subdelegate"
+      ? payload.role
+      : "student";
+  } catch {
+    return "student";
+  }
+};
+
+/**
+ * `user` armado con lo que ya se sabe, para cuando la relectura con `findById`
+ * no está disponible después de que la transacción confirmó.
+ *
+ * No inventa nada: cada campo o sale de lo que `provision` insertó o es el
+ * valor que una cuenta recién creada tiene por definición (sin avatar, sin
+ * especialidades, sin progreso de malla, `token_version` en 1). Mantiene la
+ * forma completa de `AuthUser` para que el cliente no tenga que distinguir
+ * este caso del normal.
+ */
+const usuarioDeRespaldo = (
+  cuenta: CuentaCreada, role: AppRole, currentCycle: string | null,
+): AuthUser => ({
+  id: cuenta.userId,
+  studentId: cuenta.studentId,
+  code: cuenta.code,
+  tokenVersion: 1,
+  fullName: cuenta.fullName,
+  ...partirNombre(cuenta.fullName),
+  avatarUrl: null,
+  institutionalEmail: cuenta.email,
+  email: cuenta.email,
+  role,
+  careerId: cuenta.careerId,
+  career_id: cuenta.careerId,
+  curriculumId: cuenta.curriculumId,
+  currentLevel: null,
+  currentCycle,
+  setupComplete: false,
+  specialtySetupCompleted: false,
+  especialidad_principal: null,
+  especialidades_interes: [],
+  especialidades: [],
+  specialties: [],
+  courseProgress: {
+    approvedLevels: [], approvedCourseIds: [], approvedElectives: [], currentCourses: [],
+  },
+});
 
 const googleClient: GoogleTokenVerifier = new OAuth2Client();
 const STUDENT_EMAIL_SUFFIX = "@aloe.ulima.edu.pe";
@@ -47,11 +156,270 @@ const RESET_RATE_LIMIT_WINDOW_MINUTES = 60;
 const GENERIC_RESET_REQUEST_MESSAGE = "Si la cuenta existe, enviamos un código a tu correo institucional.";
 
 export class AuthService {
+  /**
+   * Lo llama `portal-sync/index.ts` al arrancar, con la MISMA instancia de
+   * `portalSyncService` (ver el comentario de `Registrar`). Empieza en
+   * `null`: si nadie la llama todavía (o el registro está deshabilitado),
+   * `register()` responde 503 en vez de un `TypeError` a mitad de camino.
+   */
+  private registrar: Registrar | null = null;
+
   constructor(
     readonly repository: AuthRepository,
     readonly events: EventBus,
     private readonly googleTokenVerifier: GoogleTokenVerifier = googleClient,
+    /**
+     * RS-BE-17. 4º parámetro y OPCIONAL a propósito: los tests existentes
+     * construyen `new AuthService(repo, eventBus)` con dos o tres argumentos,
+     * y volverlo obligatorio los rompería a todos. Inyectado desde
+     * `auth/index.ts` con `new PortalSyncRepository(db)` — importar el
+     * *repositorio* no cierra el ciclo; lo que lo cerraría es importar
+     * `portal-sync/index.ts`.
+     */
+    private readonly portalSyncRepository?: PortalSyncRepository,
+    /** Mismo patrón que `googleTokenVerifier`: dependencia real por defecto,
+     *  reemplazable en tests. */
+    private readonly portalClient: PortalClient = defaultPortalClient,
   ) {}
+
+  setRegistrar(registrar: Registrar): void {
+    this.registrar = registrar;
+  }
+
+  /**
+   * RS-BE-17/RS-BE-18: alta de cuenta para un alumno que todavía no existe en
+   * la base, autenticando contra miUlima. El portal es quien certifica que la
+   * persona es alumna matriculada — nunca una deducción de este backend — y
+   * en el mismo acto entrega los datos con los que se crea la cuenta.
+   *
+   * Todo o nada: la cuenta y la importación del ciclo viven en la MISMA
+   * transacción (la que abre `this.registrar.importFromPortal`). Si algo
+   * falla — incluida la comprobación de matrícula activa, ver `validate` más
+   * abajo — no debe quedar ninguna fila escrita; ver el comentario junto al
+   * chequeo de `enrollmentsUpserted`.
+   */
+  async register(input: {
+    code: string; portalPassword: string; passcode: string; password: string;
+  }) {
+    if (!this.registrar || !this.portalSyncRepository) {
+      throw new HttpError(503, "El registro no está disponible.", "REGISTRATION_UNAVAILABLE");
+    }
+    // Copias locales, no `this.x`: son `readonly`/no reasignables, pero el
+    // hook de más abajo las usa dentro de un closure y así queda blindado
+    // frente a cualquier análisis de flujo que dude de esa garantía.
+    const registrar = this.registrar;
+    const portalSyncRepository = this.portalSyncRepository;
+
+    // 409 ANTES de pedirle nada al portal: no se molesta a miUlima por
+    // alguien que ya tiene cuenta.
+    if (await this.repository.codeExists(input.code)) {
+      throw new HttpError(409, "Ya existe una cuenta con ese código.", "USER_ALREADY_EXISTS");
+    }
+
+    let cookies: PortalCookies;
+    try {
+      cookies = await this.portalClient.login(input.code, input.portalPassword, input.passcode);
+    } catch (e) {
+      // El criterio es una LISTA BLANCA, no una lista negra: solo el rechazo
+      // explícito de credenciales se traduce a 401 PORTAL_AUTH_FAILED, y todo
+      // lo demás se re-lanza tal cual.
+      //
+      // Al revés (aplastar todo menos PORTAL_UNAVAILABLE) se escapaba el
+      // 504 PORTAL_TIMEOUT que `portal.client.ts` emite para un `AbortError`
+      // —el fallo MÁS probable de miUlima— y salía como "credenciales
+      // rechazadas", mandando a la persona a cambiar su contraseña
+      // universitaria sin motivo. Con la lista blanca tampoco se disfraza de
+      // credenciales malas un fallo del propio backend (un `TypeError`, por
+      // ejemplo): ese llega como 500, que es lo que es.
+      //
+      // Traducir SOLO este código sigue sin dar un oráculo: el 409
+      // PORTAL_LOGIN_REJECTED del cliente ya es deliberadamente indistinguible
+      // entre "contraseña mala" y "passcode malo" (ver `loginRejected` en
+      // portal.client.ts), y acá se reemplaza por un mensaje propio que
+      // tampoco distingue.
+      if (e instanceof HttpError && e.code === "PORTAL_LOGIN_REJECTED") {
+        throw new HttpError(401, "miUlima rechazó las credenciales.", "PORTAL_AUTH_FAILED");
+      }
+      throw e;
+    }
+
+    // A partir de acá la sesión del portal está abierta y hay que cerrarla
+    // EXACTAMENTE una vez. `importFromPortal` cierra la suya en su PROPIO
+    // `finally` apenas se la invoca —también cuando las cookies se las pasa
+    // el llamador, que es siempre este caso—, así que de acá en más la
+    // responsabilidad es de `importFromPortal`, no de este método: cerrarla
+    // otra vez sería una petición de logout extra a miUlima en cada
+    // registro, feliz o fallido, con cookies ya muertas.
+    //
+    // La única ventana en la que SÍ es responsabilidad de `register` es
+    // ANTES de esa llamada: si algo entre el login y `importFromPortal` lanza
+    // (hoy, en la práctica, solo `bcrypt.hash`), nadie más conoce esta sesión
+    // y quedaría abierta para siempre si no se cierra acá.
+    let entregadoAlImport = false;
+    try {
+      // El hash se calcula ANTES de abrir la transacción: bcrypt cuesta ~100 ms
+      // y no tiene por qué mantenerla abierta.
+      const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
+
+      // Lo llena el hook de aprovisionamiento, que corre DENTRO de la
+      // transacción de la importación. Se lee después de que
+      // `importFromPortal` haya vuelto sin lanzar, o sea con la tx confirmada.
+      // Lleva TODO lo necesario para armar la respuesta sin volver a la BD:
+      // ver el respaldo de `usuario` más abajo (nada posterior al commit puede
+      // lanzar).
+      let creado: CuentaCreada | null = null;
+
+      // A partir de esta línea `importFromPortal` es dueño de `cookies`.
+      entregadoAlImport = true;
+      const resultado = await registrar.importFromPortal(
+        0, 0, { cookies },
+        // provision: crea la cuenta como primer paso de la transacción.
+        async (tx, identidad) => {
+          const base = await portalSyncRepository.findSoleCareerAndCurriculum(tx);
+          if (!base) {
+            throw new HttpError(422, "No hay carrera configurada.", "PORTAL_IDENTITY_UNVERIFIABLE");
+          }
+
+          // Segundo 409, con el código que de verdad se va a INSERTAR.
+          //
+          // El de arriba comprueba `input.code` (el del cuerpo) y este
+          // `identidad.studentCode` (el del portal), que es el que gana. Si
+          // difieren y el del portal ya tiene cuenta, sin este chequeo el
+          // INSERT reventaba contra la constraint única de `app_user.code` y
+          // salía como 500 — un código que la spec no contempla — en vez del
+          // 409 que la persona necesita para entender que ya está registrada.
+          //
+          // Va acá, dentro de la transacción, y no antes: `identidad` recién
+          // existe cuando el portal ya autenticó y devolvió el consolidado.
+          // Lanzar desde adentro también revierte la transacción entera, así
+          // que no queda nada escrito a medias.
+          //
+          // Honestidad sobre el alcance: `codeExists` lee por la conexión del
+          // pool, no por `tx`, así que ve lo COMMITEADO y no lo que otra
+          // transacción tenga en vuelo. Estrecha muchísimo la carrera entre
+          // dos registros simultáneos del mismo código, pero no la cierra; el
+          // backstop definitivo sigue siendo la constraint única de la BD.
+          if (await this.repository.codeExists(identidad.studentCode)) {
+            throw new HttpError(409, "Ya existe una cuenta con ese código.", "USER_ALREADY_EXISTS");
+          }
+
+          const email = `${identidad.studentCode}${STUDENT_EMAIL_SUFFIX}`;
+          const perfil = await portalSyncRepository.createStudentAccount(tx, {
+            // Del PORTAL, no del body: el body solo sirvió para el login. Si
+            // el código del cuerpo y el del portal difieren, gana el portal.
+            code: identidad.studentCode,
+            fullName: identidad.studentName,
+            email,
+            passwordHash,
+            careerId: base.careerId,
+            curriculumId: base.curriculumId,
+            careerName: base.careerName,
+          });
+          creado = {
+            userId: perfil.userId,
+            studentId: perfil.id,
+            code: identidad.studentCode,
+            fullName: identidad.studentName,
+            email,
+            careerId: base.careerId,
+            curriculumId: base.curriculumId,
+          };
+          return perfil;
+        },
+        // validate: comprobación FINAL, dentro de la misma transacción, justo
+        // antes de que cierre. Si lanza, `importFromPortal` revierte TODO lo
+        // escrito, incluida la cuenta que acaba de crear `provision` — así el
+        // 409 de arriba no le cierra el reintento a quien todavía no tiene
+        // matrícula. Se lanza acá y no dentro de `provision` porque ahí
+        // todavía no se sabe cuántas matrículas trajo la importación.
+        (summary) => {
+          if (summary.enrollmentsUpserted === 0) {
+            throw new HttpError(403, "No figura matrícula en el ciclo activo.", "NOT_ENROLLED");
+          }
+        },
+      );
+
+      // Única excepción a "nada posterior al commit puede lanzar", y no la
+      // contradice: si `creado` está vacío es que `provision` NUNCA corrió, o
+      // sea que no hay cuenta que dejar huérfana. El 500 acá es correcto —
+      // significa que el registrar inyectado no honró el hook.
+      if (!creado) {
+        throw new HttpError(500, "Error interno del servidor.", "INTERNAL_ERROR");
+      }
+      // `creado` se llena dentro del closure de `provision`, así que TS no
+      // puede ver esa asignación como parte del flujo lineal de acá y
+      // "estrecha" el chequeo de arriba a `never` en vez de al tipo no-nulo.
+      // El cast es seguro: en tiempo de ejecución, si `provision` no llegó a
+      // correr, `importFromPortal` ya habría lanzado antes de llegar acá.
+      const cuenta = creado as CuentaCreada;
+
+      // ── DESDE ACÁ LA TRANSACCIÓN YA CONFIRMÓ ─────────────────────────────
+      // La cuenta EXISTE y es utilizable. Nada de lo que sigue puede lanzar:
+      // si lanzara, la persona vería un error, reintentaría y chocaría con el
+      // 409 — quedaría con una cuenta que no sabe que tiene y sin camino de
+      // reintento, que es exactamente el escenario que RS-BE-18 existe para
+      // evitar. Por eso todo lo de abajo tiene respaldo y ninguna consulta
+      // más a la BD es obligatoria.
+
+      // El rol lo decide la importación, no este método: `importFromPortal`
+      // relee el cargo vigente de la BD ya confirmada y re-firma el token con
+      // él. Un alumno que la importación acaba de reconocer como delegado
+      // recibía antes un token de `student`, porque acá se firmaba uno nuevo
+      // con el rol fijo. Se usa el de la importación cuando existe; el
+      // `signToken` local queda solo como respaldo para cuando el registrar
+      // no tiene `auth` cableado y devuelve `token: null`.
+      const rol = rolDelToken(resultado.token);
+      const token = resultado.token ?? this.signToken({
+        userId: cuenta.userId,
+        studentId: cuenta.studentId,
+        code: cuenta.code,
+        role: "student",
+        tokenVersion: 1, // cuenta recién creada: `app_user.token_version` arranca en 1
+      });
+
+      // La spec exige "el mismo cuerpo que POST /auth/login": el objeto rico
+      // que arma `buildUser` (nombre partido, avatarUrl, especialidades,
+      // courseProgress, setupComplete, etc.), no el mínimo con el que
+      // `provision` deja constancia de lo que acaba de insertar. Se relee con
+      // `findById` —el mismo repositorio que ya usa `reissueToken`— DESPUÉS
+      // de que `importFromPortal` volvió, o sea con la cuenta y la matrícula
+      // ya confirmadas. `findById` nunca selecciona `password_hash`, así que
+      // no hay riesgo de filtrarlo acá.
+      //
+      // Si esa relectura falla o vuelve vacía NO se lanza: se arma el usuario
+      // con lo que `provision` ya sabe. Es el mismo criterio que
+      // `reissueToken` (devolver `null` en vez de tumbar una importación ya
+      // confirmada), y el peor caso es un cuerpo con menos adornos —sin
+      // avatar ni especialidades, que una cuenta recién creada no tiene
+      // igual— en vez de una cuenta huérfana.
+      const usuario = await this.repository
+        .findById(cuenta.userId, rol)
+        .catch(() => null);
+
+      return {
+        token,
+        tokenType: "Bearer",
+        expiresIn: config.auth.jwtExpiresIn,
+        user: usuario ?? usuarioDeRespaldo(cuenta, rol, resultado.period.code),
+        summary: resultado.summary,
+        // La spec dice que el `CAREER_MISMATCH` "se registra". Hasta acá el
+        // warning lo calculaba la importación y moría sin efecto observable:
+        // nadie lo veía ni quedaba constancia. Viaja en la respuesta, igual
+        // que ya hace `POST /portal-sync/import` con el mismo campo. Ningún
+        // `SyncWarning` lleva credenciales del portal ni datos de terceros.
+        warnings: resultado.warnings,
+      };
+    } finally {
+      // Solo si NUNCA se llegó a invocar `importFromPortal`: si se llegó,
+      // esa llamada ya es dueña de `cookies` y cierra su propia sesión en su
+      // propio `finally` (ver el comentario de `entregadoAlImport` más
+      // arriba). `PortalClient.logout` ya traga sus propios errores
+      // (best-effort), así que no hace falta un `.catch()` acá.
+      if (!entregadoAlImport) {
+        await this.portalClient.logout(cookies);
+      }
+    }
+  }
 
   async login(input: { code: string; password: string }) {
     try {

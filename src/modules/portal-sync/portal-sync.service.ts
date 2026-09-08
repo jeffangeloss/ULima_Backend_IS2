@@ -5,7 +5,7 @@ import {
   shouldActivatePeriod, teacherCodeFor,
   levelFromCoverage, levelNeverGoesDown,
   academicWeekCount, resolveOfferingTotalHours, resolveAttendanceHours,
-  type ProgressStatus,
+  type ProgressStatus, type Tx,
   careerNamesDiffer,
   courseColorHex,
 } from "./portal-sync.repository.js";
@@ -19,6 +19,30 @@ import type {
   AsistenciaCurso, DelegadosNomina,
   ImportResult, ImportSummary, PortalCookies, RecordRow, SyllabusEntry, SyncStatus, SyncWarning,
 } from "./portal-sync.types.js";
+
+/** Perfil de alumno tal como lo devuelve `findStudent`. */
+export type StudentProfile = {
+  id: number; userId: number; careerId: number; curriculumId: number;
+  currentLevel: number | null; careerName: string;
+};
+
+/**
+ * RS-BE-17. Crea la cuenta DENTRO de la transacción de la importación y
+ * devuelve el perfil con la forma de `findStudent`, para que el resto del
+ * import no distinga si el alumno ya existía.
+ */
+export type ProvisionFn = (
+  tx: Tx,
+  identidad: { studentCode: string; studentName: string; careerName: string },
+) => Promise<StudentProfile>;
+
+/**
+ * RS-BE-18 ("todo o nada"). Comprobación final DENTRO de la transacción de la
+ * importación, cuando el summary ya está completo y justo antes de que la
+ * transacción cierre. Si lanza, `runInTransaction` revierte todo lo escrito
+ * (incluida la cuenta que haya creado `provision`).
+ */
+export type ValidateFn = (summary: ImportSummary) => void;
 
 const emptySummary = (): ImportSummary => ({
   coursesCreated: 0, teachersCreated: 0, sectionsCreated: 0, sectionsUpdated: 0,
@@ -90,6 +114,12 @@ export class PortalSyncService {
   async importFromPortal(
     userId: number, studentId: number,
     entrada: { cookies?: PortalCookies; credentials?: { password: string; passcode: string } },
+    /**
+     * Enganche de registro (RS-BE-17/RS-BE-18), opcional: sin él el
+     * comportamiento es idéntico al de siempre. Ver `ProvisionFn`/`ValidateFn`.
+     */
+    provision?: ProvisionFn,
+    validate?: ValidateFn,
   ): Promise<ImportResult> {
     let cookies = entrada.cookies;
     if (!cookies) {
@@ -104,13 +134,16 @@ export class PortalSyncService {
     }
     const sesion = cookies;
     try {
-      return await this.runImport(userId, studentId, sesion);
+      return await this.runImport(userId, studentId, sesion, provision, validate);
     } finally {
       await this.client.logout(sesion);   // best effort, siempre
     }
   }
 
-  private async runImport(userId: number, studentId: number, cookies: PortalCookies): Promise<ImportResult> {
+  private async runImport(
+    userId: number, studentId: number, cookies: PortalCookies,
+    provision?: ProvisionFn, validate?: ValidateFn,
+  ): Promise<ImportResult> {
     const warnings: SyncWarning[] = [];
     const summary = emptySummary();
 
@@ -125,19 +158,19 @@ export class PortalSyncService {
     if (!mat.ok) {
       throw new HttpError(422, "No se pudo confirmar tu identidad en el portal.", "PORTAL_IDENTITY_UNVERIFIABLE");
     }
-    const userCode = await this.repository.findUserCode(userId);
-    if (!userCode) throw new HttpError(422, "No se pudo confirmar tu identidad.", "PORTAL_IDENTITY_UNVERIFIABLE");
-    if (mat.data.studentCode !== userCode) {
-      throw new HttpError(403, "La cuenta de miUlima no corresponde a tu usuario.", "PORTAL_IDENTITY_MISMATCH");
-    }
-
-    const student = await this.repository.findStudent(studentId);
-    if (!student) throw new HttpError(422, "Perfil de alumno no encontrado.", "PORTAL_IDENTITY_UNVERIFIABLE");
-    if (careerNamesDiffer(mat.data.careerName, student.careerName)) {
-      warnings.push({
-        code: "CAREER_MISMATCH", block: "matricula",
-        message: `El portal reporta "${mat.data.careerName}" y en ULima++ figura "${student.careerName}". No se modificó la carrera.`,
-      });
+    // Con hook de registro NO hay cuenta previa contra la cual comparar: el
+    // portal ES la identidad. Sin hook, la comprobación sigue intacta — es lo
+    // único que impide que alguien importe el ciclo de otra persona. En
+    // ambos modos, de acá en adelante `userCode` es el código ya confirmado
+    // (sin hook porque se acaba de verificar contra la cuenta; con hook
+    // porque no hay cuenta previa y el portal ES la identidad).
+    const userCode = mat.data.studentCode;
+    if (!provision) {
+      const accountCode = await this.repository.findUserCode(userId);
+      if (!accountCode) throw new HttpError(422, "No se pudo confirmar tu identidad.", "PORTAL_IDENTITY_UNVERIFIABLE");
+      if (userCode !== accountCode) {
+        throw new HttpError(403, "La cuenta de miUlima no corresponde a tu usuario.", "PORTAL_IDENTITY_MISMATCH");
+      }
     }
 
     // ── 3. Parsers restantes (degradan a warnings) ──────────────────────────
@@ -351,6 +384,28 @@ export class PortalSyncService {
       ciclo.data.periodCode, activeBeforeTx?.code ?? null, incomingStartDate, new Date(),
     );
     const period = await this.repository.runInTransaction(async (tx) => {
+      // RS-BE-17: el perfil se resuelve como primer paso DENTRO de la
+      // transacción — con hook, `provision` recién crea la cuenta acá adentro
+      // (si algo más abajo falla, se revierte con el resto). `userId`/
+      // `studentId` pasan a los que devolvió el hook: el resto del import no
+      // vuelve a distinguir si el alumno ya existía o se acaba de crear.
+      let student: StudentProfile;
+      if (provision) {
+        student = await provision(tx, mat.data);
+        userId = student.userId;
+        studentId = student.id;
+      } else {
+        const found = await this.repository.findStudent(studentId);
+        if (!found) throw new HttpError(422, "Perfil de alumno no encontrado.", "PORTAL_IDENTITY_UNVERIFIABLE");
+        student = found;
+      }
+      if (careerNamesDiffer(mat.data.careerName, student.careerName)) {
+        warnings.push({
+          code: "CAREER_MISMATCH", block: "matricula",
+          message: `El portal reporta "${mat.data.careerName}" y en ULima++ figura "${student.careerName}". No se modificó la carrera.`,
+        });
+      }
+
       const p = await this.repository.upsertPeriod(tx, ciclo.data.periodCode, activate);
 
       // Los datos de terceros mueren con su ciclo: es lo que hace defendible
@@ -635,6 +690,11 @@ export class PortalSyncService {
       // la regla de "cada quien escribe lo suyo". Cuando ya no queden filas,
       // esta sentencia no hace nada y se puede quitar.
       summary.alertsDeleted += await this.repository.deleteImpedimentAlert(tx, studentId);
+
+      // RS-BE-18 ("todo o nada"): último paso, con el summary ya completo. Si
+      // `validate` lanza, la transacción entera revierte — la cuenta que haya
+      // creado `provision` incluida. Sin `validate` no cambia nada de hoy.
+      validate?.(summary);
 
       return p;
     });
