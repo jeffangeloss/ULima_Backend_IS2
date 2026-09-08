@@ -17,6 +17,18 @@ import {
   validateResetToken,
 } from "./password-reset.logic.js";
 import { sendPasswordResetEmail } from "../../shared/email/resend-client.js";
+// `PortalClient` es de `services/`, no de `portal-sync`: no participa del
+// ciclo (portal-sync/index.ts -> auth/index.ts), así que se importa normal,
+// valor incluido, igual que `googleClient` más abajo.
+import { portalClient as defaultPortalClient } from "../../services/portal.client.js";
+import type { PortalClient } from "../../services/portal.client.js";
+// RS-BE-17/18 (registro). Todo lo que sigue es SOLO de tipos y a propósito:
+// `portal-sync/index.ts` ya importa `authService`, así que un import de
+// RUNTIME de `auth` hacia `portal-sync` cerraría el ciclo. `import type` no
+// deja rastro en el JS compilado.
+import type { PortalSyncRepository } from "../portal-sync/portal-sync.repository.js";
+import type { ProvisionFn, ValidateFn } from "../portal-sync/portal-sync.service.js";
+import type { ImportResult, PortalCookies } from "../portal-sync/portal-sync.types.js";
 
 type GoogleIdTokenPayload = {
   email?: string;
@@ -29,6 +41,23 @@ export type GoogleTokenVerifier = {
   verifyIdToken(input: { idToken: string }): Promise<{
     getPayload(): GoogleIdTokenPayload | undefined;
   }>;
+};
+
+/**
+ * RS-BE-17/RS-BE-18 (registro). Lo único que `auth` necesita de
+ * `portal-sync`: un tipo ESTRUCTURAL, a propósito, para no importar
+ * `portal-sync/index.ts` (que ya importa `authService`) y cerrar un ciclo.
+ * Lo implementa `PortalSyncService`; lo inyecta `portal-sync/index.ts` al
+ * arrancar, vía `setRegistrar`, DESPUÉS de construirse (ver más abajo).
+ */
+export type Registrar = {
+  importFromPortal(
+    userId: number,
+    studentId: number,
+    entrada: { cookies?: PortalCookies; credentials?: { password: string; passcode: string } },
+    provision?: ProvisionFn,
+    validate?: ValidateFn,
+  ): Promise<ImportResult>;
 };
 
 const googleClient: GoogleTokenVerifier = new OAuth2Client();
@@ -47,11 +76,152 @@ const RESET_RATE_LIMIT_WINDOW_MINUTES = 60;
 const GENERIC_RESET_REQUEST_MESSAGE = "Si la cuenta existe, enviamos un código a tu correo institucional.";
 
 export class AuthService {
+  /**
+   * Lo llama `portal-sync/index.ts` al arrancar, con la MISMA instancia de
+   * `portalSyncService` (ver el comentario de `Registrar`). Empieza en
+   * `null`: si nadie la llama todavía (o el registro está deshabilitado),
+   * `register()` responde 503 en vez de un `TypeError` a mitad de camino.
+   */
+  private registrar: Registrar | null = null;
+
   constructor(
     readonly repository: AuthRepository,
     readonly events: EventBus,
     private readonly googleTokenVerifier: GoogleTokenVerifier = googleClient,
+    /**
+     * RS-BE-17. 4º parámetro y OPCIONAL a propósito: los tests existentes
+     * construyen `new AuthService(repo, eventBus)` con dos o tres argumentos,
+     * y volverlo obligatorio los rompería a todos. Inyectado desde
+     * `auth/index.ts` con `new PortalSyncRepository(db)` — importar el
+     * *repositorio* no cierra el ciclo; lo que lo cerraría es importar
+     * `portal-sync/index.ts`.
+     */
+    private readonly portalSyncRepository?: PortalSyncRepository,
+    /** Mismo patrón que `googleTokenVerifier`: dependencia real por defecto,
+     *  reemplazable en tests. */
+    private readonly portalClient: PortalClient = defaultPortalClient,
   ) {}
+
+  setRegistrar(registrar: Registrar): void {
+    this.registrar = registrar;
+  }
+
+  /**
+   * RS-BE-17/RS-BE-18: alta de cuenta para un alumno que todavía no existe en
+   * la base, autenticando contra miUlima. El portal es quien certifica que la
+   * persona es alumna matriculada — nunca una deducción de este backend — y
+   * en el mismo acto entrega los datos con los que se crea la cuenta.
+   *
+   * Todo o nada: la cuenta y la importación del ciclo viven en la MISMA
+   * transacción (la que abre `this.registrar.importFromPortal`). Si algo
+   * falla — incluida la comprobación de matrícula activa, ver `validate` más
+   * abajo — no debe quedar ninguna fila escrita; ver el comentario junto al
+   * chequeo de `enrollmentsUpserted`.
+   */
+  async register(input: {
+    code: string; portalPassword: string; passcode: string; password: string;
+  }) {
+    if (!this.registrar || !this.portalSyncRepository) {
+      throw new HttpError(503, "El registro no está disponible.", "REGISTRATION_UNAVAILABLE");
+    }
+    // Copias locales, no `this.x`: son `readonly`/no reasignables, pero el
+    // hook de más abajo las usa dentro de un closure y así queda blindado
+    // frente a cualquier análisis de flujo que dude de esa garantía.
+    const registrar = this.registrar;
+    const portalSyncRepository = this.portalSyncRepository;
+
+    // 409 ANTES de pedirle nada al portal: no se molesta a miUlima por
+    // alguien que ya tiene cuenta.
+    if (await this.repository.codeExists(input.code)) {
+      throw new HttpError(409, "Ya existe una cuenta con ese código.", "USER_ALREADY_EXISTS");
+    }
+
+    let cookies: PortalCookies;
+    try {
+      cookies = await this.portalClient.login(input.code, input.portalPassword, input.passcode);
+    } catch {
+      // Nunca se propaga el detalle del portal: distinguir "contraseña mala"
+      // de "passcode malo" le daría a un atacante un oráculo de códigos
+      // válidos.
+      throw new HttpError(401, "miUlima rechazó las credenciales.", "PORTAL_AUTH_FAILED");
+    }
+
+    // El hash se calcula ANTES de abrir la transacción: bcrypt cuesta ~100 ms
+    // y no tiene por qué mantenerla abierta.
+    const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
+
+    // Lo llena el hook de aprovisionamiento, que corre DENTRO de la
+    // transacción de la importación. Se lee después de que
+    // `importFromPortal` haya vuelto sin lanzar, o sea con la tx confirmada.
+    let creado: { userId: number; studentId: number; code: string } | null = null;
+
+    try {
+      const resultado = await registrar.importFromPortal(
+        0, 0, { cookies },
+        // provision: crea la cuenta como primer paso de la transacción.
+        async (tx, identidad) => {
+          const base = await portalSyncRepository.findSoleCareerAndCurriculum(tx);
+          if (!base) {
+            throw new HttpError(422, "No hay carrera configurada.", "PORTAL_IDENTITY_UNVERIFIABLE");
+          }
+          const perfil = await portalSyncRepository.createStudentAccount(tx, {
+            // Del PORTAL, no del body: el body solo sirvió para el login. Si
+            // el código del cuerpo y el del portal difieren, gana el portal.
+            code: identidad.studentCode,
+            fullName: identidad.studentName,
+            email: `${identidad.studentCode}@aloe.ulima.edu.pe`,
+            passwordHash,
+            careerId: base.careerId,
+            curriculumId: base.curriculumId,
+            careerName: base.careerName,
+          });
+          creado = { userId: perfil.userId, studentId: perfil.id, code: identidad.studentCode };
+          return perfil;
+        },
+        // validate: comprobación FINAL, dentro de la misma transacción, justo
+        // antes de que cierre. Si lanza, `importFromPortal` revierte TODO lo
+        // escrito, incluida la cuenta que acaba de crear `provision` — así el
+        // 409 de arriba no le cierra el reintento a quien todavía no tiene
+        // matrícula. Se lanza acá y no dentro de `provision` porque ahí
+        // todavía no se sabe cuántas matrículas trajo la importación.
+        (summary) => {
+          if (summary.enrollmentsUpserted === 0) {
+            throw new HttpError(403, "No figura matrícula en el ciclo activo.", "NOT_ENROLLED");
+          }
+        },
+      );
+
+      if (!creado) {
+        throw new HttpError(500, "Error interno del servidor.", "INTERNAL_ERROR");
+      }
+      // `creado` se llena dentro del closure de `provision`, así que TS no
+      // puede ver esa asignación como parte del flujo lineal de acá y
+      // "estrecha" el chequeo de arriba a `never` en vez de al tipo no-nulo.
+      // El cast es seguro: en tiempo de ejecución, si `provision` no llegó a
+      // correr, `importFromPortal` ya habría lanzado antes de llegar acá.
+      const cuenta = creado as { userId: number; studentId: number; code: string };
+
+      return {
+        token: this.signToken({
+          userId: cuenta.userId,
+          studentId: cuenta.studentId,
+          code: cuenta.code,
+          role: "student",
+          tokenVersion: 1, // cuenta recién creada: `app_user.token_version` arranca en 1
+        }),
+        tokenType: "Bearer",
+        expiresIn: config.auth.jwtExpiresIn,
+        user: {
+          id: cuenta.userId, studentId: cuenta.studentId,
+          code: cuenta.code, role: "student",
+        },
+        summary: resultado.summary,
+      };
+    } finally {
+      // Best effort, siempre: la sesión del portal no queda viva ni cuando falla.
+      await this.portalClient.logout(cookies).catch(() => {});
+    }
+  }
 
   async login(input: { code: string; password: string }) {
     try {

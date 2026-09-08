@@ -131,6 +131,20 @@ export class AuthRepository {
     `);
   }
 
+  /**
+   * RS-BE-17: ¿ya hay una cuenta con este código? Se consulta ANTES de tocar
+   * el portal, para no molestar a miUlima por alguien que ya tiene cuenta.
+   * Como es una lectura simple de `app_user` (sin `join` a `student`), sirve
+   * igual para códigos de alumno y de docente.
+   */
+  async codeExists(code: string): Promise<boolean> {
+    const rows = await this.database.execute(sql`
+      select 1 from app_user where code = ${code.trim()} limit 1
+    `) as unknown as Array<{ "?column?": number }>;
+
+    return rows.length > 0;
+  }
+
   async findByCodeWithPassword(code: string): Promise<AuthUserWithPassword | null> {
     const rows = await this.database.execute(sql`
       select
