@@ -7,6 +7,7 @@ import {
   passwordResetRequestSchema,
   passwordResetConfirmSchema,
   passwordResetVerifySchema,
+  registerSchema,
 } from "./auth.schemas.js";
 import { authMiddleware } from "../../shared/middleware/auth-middleware.js";
 import type { AppRole } from "./auth.types.js";
@@ -22,6 +23,13 @@ export const createAuthRoutes = (controller: AuthController) => {
   app.post("/google", async (c) => {
     const body = await validateJson(c, googleLoginSchema);
     return c.json(await controller.loginWithGoogle(body));
+  });
+
+  // RS-BE-17: pública, sin token — el portal de miUlima es quien certifica la
+  // identidad, no un JWT que todavía no existe para quien se está registrando.
+  app.post("/register", async (c) => {
+    const body = await validateJson(c, registerSchema);
+    return c.json(await controller.register(body), 201);
   });
 
   app.post("/password-reset/request", async (c) => {
