@@ -138,7 +138,7 @@ Se montan dos limitadores en la ruta, ambos en `src/shared/middleware/rate-limit
 
 Van en ese orden: el de código rechaza barato y sin tocar el portal, así que un bucle contra un mismo código no consume además el cupo de concurrencia. Los dos responden `429 RATE_LIMITED`.
 
-**No hay devolución de cupo por login rechazado**, a diferencia de `portalSyncRateLimit`. Allá se devuelve porque quien se equivoca tipeando un passcode de 30 segundos es el dueño de la cuenta y no puede quedar bloqueado una hora. Acá el login rechazado es precisamente la señal del abuso que el contador existe para frenar: devolver cupo lo anularía por completo.
+**No hay devolución de cupo por login rechazado**, a diferencia de `portalSyncRateLimit`. Allá se devuelve porque quien se equivoca tipeando un passcode de 30 segundos es el dueño de la cuenta y no puede quedar bloqueado una hora. Acá el login rechazado es precisamente la señal del abuso que el contador existe para frenar: devolver cupo lo anularía por completo. **Sí se devuelve el cupo cuando el tope en vuelo rechaza la petición**: ese rechazo es previo al service y no dispara ningún login contra miUlima, así que cobrarle uno de sus cinco intentos castigaría al alumno por la carga que tenía el backend en ese instante — con cuatro registros en curso, un salón entero registrándose a la vez quedaría bloqueado una hora sin haber intentado ni un login. Es el mismo criterio de `refundPortalQuota`: se devuelve el cupo que no compró trabajo.
 
 Un código de cuerpo que no cumple `^\d{6,10}$` no se cuenta, porque no se guarda como clave — un cuerpo así ni siquiera llega al portal, lo corta antes el validador con `400`. El tope en vuelo, que no necesita clave, sigue aplicando.
 

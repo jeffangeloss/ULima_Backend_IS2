@@ -263,3 +263,66 @@ describe("POST /auth/register — tope de peticiones en vuelo", () => {
     expect((await pedirRegistro(app, "20231041")).status).toBe(201);
   });
 });
+
+describe("POST /auth/register — el tope en vuelo no cobra cupo por codigo", () => {
+  test("un 429 por concurrencia NO gasta ninguno de los 5 intentos del codigo", async () => {
+    const { app, loginsIniciados, liberar } = armarApp({ puertaLenta: true });
+    const rebotado = "20231050";
+
+    const enVuelo = Array.from(
+      { length: MAX_EN_VUELO },
+      (_, indice) => pedirRegistro(app, String(20231060 + indice)),
+    );
+    await hastaQue(() => loginsIniciados() === MAX_EN_VUELO);
+
+    expect((await pedirRegistro(app, rebotado)).status).toBe(429);
+
+    liberar();
+    await Promise.all(enVuelo);
+
+    // Lo que este test fija: el 429 de arriba invitaba a reintentar en unos
+    // segundos, así que el reintento tiene que encontrar el cupo entero.
+    for (let intento = 0; intento < MAX_POR_CODIGO; intento++) {
+      expect((await pedirRegistro(app, rebotado)).status).toBe(201);
+    }
+    expect((await pedirRegistro(app, rebotado)).status).toBe(429);
+  });
+});
+
+describe("POST /auth/register — orden de los limitadores", () => {
+  test("una peticion frenada en el contador por codigo no ocupa cupo en vuelo", async () => {
+    const { app, loginsIniciados, liberar } = armarApp({ puertaLenta: true });
+
+    // Cuerpo que nunca termina de llegar: la petición se queda dentro del
+    // primer middleware, en `await c.req.json()`, sin llegar al handler.
+    const cerrojos: Array<() => void> = [];
+    const colgadas = [0, 1].map(() => {
+      const cuerpo = new ReadableStream({
+        start(controller) { cerrojos.push(() => controller.close()); },
+      });
+      return app.request("/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: cuerpo,
+        duplex: "half",
+      } as RequestInit);
+    });
+
+    // Si el tope global corriera PRIMERO, esas dos ya tendrían tomado la mitad
+    // del cupo en vuelo mientras esperan su propio cuerpo, y estas cuatro no
+    // cabrían.
+    const enVuelo = Array.from(
+      { length: MAX_EN_VUELO },
+      (_, indice) => pedirRegistro(app, String(20231070 + indice)),
+    );
+    await hastaQue(() => loginsIniciados() === MAX_EN_VUELO);
+
+    liberar();
+    for (const respuesta of await Promise.all(enVuelo)) {
+      expect(respuesta.status).toBe(201);
+    }
+
+    for (const cerrar of cerrojos) cerrar();
+    await Promise.all(colgadas);
+  });
+});

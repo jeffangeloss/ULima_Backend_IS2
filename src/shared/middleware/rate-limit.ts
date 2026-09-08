@@ -150,6 +150,29 @@ const tooManyRegistrations = (c: Context, minutesLeft: number) =>
     },
   }, 429);
 
+/** Clave con la que `registerRateLimit` le deja a `registerConcurrencyLimit` la
+ *  devolución del cupo que esta petición acaba de descontar. */
+const REGISTER_REFUND_KEY = "registerQuotaRefund";
+
+/**
+ * Deja preparada la devolución del cupo por código que esta petición consumió.
+ *
+ * Se captura la ENTRADA, no la clave: si la ventana venció y otra petición ya
+ * creó una entrada nueva para el mismo código, se descuenta de la vieja
+ * —huérfana e inofensiva— y nunca del contador vigente. Por lo mismo no se
+ * borra la entrada al llegar a 0: puede ser la que está contando a otra
+ * petición del mismo código.
+ */
+const prepareRegisterRefund = (c: Context, entry: RateLimitEntry): void => {
+  c.set(REGISTER_REFUND_KEY, () => {
+    if (entry.count > 0) entry.count--;
+  });
+};
+
+const refundRegisterQuota = (c: Context): void => {
+  (c.get(REGISTER_REFUND_KEY) as (() => void) | undefined)?.();
+};
+
 /**
  * Máximo `REGISTER_MAX_PER_HOUR` intentos de registro por `code` y por hora.
  *
@@ -158,6 +181,11 @@ const tooManyRegistrations = (c: Context, minutesLeft: number) =>
  * propio passcode es el dueño de la cuenta y no tiene por qué quedar
  * bloqueado. Acá el login rechazado es justamente la señal del abuso que este
  * contador existe para frenar, así que devolver cupo lo anularía por completo.
+ *
+ * Sí se devuelve cuando `registerConcurrencyLimit` no deja entrar la petición:
+ * ahí no hubo login que rechazar ni petición saliente a miUlima. Es el mismo
+ * criterio de `refundPortalQuota` —se devuelve el cupo que no compró trabajo—
+ * y por eso el descuento se prepara con `prepareRegisterRefund`.
  */
 export async function registerRateLimit(c: Context, next: Next) {
   let code: string | null = null;
@@ -188,6 +216,7 @@ export async function registerRateLimit(c: Context, next: Next) {
     // Se descuenta ANTES de trabajar: si se contara al terminar, N peticiones
     // simultáneas pasarían todas el chequeo antes de que ninguna sumara.
     entry.count++;
+    prepareRegisterRefund(c, entry);
     return next();
   }
 
@@ -200,7 +229,9 @@ export async function registerRateLimit(c: Context, next: Next) {
     }
   }
 
-  registerStore.set(code, { count: 1, resetAt: now + WINDOW_MS });
+  const fresh: RateLimitEntry = { count: 1, resetAt: now + WINDOW_MS };
+  registerStore.set(code, fresh);
+  prepareRegisterRefund(c, fresh);
   return next();
 }
 
@@ -218,6 +249,12 @@ let registerInFlight = 0;
 
 export async function registerConcurrencyLimit(c: Context, next: Next) {
   if (registerInFlight >= REGISTER_MAX_IN_FLIGHT) {
+    // Este rechazo es previo al service: la petición no tocó miUlima, así que
+    // no puede cobrarle uno de los 5 intentos por hora al código. El mensaje
+    // invita a reintentar en segundos, y sin esto el reintento llegaría con
+    // menos cupo del que gastó: un salón registrándose a la vez dejaría a
+    // varios bloqueados una hora sin haber intentado ni un login.
+    refundRegisterQuota(c);
     return c.json({
       error: {
         code: "RATE_LIMITED",
