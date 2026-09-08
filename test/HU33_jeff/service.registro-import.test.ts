@@ -130,7 +130,11 @@ describe("los dos modos de runImport", () => {
   });
 
   test("CON hook: no compara contra ninguna cuenta previa y aprovisiona", async () => {
-    const { service, provisionado } = armar({ codigoEnElPortal: "20230001" });
+    // codigoEnLaCuenta DISTINTO de codigoEnElPortal: si alguien borrara el
+    // `if (!provision)` de portal-sync.service.ts, la comparación de
+    // identidad correría con estos dos códigos y lanzaría
+    // PORTAL_IDENTITY_MISMATCH, haciendo fallar este test.
+    const { service, provisionado } = armar({ codigoEnElPortal: "20230001", codigoEnLaCuenta: "20239999" });
     await service.importFromPortal(0, 0, { cookies: {} as never }, provisionHook);
     expect(provisionado).toEqual([{ studentCode: "20230001", studentName: "Garcia Lopez, Maria" }]);
   });
@@ -142,9 +146,12 @@ describe("los dos modos de runImport", () => {
   });
 
   test("CON hook: si la importacion falla, la transaccion revierte (RS-BE-18)", async () => {
-    const { service, confirmado } = armar({ codigoEnElPortal: "20230001", fallarEnMatricula: true });
+    // `confirmado` (el valor, no la función) queda fijo en `false` desde el
+    // literal de retorno de `armar()`, antes de que corra nada: usar
+    // `estaConfirmado()` es lo que de verdad lee el estado post-import.
+    const { service, estaConfirmado } = armar({ codigoEnElPortal: "20230001", fallarEnMatricula: true });
     await expect(service.importFromPortal(0, 0, { cookies: {} as never }, provisionHook)).rejects.toThrow();
-    expect(confirmado).toBe(false);
+    expect(estaConfirmado()).toBe(false);
   });
 });
 
