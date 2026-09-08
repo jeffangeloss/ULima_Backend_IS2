@@ -13,8 +13,8 @@
 [![Base](https://img.shields.io/badge/Base-PostgreSQL_en_Neon-00E599?style=for-the-badge&logo=postgresql&logoColor=white)](#-el-modelo-de-datos)
 [![ORM](https://img.shields.io/badge/ORM-Drizzle_·_35_tablas-C5F74F?style=for-the-badge&logo=drizzle&logoColor=black)](#-el-modelo-de-datos)
 
-[![Superficie](https://img.shields.io/badge/Superficie-16_módulos_·_75_endpoints-1F3A5F?style=for-the-badge&logo=fastapi&logoColor=white)](#-la-api)
-[![Verificación](https://img.shields.io/badge/Verificación-93_suites_·_16_429_líneas-6D28D9?style=for-the-badge&logo=testinglibrary&logoColor=white)](#-pruebas-y-calidad)
+[![Superficie](https://img.shields.io/badge/Superficie-16_módulos_·_76_endpoints-1F3A5F?style=for-the-badge&logo=fastapi&logoColor=white)](#-la-api)
+[![Verificación](https://img.shields.io/badge/Verificación-98_suites_·_16_429_líneas-6D28D9?style=for-the-badge&logo=testinglibrary&logoColor=white)](#-pruebas-y-calidad)
 [![Frontend](https://img.shields.io/badge/Frontend-ULima%2B%2B_Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://github.com/jeffangeloss/ULima_Frontend_IS2)
 
 </div>
@@ -1659,7 +1659,7 @@ ambos están documentadas en [su propia tabla](#el-contrato-documentado-vs-el-c�
 | **Framework** | Hono; una única app, `registerModules(app)` en [`src/server.ts`](src/server.ts)`:63` |
 | **Versionado** | Ninguno. No hay `/v1`, no hay `Accept-Version` |
 | **Formato** | JSON en petición y respuesta. `Content-Type: application/json` |
-| **Autenticación** | `Authorization: Bearer <jwt>` en **todo** salvo los 7 públicos |
+| **Autenticación** | `Authorization: Bearer <jwt>` en **todo** salvo los 9 públicos |
 | **Algoritmo del JWT** | HS256, `JWT_SECRET`, expiración `JWT_EXPIRES_IN` — por defecto **86400 s** ([`src/config/env.ts`](src/config/env.ts)`:35-37`) |
 | **CORS** | `allowMethods` GET/POST/PUT/DELETE/OPTIONS, `allowHeaders` `Content-Type` y `Authorization`; `origin` = `CORS_ORIGINS` o `*` si la variable falta ([`src/server.ts`](src/server.ts)`:16-23`) |
 | **Región de despliegue** | `iad1` (`vercel.json`) |
@@ -1667,7 +1667,7 @@ ambos están documentadas en [su propia tabla](#el-contrato-documentado-vs-el-c�
 > ⚠️ El dominio `…-tau.vercel.app` que aparece en documentación antigua está **muerto**. El
 > despliegue vivo es `…-one.vercel.app`.
 
-#### Los 7 endpoints públicos — la lista exacta
+#### Los 9 endpoints públicos — la lista exacta
 
 No hay más. Cualquier otra ruta sin `Authorization` responde **401 `MISSING_TOKEN`**.
 
@@ -1676,13 +1676,15 @@ No hay más. Cualquier otra ruta sin `Authorization` responde **401 `MISSING_TOK
 | `GET /` | Registrado en [`src/server.ts`](src/server.ts)`:28`, antes de `registerModules`, sin middleware |
 | `GET /health` | Ídem, `:48` |
 | `GET /version` | Ídem, `:54` |
-| `POST /auth/login` | El router de `auth` **no** tiene `app.use("*", authMiddleware)`; esta ruta no lo declara ([`src/modules/auth/auth.routes.ts`](src/modules/auth/auth.routes.ts)`:16`) |
-| `POST /auth/google` | Ídem, `:21` |
-| `POST /auth/password-reset/request` | Ídem, `:26` |
-| `POST /auth/password-reset/confirm` | Ídem, `:31` |
+| `POST /auth/login` | El router de `auth` **no** tiene `app.use("*", authMiddleware)`; esta ruta no lo declara ([`src/modules/auth/auth.routes.ts`](src/modules/auth/auth.routes.ts)`:18`) |
+| `POST /auth/google` | Ídem, `:23` |
+| `POST /auth/register` | Ídem, `:30`. Sin JWT porque todavía no existe la cuenta — es el endpoint que la crea (RS-BE-17). Tampoco tiene límite de tasa, ver [Deuda técnica](#-deuda-técnica-y-límites-conocidos) |
+| `POST /auth/password-reset/request` | Ídem, `:35` |
+| `POST /auth/password-reset/verify` | Ídem, `:40` |
+| `POST /auth/password-reset/confirm` | Ídem, `:45` |
 
 El módulo `auth` es el único que declara la autenticación **ruta por ruta** en vez de con un
-`app.use` global. Es deliberado: cuatro de sus siete endpoints existen precisamente para
+`app.use` global. Es deliberado: seis de sus nueve endpoints existen precisamente para
 usuarios que todavía no tienen token.
 
 #### El sobre de error
@@ -1798,7 +1800,7 @@ del portal **no** devuelve cupo.
 
 ---
 
-### El catálogo: 75 endpoints
+### El catálogo: 76 endpoints
 
 #### Raíz — 3 endpoints públicos
 
@@ -1813,7 +1815,7 @@ del portal **no** devuelve cupo.
 > están montados**: `/official-grades`, `/chat`, `/chatbot`, `/attendance-risk` y `/networking`.
 > Es un array literal que nadie actualizó al añadirlos.
 
-#### 1 · `/auth` — 7 endpoints
+#### 1 · `/auth` — 9 endpoints
 
 [`src/modules/auth/auth.routes.ts`](src/modules/auth/auth.routes.ts) · sin `app.use` global.
 
@@ -1821,7 +1823,9 @@ del portal **no** devuelve cupo.
 |:---|:---|:---|:---|:---|
 | POST | `/auth/login` | — | público | Login con `code` + `password`. Si el código no es de alumno, reintenta como docente (HU18). Exige matrícula activa al alumno, recalcula el cargo e incrementa `tokenVersion` |
 | POST | `/auth/google` | — | público | Login con `idToken` de Google. `@aloe.ulima.edu.pe` → alumno, `@ulima.edu.pe` → docente. Vincula `google_id` de forma idempotente e incrementa `tokenVersion` |
+| POST | `/auth/register` | — | público | RS-BE-17/18: alta de cuenta para un alumno sin fila en `app_user`, autenticando contra miUlima. El portal certifica la matrícula y entrega los datos con los que se crea la cuenta **y** se importa el ciclo, todo en una sola transacción (todo o nada). Sin límite de tasa — ver [Deuda técnica](#-deuda-técnica-y-límites-conocidos) |
 | POST | `/auth/password-reset/request` | — | público | Pide OTP por código o correo institucional. Responde **siempre 200** con un mensaje genérico — anti-enumeración de cuentas |
+| POST | `/auth/password-reset/verify` | — | público | Comprueba el OTP **sin gastar el token de reset**: `/confirm` lo sigue necesitando después. Sí reserva un intento (de los 6 de `MAX_RESET_ATTEMPTS`) |
 | POST | `/auth/password-reset/confirm` | — | público | Canjea el OTP y cambia la contraseña. Reserva el intento de forma atómica antes de comparar e **invalida todas las sesiones** |
 | POST | `/auth/password-reset/request-me` | Bearer | cualquiera | Pide OTP para el usuario del JWT; devuelve el correo enmascarado. Sin body |
 | GET | `/auth/me` | Bearer | cualquiera | Usuario actual. Para alumno **recalcula** el cargo con `findActiveRepresentation` en vez de repetir el claim del token |
@@ -7215,6 +7219,14 @@ antes de apoyarse en ellas.
 > Los endpoints protegidos exigen JWT y rol, pero **aún no validan que cada alumno solo acceda a
 > sus propios datos**. Caso concreto: `GET /grades/me/courses` deriva el alumno del `?code=` que
 > manda el cliente en vez del `studentId` del JWT. Deuda declarada explícitamente en las specs.
+
+> **8 · `POST /auth/register` es público y no tiene límite de tasa.**
+> A diferencia de `chatbotRateLimit` y `portalSyncRateLimit`, este endpoint no pasa por ningún
+> limitador — el único middleware global sigue siendo `cors` + `logger` — y cada petición dispara
+> una secuencia real de login contra miUlima con credenciales elegidas por quien llama. Eso
+> permite usar el backend como relay para probar credenciales contra el portal de la universidad,
+> y cuelga una función serverless por petición sin límite de concurrencia. Deuda conocida y
+> explícita, sin resolver: `specs/features/registro/registro.spec.md` §Límite de tasa.
 
 ### La documentación se contradice con el código en varios puntos
 

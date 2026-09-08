@@ -56,6 +56,12 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
   - Response: `{ "token": "string", "tokenType": "Bearer", "expiresIn": 86400, "user": User }`. El alumno conserva su shape y reglas de matrícula/representación. El docente recibe el mismo shape y JWT docente de `POST /auth/login`, sin exigir matrícula.
   - En ambos casos se vincula `app_user.google_id`, se incrementa `tokenVersion` y se mantiene disponible el login con código/contraseña.
   - Errores: `401 INVALID_TOKEN`, `401 USER_NOT_FOUND`, `403 INVALID_DOMAIN`; `403 NOT_ENROLLED` solo para alumnos.
+- `POST /auth/register` (público) — alta de cuenta para un alumno que todavía no existe en la base, autenticando contra miUlima en el mismo acto. Ver `specs/features/registro/registro.spec.md`.
+  - Request: `{ "code": "string", "portalPassword": "string", "passcode": "string", "password": "string" }`. `code`: `^\d{6,10}$`. `portalPassword`/`passcode` son credenciales de **miUlima** (se usan para el login y se descartan, nunca se persisten ni se registran en logs). `password` es la contraseña nueva de ULima++.
+  - Response `201`: el mismo cuerpo que `POST /auth/login` (`token`, `tokenType`, `expiresIn`, `user`) más `summary`, el resumen de la importación del ciclo (mismo shape que `summary` de `POST /portal-sync/import`, ver sección Portal Sync).
+  - La identidad la certifica **el portal**, no el `code` del body: si difieren, gana el del portal. Si el portal no reporta matrícula en el ciclo activo, no se crea ninguna cuenta (todo o nada).
+  - Errores: `503 REGISTRATION_UNAVAILABLE` (el registro no está cableado), `409 USER_ALREADY_EXISTS` (el código ya existe; se responde antes de tocar el portal), `401 PORTAL_AUTH_FAILED` (miUlima rechazó credenciales o passcode), `403 NOT_ENROLLED` (autenticó pero sin matrícula en el ciclo activo), `422 PORTAL_IDENTITY_UNVERIFIABLE` (consolidado de matrícula no legible), `502 PORTAL_UNAVAILABLE` (el portal no respondió).
+  - **Deuda conocida**: este endpoint es público y no tiene límite de tasa (el único middleware global es `cors` + `logger`); cada petición dispara un login real contra miUlima con credenciales elegidas por quien llama. Ver `specs/features/registro/registro.spec.md` §Límite de tasa.
 - `GET /auth/me`
   - Response: `{ "user": User }` (shape de estudiante o de docente según el rol del token).
 - `POST /auth/logout`

@@ -36,8 +36,11 @@ Desde `portal-sync` existe una tercera vía que resuelve las dos cosas a la vez:
 
 - RS-BE-17: Un alumno que no existe en la base puede crear su cuenta autenticándose contra miUlima. Quien certifica que es alumno matriculado es **el portal**, nunca una deducción del backend.
   `[@test] ../../../test/HU33_jeff/registro.service.test.ts`
+  `[@test] ../../../test/HU33_jeff/registro.endpoint.test.ts`
+  `[@test] ../../../test/HU33_jeff/repository.registro.test.ts`
 - RS-BE-18: El registro es **todo o nada**: o queda una cuenta con su ciclo cargado y utilizable, o no queda ninguna cuenta. Nunca una cuenta creada que no pueda iniciar sesión.
   `[@test] ../../../test/HU33_jeff/registro.atomicidad.test.ts`
+  `[@test] ../../../test/HU33_jeff/service.registro-import.test.ts`
 
 ## API Contract
 
@@ -59,6 +62,7 @@ Errores:
 
 | Código | Cuándo |
 | --- | --- |
+| `503 REGISTRATION_UNAVAILABLE` | El registro no está cableado (`registrar`/`portalSyncRepository` sin inyectar en `AuthService`). No se llegó a tocar `app_user` ni el portal. |
 | `409 USER_ALREADY_EXISTS` | El código ya está en `app_user`. Se responde antes de pedirle nada al portal. |
 | `401 PORTAL_AUTH_FAILED` | miUlima rechazó las credenciales o el passcode. |
 | `403 NOT_ENROLLED` | El portal autenticó pero no reporta matrícula en el ciclo activo. No se crea la cuenta: quedaría bloqueada por `hasActiveEnrollment`. |
@@ -88,6 +92,12 @@ En una transacción, y solo si el portal reportó al menos una matrícula del ci
 Las descargas del portal van **fuera** de la transacción, como en `portal-sync`. La transacción abarca el alta y la importación juntas. Si la importación falla, se revierte también la cuenta.
 
 El motivo no es estético: una cuenta sin matrículas no puede iniciar sesión, así que dejarla creada produce una persona registrada y bloqueada, sin forma de reintentar el registro (el 409 le cerraría el paso). Revertir deja el reintento abierto.
+
+### Límite de tasa: deuda conocida, sin resolver
+
+`POST /auth/register` es público y no pasa por ningún límite de tasa —el único middleware global del backend es `cors` + `logger`—, y cada petición dispara una secuencia real de login contra miUlima con credenciales elegidas por quien llama. Eso permite usar el backend como relay para probar credenciales contra el portal de la universidad, y cuelga una función serverless por petición sin límite de concurrencia.
+
+A diferencia de `POST /portal-sync/import` (que sí tiene `src/shared/middleware/rate-limit.ts`, 5 por alumno por hora), acá no hay una cuenta previa a la que atarle un contador: el límite tendría que ser por IP, por `code` del cuerpo, o ambos, y ese diseño no se hizo. Queda como deuda explícita, **no** escondida detrás de "no entra en esta feature"; no se resuelve en esta feature.
 
 ### Fuera de alcance
 
