@@ -61,6 +61,8 @@ type Creada = { code: string; email: string; passwordHash: string };
 function armar(opts: {
   yaExiste?: boolean;
   loginFalla?: boolean;
+  /** Para simular un portal caído (502) en vez de credenciales rechazadas. */
+  loginLanza?: HttpError;
   matriculasEnElPortal?: number;
   codigoEnElPortal?: string;
 } = {}) {
@@ -78,6 +80,45 @@ function armar(opts: {
       // Solo mira lo persistido, nunca lo `staged`.
       return creadas.some((c) => c.code === code);
     },
+    // Lo que usa `register()` para armar el `user` de la respuesta DESPUÉS de
+    // que la importación confirmó (RS-BE-17: "mismo cuerpo que login"). Se
+    // arma con la forma completa de `AuthUser` (auth.types.ts), no el mínimo
+    // {id, studentId, code, role}, para que un test pueda distinguir uno de
+    // otro.
+    findById: async (userId: number, role: string) => {
+      const ultimo = creadas[creadas.length - 1];
+      if (!ultimo) return null;
+      return {
+        id: userId,
+        studentId: 77,
+        code: ultimo.code,
+        tokenVersion: 1,
+        fullName: NOMBRE_EN_EL_PORTAL,
+        firstName: "Garcia Lopez",
+        lastName: "Maria",
+        institutionalEmail: ultimo.email,
+        email: ultimo.email,
+        avatarUrl: null,
+        role,
+        careerId: 1,
+        career_id: 1,
+        curriculumId: 1,
+        currentLevel: null,
+        currentCycle: "2026-1",
+        setupComplete: false,
+        specialtySetupCompleted: false,
+        especialidad_principal: null,
+        especialidades_interes: [],
+        especialidades: [],
+        specialties: [],
+        courseProgress: {
+          approvedLevels: [],
+          approvedCourseIds: [],
+          approvedElectives: [],
+          currentCourses: [],
+        },
+      };
+    },
   } as unknown as AuthRepository;
 
   const portalSyncRepository = {
@@ -94,6 +135,7 @@ function armar(opts: {
   const portalClient = {
     login: async () => {
       portalLlamado = true;
+      if (opts.loginLanza) throw opts.loginLanza;
       if (opts.loginFalla) throw new HttpError(409, "credenciales rechazadas", "PORTAL_LOGIN_REJECTED");
       return { JSESSIONID: "s", LtpaToken2: "l" };
     },
@@ -103,23 +145,31 @@ function armar(opts: {
   } as unknown as PortalClient;
 
   const registrar: Registrar = {
-    importFromPortal: async (_userId, _studentId, _entrada, provision, validate) => {
+    importFromPortal: async (_userId, _studentId, entradaImport, provision, validate) => {
       staged = null;
-      await provision!({} as never, {
-        studentCode: codigoEnElPortal, studentName: NOMBRE_EN_EL_PORTAL, careerName: CARRERA,
-      });
-      const summary = { ...emptySummary(), enrollmentsUpserted: enrollments };
-      // Último paso, DENTRO de la "transacción": si lanza, `staged` nunca se
-      // mueve a `creadas` (confirma solo si `validate` no lanza).
-      validate?.(summary);
-      if (staged) creadas.push(staged);
-      return {
-        period: { id: 1, code: "2026-1", created: false },
-        identity: { portalCode: codigoEnElPortal, fullName: NOMBRE_EN_EL_PORTAL, career: CARRERA },
-        summary,
-        warnings: [],
-        token: null,
-      };
+      try {
+        await provision!({} as never, {
+          studentCode: codigoEnElPortal, studentName: NOMBRE_EN_EL_PORTAL, careerName: CARRERA,
+        });
+        const summary = { ...emptySummary(), enrollmentsUpserted: enrollments };
+        // Último paso, DENTRO de la "transacción": si lanza, `staged` nunca se
+        // mueve a `creadas` (confirma solo si `validate` no lanza).
+        validate?.(summary);
+        if (staged) creadas.push(staged);
+        return {
+          period: { id: 1, code: "2026-1", created: false },
+          identity: { portalCode: codigoEnElPortal, fullName: NOMBRE_EN_EL_PORTAL, career: CARRERA },
+          summary,
+          warnings: [],
+          token: null,
+        };
+      } finally {
+        // Simula el `finally` REAL de `PortalSyncService.importFromPortal`:
+        // cierra SIEMPRE la sesión que le pasó el llamador, feliz o no. Sin
+        // esto acá, el doble no detecta el doble-logout de `register()`: con
+        // el bug, `cantidadLogouts()` daría 2 en vez de 1.
+        await portalClient.logout(entradaImport.cookies!);
+      }
     },
   };
 
@@ -152,6 +202,20 @@ describe("AuthService.register", () => {
     await expect(service.register(entrada)).rejects.toMatchObject({ code: "PORTAL_AUTH_FAILED" });
   });
 
+  // Hallazgo 1 de la revisión: un portal CAÍDO (timeout, 5xx, respuesta
+  // inesperada) es un fallo distinto de credenciales rechazadas, y la tabla
+  // de errores de la spec exige que llegue como 502 PORTAL_UNAVAILABLE, no
+  // aplastado al mismo 401 que un passcode vencido.
+  test("portal caido (502 PORTAL_UNAVAILABLE) NO se reporta como credenciales rechazadas", async () => {
+    const { service } = armar({
+      loginLanza: new HttpError(502, "No se pudo contactar a miUlima.", "PORTAL_UNAVAILABLE"),
+    });
+    await expect(service.register(entrada)).rejects.toMatchObject({
+      code: "PORTAL_UNAVAILABLE",
+      statusCode: 502,
+    });
+  });
+
   test("camino feliz: crea la cuenta con los datos del PORTAL, no los del body", async () => {
     const { service, creadas } = armar({ codigoEnElPortal: "20230001" });
     await service.register({ ...entrada, code: "20239999" });
@@ -173,5 +237,24 @@ describe("AuthService.register", () => {
     expect(r.tokenType).toBe("Bearer");
     expect(r.user.role).toBe("student");
     expect(r.summary.enrollmentsUpserted).toBeGreaterThan(0);
+  });
+
+  // Hallazgo 2 de la revisión: la spec exige "el mismo cuerpo que POST
+  // /auth/login" — el objeto rico que arma `buildUser` (auth.repository.ts),
+  // no el mínimo {id, studentId, code, role} que alcanza para firmar el
+  // token. Sin esto, el cliente Flutter tendría que hacer un login o una
+  // llamada de perfil extra tras registrarse, y `setupComplete` —que decide
+  // si va al onboarding de especialidades— ni siquiera estaría.
+  test("el user de la respuesta trae los mismos campos que el de login, no solo id/studentId/code/role", async () => {
+    const { service } = armar({});
+    const r = await service.register(entrada);
+    expect(r.user.fullName).toBe(NOMBRE_EN_EL_PORTAL);
+    expect(r.user).toHaveProperty("institutionalEmail");
+    expect(r.user).toHaveProperty("avatarUrl");
+    expect(r.user).toHaveProperty("setupComplete");
+    expect(r.user).toHaveProperty("courseProgress");
+    expect(r.user).toHaveProperty("specialties");
+    // Nunca debe filtrarse el hash, ni siquiera con el objeto rico.
+    expect(r.user).not.toHaveProperty("passwordHash");
   });
 });

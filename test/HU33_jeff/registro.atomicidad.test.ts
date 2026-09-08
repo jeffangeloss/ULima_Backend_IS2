@@ -70,6 +70,34 @@ function armar(opts: {
     // Refleja SOLO lo persistido: es la comprobacion que demuestra que un
     // segundo intento, tras un rollback, no choca con USER_ALREADY_EXISTS.
     codeExists: async (code: string) => creadas.some((c) => c.code === code),
+    // Lo que usa `register()` para armar el `user` de la respuesta DESPUÉS de
+    // que la importación confirmó (RS-BE-17). Solo se llama en el camino
+    // feliz, cuando `creadas` ya tiene la fila recién confirmada.
+    findById: async (userId: number, role: string) => {
+      const ultimo = creadas[creadas.length - 1];
+      if (!ultimo) return null;
+      return {
+        id: userId,
+        studentId: 77,
+        code: ultimo.code,
+        tokenVersion: 1,
+        fullName: NOMBRE_EN_EL_PORTAL,
+        institutionalEmail: ultimo.email,
+        email: ultimo.email,
+        avatarUrl: null,
+        role,
+        careerId: 1,
+        career_id: 1,
+        curriculumId: 1,
+        currentLevel: null,
+        currentCycle: "2026-1",
+        setupComplete: false,
+        specialties: [],
+        courseProgress: {
+          approvedLevels: [], approvedCourseIds: [], approvedElectives: [], currentCourses: [],
+        },
+      };
+    },
   } as unknown as AuthRepository;
 
   const portalSyncRepository = {
@@ -91,31 +119,41 @@ function armar(opts: {
   } as unknown as PortalClient;
 
   const registrar: Registrar = {
-    importFromPortal: async (_userId, _studentId, _entrada, provision, validate) => {
+    importFromPortal: async (_userId, _studentId, entradaImport, provision, validate) => {
       staged = null;
-      await provision!({} as never, {
-        studentCode: CODIGO_EN_EL_PORTAL, studentName: NOMBRE_EN_EL_PORTAL, careerName: CARRERA,
-      });
+      try {
+        await provision!({} as never, {
+          studentCode: CODIGO_EN_EL_PORTAL, studentName: NOMBRE_EN_EL_PORTAL, careerName: CARRERA,
+        });
 
-      if (opts.importFalla) {
-        // Fallo a mitad de la importación (p.ej. un upsert de matrícula que
-        // revienta), ANTES de llegar a `validate`. La transacción real
-        // revertiría todo lo escrito hasta acá, incluida la cuenta: `staged`
-        // se descarta sin más, nunca llega a `creadas`.
-        throw new Error("fallo simulado en la importacion");
+        if (opts.importFalla) {
+          // Fallo a mitad de la importación (p.ej. un upsert de matrícula que
+          // revienta), ANTES de llegar a `validate`. La transacción real
+          // revertiría todo lo escrito hasta acá, incluida la cuenta: `staged`
+          // se descarta sin más, nunca llega a `creadas`.
+          throw new Error("fallo simulado en la importacion");
+        }
+
+        const summary = { ...emptySummary(), enrollmentsUpserted: enrollments };
+        // Último paso DENTRO de la transacción: si lanza, no hay "commit".
+        validate?.(summary);
+        if (staged) creadas.push(staged);
+        return {
+          period: { id: 1, code: "2026-1", created: false },
+          identity: { portalCode: CODIGO_EN_EL_PORTAL, fullName: NOMBRE_EN_EL_PORTAL, career: CARRERA },
+          summary,
+          warnings: [],
+          token: null,
+        };
+      } finally {
+        // Simula el `finally` REAL de `PortalSyncService.importFromPortal`
+        // (portal-sync.service.ts:136-140): cierra SIEMPRE la sesión que le
+        // pasó el llamador, feliz o no. Sin este `finally` acá, esta suite no
+        // puede detectar el doble-logout de `register()` (hallazgo 3 de la
+        // revisión): con el bug, `cantidadLogouts()` daría 2 en vez de 1 en
+        // ambos tests de logout de más abajo.
+        await portalClient.logout(entradaImport.cookies!);
       }
-
-      const summary = { ...emptySummary(), enrollmentsUpserted: enrollments };
-      // Último paso DENTRO de la transacción: si lanza, no hay "commit".
-      validate?.(summary);
-      if (staged) creadas.push(staged);
-      return {
-        period: { id: 1, code: "2026-1", created: false },
-        identity: { portalCode: CODIGO_EN_EL_PORTAL, fullName: NOMBRE_EN_EL_PORTAL, career: CARRERA },
-        summary,
-        warnings: [],
-        token: null,
-      };
     },
   };
 
@@ -176,6 +214,25 @@ describe("AuthService.register — todo o nada (RS-BE-18)", () => {
   test("la sesion del portal se cierra tambien en el camino feliz", async () => {
     const { service, cantidadLogouts } = armar({});
     await service.register(entrada);
+    expect(cantidadLogouts()).toBe(1);
+  });
+
+  // Hallazgo 3 de la revisión: `importFromPortal` cierra la sesión en su
+  // PROPIO `finally` apenas se lo invoca, así que `register()` no debe
+  // cerrarla de nuevo — sería un logout de más contra miUlima en cada
+  // registro. Pero hay una ventana ANTES de esa invocación (acá, `bcrypt.hash`
+  // dentro de `register()`) donde `importFromPortal` todavía no existe para
+  // hacerse cargo: si algo revienta ahí, la sesión recién abierta por
+  // `portalClient.login` no la conoce nadie más, y hay que cerrarla en
+  // `register()` mismo o quedaría viva para siempre. Se usa `bcrypt.hash`
+  // REAL (no un doble) porque es justamente el único punto de este código que
+  // hoy puede lanzar en esa ventana: pasarle `null` rechaza la promesa antes
+  // de que `register()` llegue a invocar a `registrar.importFromPortal`.
+  test("si algo lanza ANTES de invocar a importFromPortal, la sesion del portal igual se cierra", async () => {
+    const { service, cantidadLogouts } = armar({});
+    await expect(
+      service.register({ ...entrada, password: null as unknown as string }),
+    ).rejects.toThrow();
     expect(cantidadLogouts()).toBe(1);
   });
 });

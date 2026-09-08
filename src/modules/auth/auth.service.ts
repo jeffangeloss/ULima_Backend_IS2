@@ -139,23 +139,46 @@ export class AuthService {
     let cookies: PortalCookies;
     try {
       cookies = await this.portalClient.login(input.code, input.portalPassword, input.passcode);
-    } catch {
+    } catch (e) {
+      // 502 PORTAL_UNAVAILABLE (portal caído, timeout, 5xx, respuesta
+      // inesperada) no es un fallo de credenciales y se re-lanza tal cual: la
+      // razón por la que el resto se aplasta más abajo —no dar un oráculo que
+      // distinga password de passcode— no aplica acá, porque un 502 no revela
+      // nada sobre la credencial. Aplastarlo también haría que una caída de
+      // miUlima se lea como "credenciales rechazadas" y mande a la gente a
+      // cambiar su contraseña sin motivo.
+      if (e instanceof HttpError && e.code === "PORTAL_UNAVAILABLE") throw e;
       // Nunca se propaga el detalle del portal: distinguir "contraseña mala"
       // de "passcode malo" le daría a un atacante un oráculo de códigos
       // válidos.
       throw new HttpError(401, "miUlima rechazó las credenciales.", "PORTAL_AUTH_FAILED");
     }
 
-    // El hash se calcula ANTES de abrir la transacción: bcrypt cuesta ~100 ms
-    // y no tiene por qué mantenerla abierta.
-    const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
-
-    // Lo llena el hook de aprovisionamiento, que corre DENTRO de la
-    // transacción de la importación. Se lee después de que
-    // `importFromPortal` haya vuelto sin lanzar, o sea con la tx confirmada.
-    let creado: { userId: number; studentId: number; code: string } | null = null;
-
+    // A partir de acá la sesión del portal está abierta y hay que cerrarla
+    // EXACTAMENTE una vez. `importFromPortal` cierra la suya en su PROPIO
+    // `finally` apenas se la invoca —también cuando las cookies se las pasa
+    // el llamador, que es siempre este caso—, así que de acá en más la
+    // responsabilidad es de `importFromPortal`, no de este método: cerrarla
+    // otra vez sería una petición de logout extra a miUlima en cada
+    // registro, feliz o fallido, con cookies ya muertas.
+    //
+    // La única ventana en la que SÍ es responsabilidad de `register` es
+    // ANTES de esa llamada: si algo entre el login y `importFromPortal` lanza
+    // (hoy, en la práctica, solo `bcrypt.hash`), nadie más conoce esta sesión
+    // y quedaría abierta para siempre si no se cierra acá.
+    let entregadoAlImport = false;
     try {
+      // El hash se calcula ANTES de abrir la transacción: bcrypt cuesta ~100 ms
+      // y no tiene por qué mantenerla abierta.
+      const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
+
+      // Lo llena el hook de aprovisionamiento, que corre DENTRO de la
+      // transacción de la importación. Se lee después de que
+      // `importFromPortal` haya vuelto sin lanzar, o sea con la tx confirmada.
+      let creado: { userId: number; studentId: number; code: string } | null = null;
+
+      // A partir de esta línea `importFromPortal` es dueño de `cookies`.
+      entregadoAlImport = true;
       const resultado = await registrar.importFromPortal(
         0, 0, { cookies },
         // provision: crea la cuenta como primer paso de la transacción.
@@ -201,6 +224,22 @@ export class AuthService {
       // correr, `importFromPortal` ya habría lanzado antes de llegar acá.
       const cuenta = creado as { userId: number; studentId: number; code: string };
 
+      // La spec exige "el mismo cuerpo que POST /auth/login": el objeto rico
+      // que arma `buildUser` (nombre partido, avatarUrl, especialidades,
+      // courseProgress, setupComplete, etc.), no el mínimo con el que
+      // `provision` deja constancia de lo que acaba de insertar. Se relee con
+      // `findById` —el mismo repositorio que ya usa `reissueToken`— DESPUÉS
+      // de que `importFromPortal` volvió, o sea con la cuenta y la matrícula
+      // ya confirmadas. `findById` nunca selecciona `password_hash`, así que
+      // no hay riesgo de filtrarlo acá.
+      const usuario = await this.repository.findById(cuenta.userId, "student");
+      if (!usuario) {
+        // La transacción ya confirmó (se llegó hasta acá): esto no debería
+        // pasar nunca. Se corta con 500 en vez de devolver un cuerpo a medio
+        // llenar.
+        throw new HttpError(500, "Error interno del servidor.", "INTERNAL_ERROR");
+      }
+
       return {
         token: this.signToken({
           userId: cuenta.userId,
@@ -211,15 +250,18 @@ export class AuthService {
         }),
         tokenType: "Bearer",
         expiresIn: config.auth.jwtExpiresIn,
-        user: {
-          id: cuenta.userId, studentId: cuenta.studentId,
-          code: cuenta.code, role: "student",
-        },
+        user: usuario,
         summary: resultado.summary,
       };
     } finally {
-      // Best effort, siempre: la sesión del portal no queda viva ni cuando falla.
-      await this.portalClient.logout(cookies).catch(() => {});
+      // Solo si NUNCA se llegó a invocar `importFromPortal`: si se llegó,
+      // esa llamada ya es dueña de `cookies` y cierra su propia sesión en su
+      // propio `finally` (ver el comentario de `entregadoAlImport` más
+      // arriba). `PortalClient.logout` ya traga sus propios errores
+      // (best-effort), así que no hace falta un `.catch()` acá.
+      if (!entregadoAlImport) {
+        await this.portalClient.logout(cookies);
+      }
     }
   }
 
