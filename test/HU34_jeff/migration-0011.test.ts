@@ -60,7 +60,16 @@ describe("drizzle/0011_academic_record.sql", () => {
   });
 
   test("student_period_summary no lleva columna de procedencia", () => {
-    expect(migracion).not.toContain("source");
+    // Arreglo 7 de la revision final (minor): la version anterior era
+    // `not.toContain("source")` sobre el SQL crudo, y rompia ante cualquier
+    // comentario futuro que mencionara esa subcadena (p. ej. "outsource" o una
+    // nota que diga "sin columna source"). Se acota a una DECLARACION de
+    // columna real: una linea que abre con `"source"` seguida de su tipo,
+    // como emite drizzle-kit. La comprobacion robusta ya existe mas abajo,
+    // sobre la lista de columnas del schema (`columnas(studentPeriodSummary)`,
+    // que compara nombres exactos y no substrings); esto solo blinda ademas
+    // el .sql crudo con el mismo criterio.
+    expect(migracion).not.toMatch(/^\s*"source"\s/m);
   });
 
   test("student_record_entry lleva sus tres CHECK", () => {
