@@ -11,10 +11,10 @@ describe("parseInfoAcademica", () => {
     expect(r.data.careerName).toBe("INGENIERÍA DE SISTEMAS");
   });
 
-  test("solo extrae la carrera: ni PPA, ni ubicacion, ni nivel", () => {
+  test("devuelve carrera, general, periodo y los campos no leidos", () => {
     const r = parseInfoAcademica(layout);
     if (!r.ok) throw new Error("parser fallo");
-    expect(Object.keys(r.data)).toEqual(["careerName"]);
+    expect(Object.keys(r.data)).toEqual(["careerName", "general", "period", "unreadable"]);
   });
 
   test("parseInfoAcademica falla si no hay bloque de informacion academica", () => {

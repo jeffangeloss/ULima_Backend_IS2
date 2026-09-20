@@ -48,7 +48,36 @@ export interface RecordPage {
   footer: RecordFooter | null;
 }
 
-export interface InfoAcademica { careerName: string | null }
+/** Cursos y créditos de un grupo del bloque "Información Académica"
+ *  ("Convalidados", "Aprobados"…). Cada número puede faltar por separado:
+ *  `null` es "no se pudo leer", nunca 0. */
+export interface CountCredits { courses: number | null; credits: number | null }
+
+/** Sub-bloque "Información General" de `layout.jsp` (RS-BE-24). */
+export interface AcademicGeneral {
+  ppa: number | null; relativePosition: string | null;
+  convalidated: CountCredits; approved: CountCredits;
+  creditsAccumulated: number | null; creditsRequired: number | null;
+}
+
+/** Sub-bloque "Información por Período Académico" de `layout.jsp` (RS-BE-24).
+ *  `periodCode` es el ciclo que el propio bloque declara, que es el ANTERIOR
+ *  al que se está importando: nunca se guarda como "período actual". */
+export interface AcademicPeriodBlock {
+  periodCode: string; average: number | null; relativePosition: string | null; level: number | null;
+  convalidated: CountCredits; enrolled: CountCredits; approved: CountCredits; failed: CountCredits;
+}
+
+export interface InfoAcademica {
+  careerName: string | null;
+  /** Siempre presente; sus campos quedan `null` si no se pudieron leer. */
+  general: AcademicGeneral;
+  /** `null` si no se halla el bloque o su código de ciclo. */
+  period: AcademicPeriodBlock | null;
+  /** Nombres de los campos que no se pudieron leer ("general.ppa", "period"…),
+   *  para el log del servidor. Nunca lleva valores: el repo es público. */
+  unreadable: string[];
+}
 export interface Impedimentos { hasImpediment: boolean; hasDebt: boolean; text: string }
 
 /** Entrada de sílabo resuelta de la vista Domino `vSyllabusXCicloAV`, ya
