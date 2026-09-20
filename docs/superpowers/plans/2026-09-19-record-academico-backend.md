@@ -10,17 +10,18 @@
 
 **Spec:** `specs/features/academic-record/academic-record.spec.md` (y la contraparte en el otro repo: `ULima_Frontend_IS2/specs/features/academic-record/academic-record.spec.md`)
 
-**Repo y rama:** `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`, rama `feat/record-academico`
+**Repo y rama:** `.`, rama `feat/record-academico`
 
 ## Restricciones globales
 
+- **Variables de los comandos.** Los comandos de este plan usan `$BUN` y `$TMP` para no fijar rutas de una maquina concreta. `$BUN` es tu ejecutable de Bun; si no lo tienes instalado, `npm install --prefix /tmp/bunhome bun` y entonces `export BUN=/tmp/bunhome/node_modules/.bin/bun`. `$TMP` es cualquier carpeta temporal para salidas de prueba. Las rutas relativas son desde la raiz de este repo.
 - Español en comentarios, nombres de test y mensajes de commit. Nombres de test sin tildes, como el resto del repo.
 - Commits: el autor ya está configurado en git (Jeffangeloss, noreply de GitHub). **Sin** trailer Co-Authored-By. Un commit por tarea con `git add` explícito de los archivos de esa tarea. Formato `feat(academic-record): …`, `test(academic-record): …`, `docs(academic-record): …`.
 - No hacer push ni abrir PR: lo decide el dueño. Si alguna vez se hace: `git push origin feat/record-academico`, nunca `git push` a secas.
 - Repo PÚBLICO: ningún dato real. Alumno sintético `20230001`. Fixtures HU34 con valores inventados. **Prohibido** reutilizar `test/HU31_jeff/fixtures/record.html` o `layout.html` en pruebas HU34 (tienen notas reales), y copiar valores de `spike-portal/`.
 - Build: `bun run build` (= `tsc`, solo compila `src/`). Tras cada tarea que toque `src/`.
 - Tests: bun no está en PATH. Comando SIEMPRE con este prefijo, porque el `.env` del worktree apunta a la base de PRODUCCIÓN y bun lo carga solo:
-  `DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test <ruta>`
+  `DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test <ruta>`
   (el build igual: `…/bunhome/node_modules/.bin/bun run build`).
 - Nunca `db:push`, `db:migrate`, `db:generate`, `db:seed` ni `db:apply`. La migración 0011 se escribe y se prueba estáticamente; aplicarla es del dueño (paso PARAR de la última tarea).
 - Toda prueba que importe algo que cargue `src/db/index.ts` (rutas, auth-middleware, módulos) hace `mock.module("../../src/db/index.js", () => ({ db: … }))` ANTES de cualquier `await import(...)`; los imports de esos módulos son dinámicos.
@@ -146,7 +147,7 @@ Todos los comandos se corren desde la raíz del worktree: las pruebas abren los 
 - [ ] **Paso 0: Medir la línea base de la suite (antes de tocar nada)**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git status --short && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test 2>&1 | tail -6
+cd . && git status --short && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test 2>&1 | tail -6
 ```
 
 Esperado: `git status --short` vacío (el árbol está limpio y la rama es `feat/record-academico`). El resumen debería rondar las 1217 pruebas en verde y 0 fail, sobre los 99 `*.test.ts` que hoy tiene `test/`. Anota las cifras exactas de `pass`, `fail` y `Ran N tests across K files` en el plan de ejecución: la Tarea 10 las compara contra la suite final.
@@ -766,11 +767,11 @@ describe("recordRows y parseRecordAcademico", () => {
 - [ ] **Paso 2: Correr la prueba y ver que falla**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/record-parser.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/record-parser.test.ts
 ```
 
 Esperado: FAIL. El archivo no llega a cargar porque todavía no existen las exportaciones:
-`SyntaxError: Export named 'normalizeCareerName' not found in module '/Users/jjjangelosss/ULIMA++/.worktrees/readme-be/src/modules/portal-sync/parsers/html.ts'.`
+`SyntaxError: Export named 'normalizeCareerName' not found in module './src/modules/portal-sync/parsers/html.ts'.`
 El resumen muestra `0 pass` y 1 error. Si el error nombra `FOOTER_HEADER`, `parseRecordPage` u otra exportación de `record.ts`, falla por la misma razón. Si el error es `ENOENT` sobre el fixture, falta el Paso 1.
 
 - [ ] **Paso 3: Implementación mínima**
@@ -1187,7 +1188,7 @@ Si el dueño prefiere que el código se ajuste a la spec en vez de al revés, **
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/record-parser.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/record-parser.test.ts
 ```
 
 Esperado: PASS, con `32 pass` y `0 fail`.
@@ -1195,7 +1196,7 @@ Esperado: PASS, con `32 pass` y `0 fail`.
 - [ ] **Paso 5: Regresión de HU31 y HU33 (parser viejo, service y registro)**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU31_jeff test/HU33_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU31_jeff test/HU33_jeff
 ```
 
 Esperado: PASS con `0 fail`. Tres archivos importan especialmente:
@@ -1208,7 +1209,7 @@ Si algo falla, **no** cambies esas pruebas. Revisa el Paso 3 y compara con las f
 - [ ] **Paso 6: Build**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: `tsc` termina sin errores ni salida. Emite en `dist/`, que está en `.gitignore`. Los fallos típicos serían `noUnusedLocals` (un import que sobra en `record.ts`) o un `export { normalizeCareerName }` sin su import en el repository.
@@ -1216,7 +1217,7 @@ Esperado: `tsc` termina sin errores ni salida. Emite en `dist/`, que está en `.
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git status --short && git add \
+cd . && git status --short && git add \
   specs/features/academic-record/academic-record.spec.md \
   src/modules/portal-sync/parsers/html.ts \
   src/modules/portal-sync/parsers/record.ts \
@@ -1240,7 +1241,7 @@ Esperado: antes del `add`, `git status --short` muestra seis líneas —las cinc
 
 No se modifica ningún archivo existente. La spec ya tiene el target `../../../src/modules/academic-record/**`
 (línea 5) y el `[@test] ../../../test/HU34_jeff/record-trust.test.ts` bajo RS-BE-21 (línea 131): no se toca.
-Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`.
+Todos los comandos se corren desde la raíz del worktree `.`.
 
 **Interfaces:**
 
@@ -1601,7 +1602,7 @@ Primero, comprobar la precondición (Tarea 1 commiteada). Sin esto, el fallo del
 falte la Tarea 1, porque el import que no resuelve es siempre el primero:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -c "export const parseRecordPage" src/modules/portal-sync/parsers/record.ts && grep -c "gradeRaw" src/modules/portal-sync/portal-sync.types.ts && ls test/HU34_jeff/fixtures/record.html
+cd . && grep -c "export const parseRecordPage" src/modules/portal-sync/parsers/record.ts && grep -c "gradeRaw" src/modules/portal-sync/portal-sync.types.ts && ls test/HU34_jeff/fixtures/record.html
 ```
 
 Esperado: `1`, `1` y la ruta del fixture. Si algo sale en 0 o `No such file or directory`, la Tarea 1 no
@@ -1610,11 +1611,11 @@ está hecha: PARAR y completarla primero.
 Después, la prueba:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/record-trust.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/record-trust.test.ts
 ```
 
 Esperado: FAIL al cargar el archivo, con
-`error: Cannot find module '../../src/modules/academic-record/academic-record.logic.js' from '/Users/jjjangelosss/ULIMA++/.worktrees/readme-be/test/HU34_jeff/record-trust.test.ts'`.
+`error: Cannot find module '../../src/modules/academic-record/academic-record.logic.js' from './test/HU34_jeff/record-trust.test.ts'`.
 Ninguna prueba llega a correr (`0 pass`).
 
 - [ ] **Paso 3: Implementación mínima**
@@ -1708,7 +1709,7 @@ test: en coma flotante da 0.05000000000000071 y cae fuera de la tolerancia.
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/record-trust.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/record-trust.test.ts
 ```
 
 Esperado: PASS, `30 pass`, `0 fail`.
@@ -1716,7 +1717,7 @@ Esperado: PASS, `30 pass`, `0 fail`.
 - [ ] **Paso 5: Build**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: `$ tsc` sin ningún error y exit 0. La salida en `dist/` está en `.gitignore`. Si `tsc` reclama
@@ -1725,7 +1726,7 @@ por `RecordPage` o `RecordRow` inexistentes en `portal-sync.types.ts`, falta la 
 - [ ] **Paso 6: Correr la carpeta HU34 completa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff
 ```
 
 Esperado: PASS en `record-parser.test.ts` (Tarea 1) y en `record-trust.test.ts`, `0 fail`. Esta tarea no
@@ -1734,7 +1735,7 @@ modifica ningún archivo existente, así que no hay regresión que medir fuera d
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git add src/modules/academic-record/academic-record.logic.ts test/HU34_jeff/record-trust.test.ts && git commit -m "feat(academic-record): regla de confianza del récord (RS-BE-21)"
+cd . && git add src/modules/academic-record/academic-record.logic.ts test/HU34_jeff/record-trust.test.ts && git commit -m "feat(academic-record): regla de confianza del récord (RS-BE-21)"
 ```
 
 Sin trailer Co-Authored-By y sin push.
@@ -1759,7 +1760,7 @@ Dos archivos que **no** se tocan, comprobados:
   siempre desde `./parsers/info-academica.js` y nunca desde `./parsers/index.js` (lo necesita la
   Tarea 6, que hoy importa los parsers del barrel: `portal-sync.service.ts:12-16`).
 
-Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`.
+Todos los comandos se corren desde la raíz del worktree `.`.
 
 **Interfaces:**
 
@@ -1827,7 +1828,7 @@ Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/UL
 Primero la carpeta y el fixture:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && mkdir -p test/HU34_jeff/fixtures
+cd . && mkdir -p test/HU34_jeff/fixtures
 ```
 
 Crear `test/HU34_jeff/fixtures/layout.html` (UTF-8, sin espacios al final de línea) con este
@@ -2306,7 +2307,7 @@ Primero, la precondición (Tarea 1 commiteada). Sin esto el fallo sería confuso
 todavía no existiría:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -c "export const normalizeLabel" src/modules/portal-sync/parsers/html.ts
+cd . && grep -c "export const normalizeLabel" src/modules/portal-sync/parsers/html.ts
 ```
 
 Esperado: `1`. Si sale `0`, la Tarea 1 no está hecha: PARAR y completarla primero.
@@ -2314,13 +2315,13 @@ Esperado: `1`. Si sale `0`, la Tarea 1 no está hecha: PARAR y completarla prime
 Después, la prueba:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/info-academica-parser.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/info-academica-parser.test.ts
 ```
 
 Esperado: FAIL al cargar el archivo, con
 
 ```
-SyntaxError: Export named 'EMPTY_GENERAL' not found in module '/Users/jjjangelosss/ULIMA++/.worktrees/readme-be/src/modules/portal-sync/parsers/info-academica.ts'.
+SyntaxError: Export named 'EMPTY_GENERAL' not found in module './src/modules/portal-sync/parsers/info-academica.ts'.
 ```
 
 y `0 pass`, `1 fail`: el módulo no enlaza y ninguna prueba llega a correr. Bun nombra el primero de los
@@ -2631,7 +2632,7 @@ Detalles que no se pueden cambiar sin romper una prueba:
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/info-academica-parser.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/info-academica-parser.test.ts
 ```
 
 Esperado: PASS, `20 pass`, `0 fail`, `46 expect() calls` (40 llamadas escritas, una de ellas dentro de un
@@ -2665,7 +2666,7 @@ Y correr la carpeta HU31 completa, que es la prueba de regresión de esta tarea 
 que cada bloque da sus 3 `tr` y que `unreadable` queda vacío, así que el parser nuevo lo lee entero):
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU31_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU31_jeff
 ```
 
 Esperado: `0 fail`. `parsers.info.test.ts` aporta `5 pass`. Si algún `service.*.test.ts` falla, NO es por
@@ -2676,7 +2677,7 @@ esta tarea: `info.data.careerName` no cambió y es lo único que el service cons
 - [ ] **Paso 6: Build**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: `$ tsc` sin ningún error y exit 0. Si `tsc` reclama que `normalizeLabel` no existe en
@@ -2702,7 +2703,7 @@ por esto:
 Comprobar que la viñeta quedó bien y que las dos rutas existen:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -n "parseInfoAcademica" specs/features/portal-sync/portal-sync.spec.md && ls test/HU31_jeff/parsers.info.test.ts test/HU34_jeff/info-academica-parser.test.ts
+cd . && grep -n "parseInfoAcademica" specs/features/portal-sync/portal-sync.spec.md && ls test/HU31_jeff/parsers.info.test.ts test/HU34_jeff/info-academica-parser.test.ts
 ```
 
 Esperado: una sola línea con `parseInfoAcademica` (la nueva, sin `lastPeriodLevel`) y las dos rutas
@@ -2712,7 +2713,7 @@ lo toca la Tarea 6, y la viñeta de `parseRecordAcademico` (línea 227) no es de
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git add src/modules/portal-sync/parsers/info-academica.ts src/modules/portal-sync/portal-sync.types.ts test/HU34_jeff/fixtures/layout.html test/HU34_jeff/info-academica-parser.test.ts test/HU31_jeff/parsers.info.test.ts specs/features/portal-sync/portal-sync.spec.md && git commit -m "feat(academic-record): información académica general y por período (RS-BE-24)"
+cd . && git add src/modules/portal-sync/parsers/info-academica.ts src/modules/portal-sync/portal-sync.types.ts test/HU34_jeff/fixtures/layout.html test/HU34_jeff/info-academica-parser.test.ts test/HU31_jeff/parsers.info.test.ts specs/features/portal-sync/portal-sync.spec.md && git commit -m "feat(academic-record): información académica general y por período (RS-BE-24)"
 ```
 
 Sin trailer Co-Authored-By y sin push.
@@ -2726,7 +2727,7 @@ Sin trailer Co-Authored-By y sin push.
 - Modificar: `specs/features/academic-record/academic-record.spec.md:310-313` (se agrega el `[@test]` de la migración bajo "Modelo de datos", antes de `## Contrato`)
 - Test: `test/HU34_jeff/migration-0011.test.ts`
 
-Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`.
+Todos los comandos se corren desde la raíz del worktree `.`.
 Bun no está en el PATH. El prefijo `DATABASE_URL=…` es obligatorio porque el `.env` del worktree
 apunta a PRODUCCIÓN. No abras ni imprimas `.env`.
 
@@ -3151,7 +3152,7 @@ describe("schema.ts · student_period_summary", () => {
 - [ ] **Paso 2: Correr la prueba y ver que falla**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/migration-0011.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/migration-0011.test.ts
 ```
 
 Esperado: FAIL al cargar el archivo, antes de correr ninguna prueba. El resumen es
@@ -3160,7 +3161,7 @@ Esperado: FAIL al cargar el archivo, antes de correr ninguna prueba. El resumen 
 ```
 # Unhandled error between tests
 -------------------------------
-SyntaxError: Export named 'studentAcademicSnapshot' not found in module '/Users/jjjangelosss/ULIMA++/.worktrees/readme-be/src/db/schema/schema.ts'.
+SyntaxError: Export named 'studentAcademicSnapshot' not found in module './src/db/schema/schema.ts'.
 -------------------------------
 ```
 
@@ -3411,7 +3412,7 @@ propósito, igual que la 0010 (el journal tiene 9 entradas y termina en `0009_av
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/migration-0011.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/migration-0011.test.ts
 ```
 
 Esperado: PASS, `21 pass`, `0 fail`, `64 expect() calls`, `Ran 21 tests across 1 file`.
@@ -3419,7 +3420,7 @@ Esperado: PASS, `21 pass`, `0 fail`, `64 expect() calls`, `Ran 21 tests across 1
 - [ ] **Paso 5: Build**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: `$ tsc` sin ninguna salida y exit 0. `tsconfig.json` tiene `include: ["src/**/*"]` y
@@ -3456,14 +3457,14 @@ Con esto, la Tarea 10 ya no tiene que agregarlo. Los targets `../../../drizzle/0
 - [ ] **Paso 7: Regresión**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff
 ```
 
 Esperado: PASS también en las pruebas de las Tareas 1, 2 y 3 (`record-parser.test.ts`,
 `record-trust.test.ts`, `info-academica-parser.test.ts`), `0 fail`.
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU31_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU31_jeff
 ```
 
 Esperado: `0 fail`. `schema.ts` lo reexporta `src/db/schema/index.ts` y lo carga `src/db/index.ts`, que
@@ -3476,7 +3477,7 @@ Tarea 1.
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git add src/db/schema/schema.ts drizzle/0011_academic_record.sql test/HU34_jeff/migration-0011.test.ts specs/features/academic-record/academic-record.spec.md && git commit -m "feat(academic-record): tablas del récord y migración 0011 (RS-BE-22, RS-BE-25)"
+cd . && git add src/db/schema/schema.ts drizzle/0011_academic_record.sql test/HU34_jeff/migration-0011.test.ts specs/features/academic-record/academic-record.spec.md && git commit -m "feat(academic-record): tablas del récord y migración 0011 (RS-BE-22, RS-BE-25)"
 ```
 
 Sin trailer Co-Authored-By y sin push. La migración **no se aplica** en esta tarea: aplicarla, con respaldo
@@ -3497,7 +3498,7 @@ que está después de la antigua línea 237 conserva su número: `export class P
 cierre de `createStudentAccount` en la 1189 y la llave de la clase en la 1190. Solo corren una línea
 `export type Tx` (`:7` → `:8`) e `intArray` (`:31-32` → `:32-33`).
 
-Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`.
+Todos los comandos se corren desde la raíz del worktree `.`.
 Bun no está en el PATH. El prefijo `DATABASE_URL=…` es **obligatorio** en cada comando: bun carga solo el
 `.env` del worktree, que apunta a la base de PRODUCCIÓN, y `test/env.setup.ts` solo rellena con
 `process.env.DATABASE_URL ||= …` (línea 6), así que sin el prefijo gana el valor real del `.env`. No abras
@@ -4017,7 +4018,7 @@ typechequea, ejecuta.
 - [ ] **Paso 2: Correr la prueba y ver que falla**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/record-persistence.test.ts test/HU34_jeff/electives-cleanup.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/record-persistence.test.ts test/HU34_jeff/electives-cleanup.test.ts
 ```
 
 Esperado: FAIL, `0 pass`, `24 fail` (19 de `record-persistence.test.ts` y 5 de
@@ -4295,7 +4296,7 @@ por esto:
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/record-persistence.test.ts test/HU34_jeff/electives-cleanup.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/record-persistence.test.ts test/HU34_jeff/electives-cleanup.test.ts
 ```
 
 Esperado: PASS, `24 pass`, `0 fail`, `Ran 24 tests across 2 files`.
@@ -4303,7 +4304,7 @@ Esperado: PASS, `24 pass`, `0 fail`, `Ran 24 tests across 2 files`.
 - [ ] **Paso 5: Build**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: `$ tsc` sin ninguna salida y exit 0. `tsconfig.json` solo incluye `src/**/*`, así que lo único
@@ -4315,7 +4316,7 @@ Los fallos típicos serían `AcademicGeneral` o `AcademicPeriodBlock` sin existi
 - [ ] **Paso 6: Regresión**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU31_jeff test/HU33_jeff test/HU34_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU31_jeff test/HU33_jeff test/HU34_jeff
 ```
 
 Esperado: `0 fail`. Esta tarea solo **agrega** métodos a `PortalSyncRepository` y no cambia ninguno de
@@ -4330,7 +4331,7 @@ anotada en el Paso 0 de la Tarea 1.
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git add src/modules/portal-sync/portal-sync.repository.ts test/HU34_jeff/record-persistence.test.ts test/HU34_jeff/electives-cleanup.test.ts && git commit -m "feat(academic-record): escritura del récord en la base desde la importación (RS-BE-22, RS-BE-23, RS-BE-25)
+cd . && git add src/modules/portal-sync/portal-sync.repository.ts test/HU34_jeff/record-persistence.test.ts test/HU34_jeff/electives-cleanup.test.ts && git commit -m "feat(academic-record): escritura del récord en la base desde la importación (RS-BE-22, RS-BE-23, RS-BE-25)
 
 El repositorio suma cinco métodos transaccionales: el candado por alumno con pg_advisory_xact_lock, el reemplazo entero de la copia del récord (deduplicada por ciclo, curso y vez), el upsert de la foto acumulada, el reemplazo del resumen por ciclo y el borrado de los electivos aprobados que el récord no respalda. Las filas viajan como un solo parámetro JSON y los ids del respaldo con intArray; con el respaldo vacío no se consulta nada. Nadie los llama todavía: eso son las Tareas 6 y 7."
 ```
@@ -4358,7 +4359,7 @@ Las de `portal-sync.spec.md`, en cambio, **sí se corren**: la Tarea 3 reemplaza
 
 `specs/features/academic-record/academic-record.spec.md` **no se toca**: ya trae los `[@test]` de `consent-gate.test.ts` (línea 296) y de `record-persistence.test.ts` (líneas 152 y 242), y `portal-sync.controller.ts` entró a sus `targets` en la Tarea 1.
 
-Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`: las pruebas abren los fixtures con rutas relativas al cwd. Bun no está en el PATH. El prefijo `DATABASE_URL=…` es obligatorio porque el `.env` del worktree apunta a PRODUCCIÓN y bun lo carga solo. No abras ni imprimas `.env`.
+Todos los comandos se corren desde la raíz del worktree `.`: las pruebas abren los fixtures con rutas relativas al cwd. Bun no está en el PATH. El prefijo `DATABASE_URL=…` es obligatorio porque el `.env` del worktree apunta a PRODUCCIÓN y bun lo carga solo. No abras ni imprimas `.env`.
 
 **Interfaces:**
 
@@ -5146,7 +5147,7 @@ Notas para el ejecutor sobre estas dos pruebas:
 Primero las precondiciones (Tareas 1, 2, 3 y 5 commiteadas). `grep -c` sale con código 1 cuando no encuentra nada, así que la cadena se corta en el primer faltante y el número que imprimió antes dice hasta dónde llegó:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -c "export const parseRecordPage" src/modules/portal-sync/parsers/record.ts && grep -c "export const evaluateRecordTrust" src/modules/academic-record/academic-record.logic.ts && grep -c "export const EMPTY_GENERAL" src/modules/portal-sync/parsers/info-academica.ts && grep -c "lockAcademicRecord" src/modules/portal-sync/portal-sync.repository.ts && ls test/HU34_jeff/fixtures/record.html test/HU34_jeff/fixtures/layout.html test/HU34_jeff/record-persistence.test.ts
+cd . && grep -c "export const parseRecordPage" src/modules/portal-sync/parsers/record.ts && grep -c "export const evaluateRecordTrust" src/modules/academic-record/academic-record.logic.ts && grep -c "export const EMPTY_GENERAL" src/modules/portal-sync/parsers/info-academica.ts && grep -c "lockAcademicRecord" src/modules/portal-sync/portal-sync.repository.ts && ls test/HU34_jeff/fixtures/record.html test/HU34_jeff/fixtures/layout.html test/HU34_jeff/record-persistence.test.ts
 ```
 
 Esperado: `1`, `1`, `1`, un número ≥ 1, y los tres archivos listados. Si algo sale `0` o falta, PARAR y completar la tarea correspondiente (1, 2, 3 o 5) antes de seguir.
@@ -5154,7 +5155,7 @@ Esperado: `1`, `1`, `1`, un número ≥ 1, y los tres archivos listados. Si algo
 Después, las dos pruebas:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts
 ```
 
 Esperado: FAIL. `consent-gate.test.ts` tiene 20 pruebas y da **7 fallos** de aserción (los otros 13 pasan: son los que fijan que sin consentimiento nada cambia, y hoy nada cambia nunca):
@@ -5466,7 +5467,7 @@ por esto:
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts
 ```
 
 Esperado: PASS, `0 fail`. `consent-gate.test.ts` aporta `20 pass`; `record-persistence.test.ts` aporta los de la Tarea 5 más `6 pass` nuevos. En la salida aparecen dos líneas `[portal-sync] información académica incompleta: …` de las pruebas de layout alterado de `record-persistence.test.ts`: es el ruido esperado que se anunció en el Paso 1, no un fallo.
@@ -5474,7 +5475,7 @@ Esperado: PASS, `0 fail`. `consent-gate.test.ts` aporta `20 pass`; `record-persi
 Y la carpeta HU34 completa, que a esta altura ya tiene las pruebas de las Tareas 1 a 5:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff
 ```
 
 Esperado: `0 fail`.
@@ -5484,7 +5485,7 @@ Esperado: `0 fail`.
 Los dobles de repositorio de `test/HU31_jeff` y `test/HU33_jeff` **no tienen** los métodos nuevos (comprobado: `service.import.test.ts:30-76` y `service.registro-import.test.ts:66-111`). Si el camino sin `consent` llamara a alguno, esas pruebas reventarían con `… is not a function`: correrlas completas **es** la prueba de que el gate cierra.
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU31_jeff test/HU33_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU31_jeff test/HU33_jeff
 ```
 
 Esperado: `0 fail`.
@@ -5498,7 +5499,7 @@ Ninguna prueba de esas dos carpetas espía `console` (comprobado con `grep -rn "
 - [ ] **Paso 6: Build**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: `$ tsc` sin ningún error y exit 0. Dos fallos previsibles y qué significan:
@@ -5651,7 +5652,7 @@ por esto:
 **8.i — comprobación de los ocho cambios de documentación.** Al final del paso, con 8.a a 8.h ya aplicados:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -n "consent" specs/features/portal-sync/portal-sync.spec.md docs/specs/api-contracts.md && grep -c "^| 2 |\|^| 5 |\|^| 6 |\|^| 7 |\|^| 10 |" specs/features/portal-sync/portal-sync.spec.md
+cd . && grep -n "consent" specs/features/portal-sync/portal-sync.spec.md docs/specs/api-contracts.md && grep -c "^| 2 |\|^| 5 |\|^| 6 |\|^| 7 |\|^| 10 |" specs/features/portal-sync/portal-sync.spec.md
 ```
 
 Esperado, en `portal-sync.spec.md`, **seis** líneas: las **cinco nuevas** (§API Contract Draft; el párrafo nuevo de §Login con credenciales; el inventario de §Privacidad; la fila #2 de la tabla nueva de §Decisiones; §DTO validation) y **una que ya estaba** — la de "consentimiento informado" de §Privacidad (línea 392 de hoy): `grep` la trae porque "consentimiento" contiene "consent". En `docs/specs/api-contracts.md`, **dos** líneas (el body y la viñeta de `consent`). Y `5` filas de decisión (#2, #5, #6, #7 y #10, cada una una sola vez): si sale 4, una fila se borró de más; si sale 6, una quedó duplicada.
@@ -5659,7 +5660,7 @@ Esperado, en `portal-sync.spec.md`, **seis** líneas: las **cinco nuevas** (§AP
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git add src/modules/portal-sync/portal-sync.schemas.ts src/modules/portal-sync/portal-sync.controller.ts src/modules/portal-sync/portal-sync.service.ts test/HU34_jeff/fixtures/matricula.html test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts specs/features/portal-sync/portal-sync.spec.md docs/specs/api-contracts.md && git commit -m "feat(academic-record): guarda el récord solo con consentimiento y récord de confianza (RS-BE-21, RS-BE-22, RS-BE-25, RS-BE-29)"
+cd . && git add src/modules/portal-sync/portal-sync.schemas.ts src/modules/portal-sync/portal-sync.controller.ts src/modules/portal-sync/portal-sync.service.ts test/HU34_jeff/fixtures/matricula.html test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts specs/features/portal-sync/portal-sync.spec.md docs/specs/api-contracts.md && git commit -m "feat(academic-record): guarda el récord solo con consentimiento y récord de confianza (RS-BE-21, RS-BE-22, RS-BE-25, RS-BE-29)"
 ```
 
 Sin trailer `Co-Authored-By`, sin `push` y sin abrir PR.
@@ -5679,7 +5680,7 @@ Sin trailer `Co-Authored-By`, sin `push` y sin abrir PR.
 
 `specs/features/academic-record/academic-record.spec.md` **no se toca**: ya lista `../../../src/modules/academic-record/**`, `../../../src/modules/portal-sync/portal-sync.service.ts` y `portal-sync.types.ts` en sus `targets` (líneas 5, 8 y 11) y ya enlaza `[@test] ../../../test/HU34_jeff/electives-cleanup.test.ts` bajo RS-BE-23 (línea 198).
 
-Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`. Bun no está en el PATH y el prefijo `DATABASE_URL=…` es **obligatorio** en cada comando: bun carga solo el `.env` del worktree, que apunta a la base de PRODUCCIÓN. No abras ni imprimas `.env`. Ninguna prueba de esta tarea abre una conexión (el `tx` es `{}` y `postgres()` no conecta hasta la primera consulta), pero importar el service carga `src/db/index.ts` → `src/config/env.ts`, que exige que `DATABASE_URL` sea una URL válida.
+Todos los comandos se corren desde la raíz del worktree `.`. Bun no está en el PATH y el prefijo `DATABASE_URL=…` es **obligatorio** en cada comando: bun carga solo el `.env` del worktree, que apunta a la base de PRODUCCIÓN. No abras ni imprimas `.env`. Ninguna prueba de esta tarea abre una conexión (el `tx` es `{}` y `postgres()` no conecta hasta la primera consulta), pero importar el service carga `src/db/index.ts` → `src/config/env.ts`, que exige que `DATABASE_URL` sea una URL válida.
 
 **Interfaces:**
 
@@ -6182,7 +6183,7 @@ Son las seis pruebas del Bloque B de la Tarea 6, todas con `consent: true`: sin 
 Primero, la precondición (Tareas 1, 2, 3, 5 y 6 commiteadas). Sin esto el fallo del Paso 2 es el mismo aunque falte una tarea anterior, porque el import que no resuelve es siempre el primero. Los comandos van separados por `;` y no por `&&` a propósito: `grep -c` devuelve exit 1 cuando cuenta 0 y cortaría la cadena antes de mostrar los demás.
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -c "guardarRecord" src/modules/portal-sync/portal-sync.service.ts; grep -c "deleteUnbackedElectives" src/modules/portal-sync/portal-sync.repository.ts; grep -c "export const approvedRows" src/modules/academic-record/academic-record.logic.ts; ls test/HU34_jeff/fixtures/record.html test/HU34_jeff/fixtures/layout.html test/HU34_jeff/fixtures/matricula.html
+cd . && grep -c "guardarRecord" src/modules/portal-sync/portal-sync.service.ts; grep -c "deleteUnbackedElectives" src/modules/portal-sync/portal-sync.repository.ts; grep -c "export const approvedRows" src/modules/academic-record/academic-record.logic.ts; ls test/HU34_jeff/fixtures/record.html test/HU34_jeff/fixtures/layout.html test/HU34_jeff/fixtures/matricula.html
 ```
 
 Esperado: tres números ≥ 1 y las tres rutas. Si alguno sale `0` o aparece `No such file or directory`, falta una tarea anterior: PARAR y completarla.
@@ -6190,12 +6191,12 @@ Esperado: tres números ≥ 1 y las tres rutas. Si alguno sale `0` o aparece `No
 Después, la prueba:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/electives-cleanup.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/electives-cleanup.test.ts
 ```
 
 Esperado: FAIL. El archivo entero no llega a cargarse, porque el import nombra un export que todavía no existe:
 
-`SyntaxError: Export named 'cleanupBlockers' not found in module '/Users/jjjangelosss/ULIMA++/.worktrees/readme-be/src/modules/academic-record/academic-record.logic.ts'.`
+`SyntaxError: Export named 'cleanupBlockers' not found in module './src/modules/academic-record/academic-record.logic.ts'.`
 
 Ninguna prueba corre (`0 pass`), tampoco las 5 de la Tarea 5 que ya estaban verdes en este archivo.
 
@@ -6304,7 +6305,7 @@ por esto:
 *(i) El import de la lógica.* Ubícalo primero:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -n "academic-record.logic.js" src/modules/portal-sync/portal-sync.service.ts
+cd . && grep -n "academic-record.logic.js" src/modules/portal-sync/portal-sync.service.ts
 ```
 
 La Tarea 6 dejó ahí esta línea:
@@ -6428,7 +6429,7 @@ por este:
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/electives-cleanup.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/electives-cleanup.test.ts
 ```
 
 Esperado: PASS, `24 pass`, `0 fail` (las 5 de la Tarea 5 más las 19 de esta: 12 de la limpieza en la importación, 5 de `cleanupBlockers` y 2 de `progressRemovedMessage`).
@@ -6436,7 +6437,7 @@ Esperado: PASS, `24 pass`, `0 fail` (las 5 de la Tarea 5 más las 19 de esta: 12
 Y, en la misma corrida, las dos suites de la Tarea 6 que ahora pasan por la limpieza (es lo que comprueba que los pasos 1d y 1e quedaron bien):
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts
 ```
 
 Esperado: `0 fail`, con `20 pass` en `consent-gate.test.ts` y `25 pass` en `record-persistence.test.ts`. Si sale `TypeError: this.repository.deleteUnbackedElectives is not a function`, falta el paso 1d o el 1e.
@@ -6446,7 +6447,7 @@ Esperado: `0 fail`, con `20 pass` en `consent-gate.test.ts` y `25 pass` en `reco
 - [ ] **Paso 5: Build**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: `$ tsc` sin ninguna salida y exit 0.
@@ -6460,7 +6461,7 @@ Los cuatro `emptySummary(): ImportSummary` de `test/HU33_jeff/registro.endpoint.
 - [ ] **Paso 6: Regresión de las suites que tocan la importación**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU31_jeff test/HU33_jeff test/HU34_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU31_jeff test/HU33_jeff test/HU34_jeff
 ```
 
 Esperado: `0 fail`. Los dobles de `test/HU31_jeff` y `test/HU33_jeff` no tienen `deleteUnbackedElectives` (y `service.import.test.ts` tampoco tiene `findEquivalentCurriculumCourseIds`), así que verlas verdes es la prueba de que la limpieza no se ejecuta sin `consent: true` y récord de confianza. Si aparece `this.repository.deleteUnbackedElectives is not a function` en alguna de esas dos carpetas, la guarda `if (guardarRecord)` quedó mal puesta; si aparece en `test/HU34_jeff`, falta el paso 1d o el 1e (ahí sí corresponde que la limpieza se ejecute, con el doble inerte que devuelve 0).
@@ -6540,7 +6541,7 @@ por:
 Comprobar:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -n "parseRecordPage\|parseRecordAcademico" specs/features/portal-sync/portal-sync.spec.md && ls test/HU31_jeff/parsers.record.test.ts test/HU34_jeff/record-parser.test.ts
+cd . && grep -n "parseRecordPage\|parseRecordAcademico" specs/features/portal-sync/portal-sync.spec.md && ls test/HU31_jeff/parsers.record.test.ts test/HU34_jeff/record-parser.test.ts
 ```
 
 Esperado: una sola línea de viñeta (la nueva, con `parseRecordPage` y `gradeRaw`) y las dos rutas listadas.
@@ -6550,7 +6551,7 @@ Esperado: una sola línea de viñeta (la nueva, con `parseRecordPage` y `gradeRa
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git add src/modules/academic-record/academic-record.logic.ts src/modules/portal-sync/portal-sync.types.ts src/modules/portal-sync/portal-sync.service.ts test/HU34_jeff/electives-cleanup.test.ts test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts docs/specs/api-contracts.md specs/features/portal-sync/portal-sync.spec.md && git commit -m "feat(academic-record): limpieza de electivos no respaldados (RS-BE-23)"
+cd . && git add src/modules/academic-record/academic-record.logic.ts src/modules/portal-sync/portal-sync.types.ts src/modules/portal-sync/portal-sync.service.ts test/HU34_jeff/electives-cleanup.test.ts test/HU34_jeff/consent-gate.test.ts test/HU34_jeff/record-persistence.test.ts docs/specs/api-contracts.md specs/features/portal-sync/portal-sync.spec.md && git commit -m "feat(academic-record): limpieza de electivos no respaldados (RS-BE-23)"
 ```
 
 Sin trailer `Co-Authored-By` y sin push: abrir PR o subir la rama lo decide el dueño.
@@ -6882,7 +6883,7 @@ describe("el cuerpo validado del registro llega hasta la importacion (RS-BE-29)"
 - [ ] **Paso 2: Correr la prueba y ver que falla**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/consent-gate.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/consent-gate.test.ts
 ```
 
 Esperado: FAIL, `24 pass, 6 fail` sobre 30 pruebas (las 20 que el archivo ya tenía siguen verdes; de las 10 nuevas fallan 6). Los fallos concretos:
@@ -7065,7 +7066,7 @@ por:
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/consent-gate.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/consent-gate.test.ts
 ```
 
 Esperado: PASS, `30 pass`, `0 fail`.
@@ -7073,7 +7074,7 @@ Esperado: PASS, `30 pass`, `0 fail`.
 - [ ] **Paso 5: Compilar**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: PASS — `tsc` termina sin imprimir nada y con código de salida 0. (`tsconfig.json` tiene `"include": ["src/**/*"]`, así que el build valida las tres ediciones de `auth/` pero no el test; el test lo transpila `bun` sin chequeo de tipos.) La comprobación que importa acá es que `portal-sync/index.ts:20` (`authService.setRegistrar(portalSyncService)`) sigue compilando: `PortalSyncService.importFromPortal`, con el `consent?: boolean` que le puso la Tarea 6, satisface el tipo `Registrar` recién ampliado.
@@ -7081,7 +7082,7 @@ Esperado: PASS — `tsc` termina sin imprimir nada y con código de salida 0. (`
 - [ ] **Paso 6: Regresión de HU33 (el registro completo) y de HU31**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU33_jeff test/HU31_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU33_jeff test/HU31_jeff
 ```
 
 Esperado: PASS, `0 fail`. Es la prueba de que el registro sin `consent` sigue comportándose como hoy:
@@ -7121,7 +7122,7 @@ por:
 **7.b — `docs/specs/api-contracts.md`.** Reemplazar la línea 60. Ninguna tarea previa la mueve —la Tarea 6 toca la línea ~608 y la Tarea 7 las ~614-619, las dos por debajo—, pero conviene confirmar el número antes de editar:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -n 'Request: `{ "code": "string", "portalPassword"' docs/specs/api-contracts.md
+cd . && grep -n 'Request: `{ "code": "string", "portalPassword"' docs/specs/api-contracts.md
 ```
 
 Reemplazar:
@@ -7139,7 +7140,7 @@ por:
 Comprobación de los dos documentos:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -c "consent" specs/features/registro/registro.spec.md && grep -n '"consent"' docs/specs/api-contracts.md
+cd . && grep -c "consent" specs/features/registro/registro.spec.md && grep -n '"consent"' docs/specs/api-contracts.md
 ```
 
 Esperado: `3` en `registro.spec.md` —tres líneas: el `"consent": true` del JSON, la viñeta nueva y su `[@test]`, cuyo nombre de archivo contiene la palabra— y, en `api-contracts.md`, la línea 60 recién editada más la del body de `POST /portal-sync/import` que dejó la Tarea 6 (l. ~608).
@@ -7147,7 +7148,7 @@ Esperado: `3` en `registro.spec.md` —tres líneas: el `"consent": true` del JS
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git add src/modules/auth/auth.schemas.ts src/modules/auth/auth.controller.ts src/modules/auth/auth.service.ts test/HU34_jeff/consent-gate.test.ts specs/features/registro/registro.spec.md docs/specs/api-contracts.md && git commit -m "feat(academic-record): el registro traslada el consentimiento a la importación (RS-BE-29)"
+cd . && git add src/modules/auth/auth.schemas.ts src/modules/auth/auth.controller.ts src/modules/auth/auth.service.ts test/HU34_jeff/consent-gate.test.ts specs/features/registro/registro.spec.md docs/specs/api-contracts.md && git commit -m "feat(academic-record): el registro traslada el consentimiento a la importación (RS-BE-29)"
 ```
 
 ### Tarea 9: Módulo `academic-record` — lectura, borrado y aislamiento del chatbot (RS-BE-26, RS-BE-27, RS-BE-28, Contrato)
@@ -7182,7 +7183,7 @@ nuevos y `../../../src/modules/index.ts` (línea 14) para el registro de la ruta
 —le faltan `official-grades`, `chat`, `chatbot`, `attendance-risk`, `networking` y `avatar`— y el archivo no
 está en los targets de la spec. Arreglar esa lista es otra tarea.
 
-Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`.
+Todos los comandos se corren desde la raíz del worktree `.`.
 
 **Interfaces:**
 
@@ -7699,7 +7700,7 @@ van separados con `;` a propósito: con `&&` un `grep -c` que devuelve 0 corta l
 correr.
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && ls src/modules/academic-record/; grep -c "export const evaluateRecordTrust" src/modules/academic-record/academic-record.logic.ts; grep -c "export const progressRemovedMessage" src/modules/academic-record/academic-record.logic.ts; grep -c "studentAcademicSnapshot" src/db/schema/schema.ts; grep -n "^import" src/modules/academic-record/academic-record.logic.ts
+cd . && ls src/modules/academic-record/; grep -c "export const evaluateRecordTrust" src/modules/academic-record/academic-record.logic.ts; grep -c "export const progressRemovedMessage" src/modules/academic-record/academic-record.logic.ts; grep -c "studentAcademicSnapshot" src/db/schema/schema.ts; grep -n "^import" src/modules/academic-record/academic-record.logic.ts
 ```
 
 Esperado: el listado contiene **solo** `academic-record.logic.ts`; los dos primeros `grep -c` dan `1`; el del
@@ -7710,14 +7711,14 @@ nuevo.
 Después, la prueba:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/academic-record.routes.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/academic-record.routes.test.ts
 ```
 
 Esperado: FAIL al cargar el archivo, con
 
 ```
 # Unhandled error between tests
-error: Cannot find module '../../src/modules/academic-record/academic-record.controller.js' from '/Users/jjjangelosss/ULIMA++/.worktrees/readme-be/test/HU34_jeff/academic-record.routes.test.ts'
+error: Cannot find module '../../src/modules/academic-record/academic-record.controller.js' from './test/HU34_jeff/academic-record.routes.test.ts'
 ```
 
 y el resumen `0 pass`, `1 fail`, `1 error`. Ninguna prueba llega a correr.
@@ -7846,7 +7847,7 @@ import type {
 Comprobación después de escribirlo:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -n "^import\|^}" src/modules/academic-record/academic-record.logic.ts | head -20
+cd . && grep -n "^import\|^}" src/modules/academic-record/academic-record.logic.ts | head -20
 ```
 
 Esperado: los imports quedan todos juntos al principio, sin ninguna línea de código entre ellos.
@@ -8217,7 +8218,7 @@ por esto:
 - [ ] **Paso 4: Correr la prueba y ver que pasa**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/academic-record.routes.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/academic-record.routes.test.ts
 ```
 
 Esperado: PASS, `16 pass`, `0 fail`, `55 expect() calls`.
@@ -8274,7 +8275,7 @@ describe("RS-BE-28: el chatbot no ve el record", () => {
 Correrlo:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/chatbot-isolation.test.ts
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/chatbot-isolation.test.ts
 ```
 
 Esperado: PASS, `4 pass`, `0 fail`.
@@ -8284,7 +8285,7 @@ archivo, confirmar que no tiene cambios sin commitear —el `git checkout --` de
 árbol trabaja más de una sesión:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git status --short src/modules/chatbot/chatbot.repository.ts
+cd . && git status --short src/modules/chatbot/chatbot.repository.ts
 ```
 
 Esperado: **no imprime nada**. Si imprime algo, PARAR: no ensuciar el archivo ni correr el `git checkout`;
@@ -8293,7 +8294,7 @@ avisar al dueño y dar el guardia por verificado solo con el `4 pass`.
 Con el archivo limpio, ensuciarlo a propósito, correr y revertir (el `git checkout` no es opcional):
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && printf '\n// prueba del guardia: student_record_entry\n' >> src/modules/chatbot/chatbot.repository.ts && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/chatbot-isolation.test.ts; git checkout -- src/modules/chatbot/chatbot.repository.ts && git status --short src/modules/chatbot/
+cd . && printf '\n// prueba del guardia: student_record_entry\n' >> src/modules/chatbot/chatbot.repository.ts && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/chatbot-isolation.test.ts; git checkout -- src/modules/chatbot/chatbot.repository.ts && git status --short src/modules/chatbot/
 ```
 
 Esperado: `3 pass`, `1 fail` en
@@ -8305,7 +8306,7 @@ imprime nada. Volver a correr el comando anterior y confirmar `4 pass`.
 - [ ] **Paso 6: Build**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: `$ tsc` sin ningún error y exit 0. `tsc` compila solo `src/`, así que este paso valida los siete
@@ -8315,7 +8316,7 @@ middleware del header, revisar que use `c` y `next` (los usa: `c.header(...)` y 
 - [ ] **Paso 7: Regresión de la carpeta HU34**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff
 ```
 
 Esperado: `0 fail`, con los archivos de las Tareas 1 a 8 en verde además de los dos nuevos. Esta tarea no
@@ -8329,7 +8330,7 @@ Tarea 10.
 **8.1. `docs/specs/api-contracts.md`.** La sección nueva se **anexa al final del archivo, sin reemplazar ninguna línea existente**. Ojo: la última línea ya **no** es la de sílabos —la Tarea 7, que corre antes, agregó debajo la viñeta de la limpieza de electivos—, así que un reemplazo anclado en la de sílabos metería la sección nueva en medio de la sección de Portal Sync y dejaría la viñeta de la limpieza colgando del encabezado equivocado. Confirmar primero dónde termina el archivo:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && tail -n 1 docs/specs/api-contracts.md; grep -c "Limpieza de electivos (RS-BE-23)" docs/specs/api-contracts.md
+cd . && tail -n 1 docs/specs/api-contracts.md; grep -c "Limpieza de electivos (RS-BE-23)" docs/specs/api-contracts.md
 ```
 
 Esperado: la última línea es la viñeta que dejó la Tarea 7 (`  - **Limpieza de electivos (RS-BE-23)**: …`) y el `grep -c` da `1`. Si da `0`, falta la Tarea 7: PARAR y completarla.
@@ -8428,7 +8429,7 @@ misma convención de poner los `RS-BE-xx` en *User Stories*.)
 - [ ] **Paso final: Commit**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git status --short && git add src/modules/academic-record/academic-record.types.ts src/modules/academic-record/academic-record.logic.ts src/modules/academic-record/academic-record.repository.ts src/modules/academic-record/academic-record.service.ts src/modules/academic-record/academic-record.controller.ts src/modules/academic-record/academic-record.routes.ts src/modules/academic-record/index.ts src/modules/index.ts test/HU34_jeff/academic-record.routes.test.ts test/HU34_jeff/chatbot-isolation.test.ts docs/specs/api-contracts.md docs/specs/feature-index.md && git commit -m "feat(academic-record): lectura y borrado del récord, fuera del alcance del chatbot (RS-BE-26, RS-BE-27, RS-BE-28)"
+cd . && git status --short && git add src/modules/academic-record/academic-record.types.ts src/modules/academic-record/academic-record.logic.ts src/modules/academic-record/academic-record.repository.ts src/modules/academic-record/academic-record.service.ts src/modules/academic-record/academic-record.controller.ts src/modules/academic-record/academic-record.routes.ts src/modules/academic-record/index.ts src/modules/index.ts test/HU34_jeff/academic-record.routes.test.ts test/HU34_jeff/chatbot-isolation.test.ts docs/specs/api-contracts.md docs/specs/feature-index.md && git commit -m "feat(academic-record): lectura y borrado del récord, fuera del alcance del chatbot (RS-BE-26, RS-BE-27, RS-BE-28)"
 ```
 
 Sin trailer Co-Authored-By y sin push. En el `git status --short` de adelante, `src/modules/chatbot/chatbot.repository.ts`
@@ -8480,12 +8481,12 @@ Por qué el PARAR no es una formalidad: toda la importación corre dentro de una
   - Commit base de la rama: `d97714f docs(academic-record): spec del récord académico (RS-BE-19 a RS-BE-29)`, de `Jeffangeloss <178797184+jeffangeloss@users.noreply.github.com>`.
 - Produce: **nada**. No hay tarea posterior, ninguna firma nueva, ningún archivo nuevo. El entregable es el informe del Paso 8 y la rama lista para que el dueño decida.
 
-Todos los comandos se corren desde la raíz del worktree `/Users/jjjangelosss/ULIMA++/.worktrees/readme-be`. Bun no está en el PATH: se invoca por ruta completa. **No abras, no imprimas y no copies `.env`.**
+Todos los comandos se corren desde la raíz del worktree `.`. Bun no está en el PATH: se invoca por ruta completa. **No abras, no imprimas y no copies `.env`.**
 
 - [ ] **Paso 1: Correr la suite completa y compararla con la línea base**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test 2>&1 | tee /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/suite-final.txt | tail -12
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test 2>&1 | tee $TMP/suite-final.txt | tail -12
 ```
 
 Es el **mismo comando** del Paso 0 de la Tarea 1, más un `tee` que guarda la salida completa en el scratchpad (no en el repo) para poder citarla en el informe del Paso 8.
@@ -8499,7 +8500,7 @@ Esperado: PASS.
 Y el desglose de la carpeta nueva:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff 2>&1 | tail -5
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff 2>&1 | tail -5
 ```
 
 Esperado: `0 fail` y `Ran 202 tests across 9 files.`. Si el número de archivos no es 9, falta un archivo o alguna tarea quedó a medias: identifica cuál con `ls test/HU34_jeff` y vuelve a esa tarea. Si el total no es 202, compara archivo por archivo con la tabla de **Interfaces** y vuelve a la tarea que no cuadre.
@@ -8507,7 +8508,7 @@ Esperado: `0 fail` y `Ran 202 tests across 9 files.`. Si el número de archivos 
 Y, por separado, las dos suites de la Tarea 9, que son las últimas en escribirse y las que más fácil quedan a medias:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/academic-record.routes.test.ts 2>&1 | tail -4 && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun test test/HU34_jeff/chatbot-isolation.test.ts 2>&1 | tail -4
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/academic-record.routes.test.ts 2>&1 | tail -4 && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN test test/HU34_jeff/chatbot-isolation.test.ts 2>&1 | tail -4
 ```
 
 Esperado: `0 fail` en los dos, con `16 pass` en el primero y `4 pass` en el segundo. Si alguna cifra no es la esperada, esa tarea no quedó como dice su Paso 4: vuelve a ella, **no** ajustes este número.
@@ -8526,7 +8527,7 @@ Si `fail > 0`: **no** "arregles" la suite editando la prueba que falla. Ubica a 
 - [ ] **Paso 2: Compilar**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && DATABASE_URL=postgres://user:pass@localhost:5432/test /private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/bunhome/node_modules/.bin/bun run build
+cd . && DATABASE_URL=postgres://user:pass@localhost:5432/test $BUN run build
 ```
 
 Esperado: PASS — imprime `$ tsc` y nada más, exit 0.
@@ -8543,7 +8544,7 @@ Dos cosas que este build valida y que ninguna prueba cubre, porque `bun test` tr
 Primero, que cada ruta enlazada exista (las rutas del `[@test]` son relativas a la carpeta de la spec, por eso el `cd` es a esa carpeta):
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be/specs/features/academic-record && grep -c "@test" academic-record.spec.md && grep -o '\[@test\] [^`]*' academic-record.spec.md | sed 's/\[@test\] //' | sort -u | while read -r p; do if [ -f "$p" ]; then echo "OK    $p"; else echo "FALTA $p"; fi; done
+cd ./specs/features/academic-record && grep -c "@test" academic-record.spec.md && grep -o '\[@test\] [^`]*' academic-record.spec.md | sed 's/\[@test\] //' | sort -u | while read -r p; do if [ -f "$p" ]; then echo "OK    $p"; else echo "FALTA $p"; fi; done
 ```
 
 Esperado: `12` y nueve líneas, todas `OK`. Las doce líneas con `[@test]` son las once que ya trae la spec aprobada (RS-BE-19 y RS-BE-20 apuntan las dos a `record-parser.test.ts`; RS-BE-22 y RS-BE-24 las dos a `record-persistence.test.ts`; RS-BE-26 y RS-BE-27 las dos a `academic-record.routes.test.ts`) más la de la migración que agrega la Tarea 4; por eso doce líneas y nueve archivos distintos:
@@ -8563,7 +8564,7 @@ OK    ../../../test/HU34_jeff/record-trust.test.ts
 Y al revés —que ninguna prueba nueva quedó sin enlazar, que es lo que pide `AGENTS.md:26` ("Si agregas tests, enlázalos en la spec con `[@test]`")—:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && for f in test/HU34_jeff/*.test.ts; do if grep -q "$(basename "$f")" specs/features/academic-record/academic-record.spec.md; then echo "OK         $f"; else echo "SIN ENLACE $f"; fi; done
+cd . && for f in test/HU34_jeff/*.test.ts; do if grep -q "$(basename "$f")" specs/features/academic-record/academic-record.spec.md; then echo "OK         $f"; else echo "SIN ENLACE $f"; fi; done
 ```
 
 Esperado: nueve líneas `OK`.
@@ -8599,7 +8600,7 @@ Dos comprobaciones distintas, y conviene no confundirlas. `AGENTS.md:24` dice "I
 **4.a — Cada target apunta a algo que existe:**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be/specs/features/academic-record && grep -c '^  - \.\./\.\./\.\./' academic-record.spec.md && sed -n '/^targets:/,/^---$/p' academic-record.spec.md | grep '^  - ' | sed 's/^  - //' | while read -r t; do b="${t%/\*\*}"; if [ -e "$b" ]; then echo "OK    $t"; else echo "FALTA $t"; fi; done
+cd ./specs/features/academic-record && grep -c '^  - \.\./\.\./\.\./' academic-record.spec.md && sed -n '/^targets:/,/^---$/p' academic-record.spec.md | grep '^  - ' | sed 's/^  - //' | while read -r t; do b="${t%/\*\*}"; if [ -e "$b" ]; then echo "OK    $t"; else echo "FALTA $t"; fi; done
 ```
 
 Esperado: `15` y quince líneas `OK`, en este orden (es el orden del front-matter después del Paso 3a de la Tarea 1):
@@ -8627,7 +8628,7 @@ OK    ../../../drizzle/0011_academic_record.sql
 **4.b — Y al revés: cada archivo de `src/` o `drizzle/` que la rama tocó está cubierto por un target.** Esto es lo que de verdad pide `AGENTS.md:24`, y el 4.a solo no lo comprueba:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git diff --name-only d97714f..HEAD | grep -E '^(src|drizzle)/' | while read -r f; do s=$(sed -n '/^targets:/,/^---$/p' specs/features/academic-record/academic-record.spec.md); if printf '%s\n' "$s" | grep -qxF "  - ../../../$f" || printf '%s\n' "$s" | grep -qxF "  - ../../../${f%/*}/**"; then echo "OK         $f"; else echo "SIN TARGET $f"; fi; done
+cd . && git diff --name-only d97714f..HEAD | grep -E '^(src|drizzle)/' | while read -r f; do s=$(sed -n '/^targets:/,/^---$/p' specs/features/academic-record/academic-record.spec.md); if printf '%s\n' "$s" | grep -qxF "  - ../../../$f" || printf '%s\n' "$s" | grep -qxF "  - ../../../${f%/*}/**"; then echo "OK         $f"; else echo "SIN TARGET $f"; fi; done
 ```
 
 Esperado: **21 líneas, todas `OK`**. Son los 21 archivos de implementación de los 39 de la rama: `src/db/schema/schema.ts` (1), los siete de `src/modules/academic-record/` (cubiertos por el target con `**`), los tres de `src/modules/auth/`, `src/modules/index.ts`, los ocho de `src/modules/portal-sync/` y `drizzle/0011_academic_record.sql`. Los otros 18 (2 de `docs/specs/`, 3 de `specs/features/`, 13 de `test/`) no llevan target por diseño.
@@ -8674,7 +8675,7 @@ Cuatro comprobaciones sobre **todo** lo que la rama agregó desde `d97714f`, má
 **5.a — Ningún código de alumno real.** El único permitido en toda la rama es el sintético `20230001`:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git diff d97714f..HEAD | grep -E '^\+' | grep -oE '\b20[0-9]{6}\b' | sort -u
+cd . && git diff d97714f..HEAD | grep -E '^\+' | grep -oE '\b20[0-9]{6}\b' | sort -u
 ```
 
 Esperado: exactamente una línea, `20230001`. Cualquier otro número de ocho dígitos hay que mirarlo antes de seguir: si es una fecha `AAAAMMDD` dentro de un comentario o de un nombre de backup, está bien; si es un código de alumno, **se quita** y se rehace el commit de la tarea que lo metió. Un código real en un repo público son notas de una persona identificable.
@@ -8682,7 +8683,7 @@ Esperado: exactamente una línea, `20230001`. Cualquier otro número de ocho dí
 **5.b — Las pruebas HU34 no reutilizan material con datos reales.** Lo exige la spec (`academic-record.spec.md:354`, §Fixtures: "Las pruebas HU34 **no** reutilizan `test/HU31_jeff/fixtures/record.html`"):
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -rn "HU31_jeff\|spike-portal" test/HU34_jeff || echo "OK: ninguna prueba HU34 lee fixtures de HU31 ni de spike-portal"
+cd . && grep -rn "HU31_jeff\|spike-portal" test/HU34_jeff || echo "OK: ninguna prueba HU34 lee fixtures de HU31 ni de spike-portal"
 ```
 
 Esperado: la línea `OK: …`. Los tres fixtures de `test/HU34_jeff/fixtures/` (`record.html` de la Tarea 1, `layout.html` de la Tarea 3, `matricula.html` de la Tarea 6) son inventados. El patrón busca la **ruta** `HU31_jeff`, no la cadena `HU31`: `record-persistence.test.ts` lleva a propósito el comentario "Los de HU31 traen datos reales y no se usan acá", que dice `HU31` a secas y por eso no dispara el grep. Si lo cambias a `HU31` a secas, ese comentario dará un falso positivo.
@@ -8690,7 +8691,7 @@ Esperado: la línea `OK: …`. Los tres fixtures de `test/HU34_jeff/fixtures/` (
 **5.c — Ni host, ni credenciales, ni nada de `.env` en el diff:**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git diff d97714f..HEAD | grep -E '^\+' | grep -E 'neon\.tech|sslmode=|postgres://|ep-[a-z0-9]{6}' || echo "OK: ningun host ni credencial en el diff"
+cd . && git diff d97714f..HEAD | grep -E '^\+' | grep -E 'neon\.tech|sslmode=|postgres://|ep-[a-z0-9]{6}' || echo "OK: ningun host ni credencial en el diff"
 ```
 
 Esperado: la línea `OK: …`. El `postgres://user:pass@localhost:5432/test` vive en `test/env.setup.ts:6`, que esta rama no toca, y en los comandos de este plan, que no están en el repo. Que la prueba de rutas firme tokens con `config.auth.jwtSecret` (`src/config/app-config.ts:18` → `env.JWT_SECRET`) está bien: ese valor sale del dummy que pone `test/env.setup.ts:5`, igual que en `test/HU31_jeff/course-detail.contacts-claim.test.ts:155`.
@@ -8698,7 +8699,7 @@ Esperado: la línea `OK: …`. El `postgres://user:pass@localhost:5432/test` viv
 **5.d — Ninguna ruta del scratchpad quedó dentro del árbol:**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && grep -rn "private/tmp/claude-501" src test specs docs drizzle || echo "OK: ninguna ruta del scratchpad quedo en el arbol"
+cd . && grep -rn "private/tmp/claude-501" src test specs docs drizzle || echo "OK: ninguna ruta del scratchpad quedo en el arbol"
 ```
 
 Esperado: la línea `OK: …`. Las rutas absolutas del bun del scratchpad son del plan de ejecución, no del repo: una prueba que las cite no corre en la máquina de nadie más.
@@ -8706,7 +8707,7 @@ Esperado: la línea `OK: …`. Las rutas absolutas del bun del scratchpad son de
 **5.e — Inventario de lo PREEXISTENTE en los archivos que la rama toca (no bloquea, solo informa).** El 5.a mira únicamente las líneas **añadidas** del diff, así que por construcción no puede ver un código real que ya estaba en un archivo que esta rama modifica. Eso deja al dueño con un inventario incompleto de un repo **público**. Este comando lista archivo y línea **sin imprimir el código**:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git diff --name-only d97714f..HEAD | grep -E '^(src|docs|specs)/' | xargs grep -nE '\b20[0-9]{6}\b' | grep -v 20230001 | cut -d: -f1,2
+cd . && git diff --name-only d97714f..HEAD | grep -E '^(src|docs|specs)/' | xargs grep -nE '\b20[0-9]{6}\b' | grep -v 20230001 | cut -d: -f1,2
 ```
 
 El `cut -d: -f1,2` corta el contenido de la línea y deja solo `ruta:número`: no hay forma de que un código real termine en la salida ni en el informe. Medido hoy sobre `d97714f`, los archivos de la rama que ya citaban un código real de ocho dígitos son `src/modules/portal-sync/portal-sync.service.ts`, `src/modules/portal-sync/portal-sync.repository.ts`, `src/db/schema/schema.ts`, `docs/specs/api-contracts.md` (el `"portalCode"` del ejemplo de respuesta de `POST /portal-sync/import`) y `specs/features/portal-sync/portal-sync.spec.md`. Ninguno lo agrega esta rama y ninguno se corrige acá —varios están fuera de los `targets`—: va al punto 7 del informe y lo decide el dueño. Si aparece una ruta que **no** esté en esa lista, mírala: puede ser un código que sí metió la rama y que el 5.a no atrapó.
@@ -8714,7 +8715,7 @@ El `cut -d: -f1,2` corta el contenido de la línea y deja solo `ruta:número`: n
 - [ ] **Paso 6: Revisar la historia de la rama**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git status --short && git log --oneline d97714f..HEAD && git log d97714f..HEAD --format='%an <%ae>' | sort -u; git log d97714f..HEAD --format='%B' | grep -i "co-authored-by" && echo "PROBLEMA: hay trailer Co-Authored-By" || echo "OK: ningun commit lleva Co-Authored-By"
+cd . && git status --short && git log --oneline d97714f..HEAD && git log d97714f..HEAD --format='%an <%ae>' | sort -u; git log d97714f..HEAD --format='%B' | grep -i "co-authored-by" && echo "PROBLEMA: hay trailer Co-Authored-By" || echo "OK: ningun commit lleva Co-Authored-By"
 ```
 
 Esperado:
@@ -8735,7 +8736,7 @@ Esperado:
 Y que la rama no tocó nada fuera de lo planeado:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git diff --name-only d97714f..HEAD | sort && git diff --stat d97714f..HEAD | tail -1
+cd . && git diff --name-only d97714f..HEAD | sort && git diff --stat d97714f..HEAD | tail -1
 ```
 
 Esperado: **39 archivos**, y exactamente esta lista:
@@ -8785,7 +8786,7 @@ test/HU34_jeff/record-trust.test.ts
 Y las ausencias buscadas, en un comando que no depende de leer la lista a ojo:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git diff --name-only d97714f..HEAD | grep -E '^(README\.md|MIGRATIONS\.md|AGENTS\.md|src/server\.ts|drizzle/meta/|backup_)' || echo "OK: ni README, ni MIGRATIONS, ni AGENTS, ni server.ts, ni el journal, ni un backup"
+cd . && git diff --name-only d97714f..HEAD | grep -E '^(README\.md|MIGRATIONS\.md|AGENTS\.md|src/server\.ts|drizzle/meta/|backup_)' || echo "OK: ni README, ni MIGRATIONS, ni AGENTS, ni server.ts, ni el journal, ni un backup"
 ```
 
 Esperado: la línea `OK: …`. `src/server.ts` queda fuera porque su lista de `GET /` no entra en los targets, y `drizzle/meta/` porque el journal no registra la 0011, igual que no registró la 0010 (comprobado: `drizzle/meta/_journal.json` termina en `0009_avatar`, y hay 12 `.sql` en `drizzle/`). Si aparece cualquiera de ellos, hay que revertir ese archivo antes de seguir. **No hagas `git push`**: publicar la rama lo decide el dueño, y si algún día se hace es `git push origin feat/record-academico`, nunca `git push` a secas.
@@ -8793,7 +8794,7 @@ Esperado: la línea `OK: …`. `src/server.ts` queda fuera porque su lista de `G
 - [ ] **Paso 7: Medir los conteos del `README.md` (medir y reportar, NO editar)**
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && python3 scripts/verificar-readme.py; echo "EXIT=$?"
+cd . && python3 scripts/verificar-readme.py; echo "EXIT=$?"
 ```
 
 Esperado: **FAIL con `EXIT=1` y 10 discrepancias**, todas del mismo origen: el README cita cifras del árbol de antes de esta rama. Las diez líneas, literales:
@@ -8827,7 +8828,7 @@ Línea base para el informe, medida hoy sobre `d97714f`: el script sale **0** y 
 
 **El ejecutor se detiene acá.** No aplica la migración, no lee `.env`, no mergea, no despliega y no hace push. Entrega este informe al dueño:
 
-1. **Suite:** el `N pass`, `0 fail` y `Ran N tests across 108 files` del Paso 1, junto a la línea base anotada en el Paso 0 de la Tarea 1 (`pass` de entonces, `0 fail`, 99 archivos), y la diferencia: 202 pruebas nuevas en 9 archivos, todas de esta rama, medidas una por una en el Paso 1. La salida completa quedó en `/private/tmp/claude-501/-Users-jjjangelosss-ULIMA--/b0e43952-2505-431f-9c2a-5bfea270569c/scratchpad/suite-final.txt`.
+1. **Suite:** el `N pass`, `0 fail` y `Ran N tests across 108 files` del Paso 1, junto a la línea base anotada en el Paso 0 de la Tarea 1 (`pass` de entonces, `0 fail`, 99 archivos), y la diferencia: 202 pruebas nuevas en 9 archivos, todas de esta rama, medidas una por una en el Paso 1. La salida completa quedó en `$TMP/suite-final.txt`.
 2. **Build:** `bun run build` limpio. Si falló, el error literal y el archivo, sin haberlo tocado: es **bloqueante** junto con la migración, porque la rama no compila y no se puede mergear ni desplegar.
 3. **Spec:** 12 líneas `[@test]` que apuntan a 9 archivos y los nueve existen; los nueve archivos de prueba están enlazados; 15 `targets` y todos existen; los 21 archivos de `src/`/`drizzle/` de la rama están cubiertos por un target. Si el Paso 3 o el 4 tuvieron que completar algo, decir cuál y que fue por un paso saltado de la Tarea 4 o de la Tarea 1.
 4. **Privacidad:** las cuatro comprobaciones 5.a–5.d del Paso 5 en verde; el único código de alumno que la rama agrega es `20230001`. El inventario de 5.e va aparte, en el punto 7.
@@ -8841,7 +8842,7 @@ Línea base para el informe, medida hoy sobre `d97714f`: el script sale **0** y 
 **NO EJECUTAR — estos comandos los corre el dueño en su sesión, no el ejecutor de este plan.** Leer `.env` y correr `db:apply` están prohibidos por las restricciones globales (§Restricciones globales): el bloque va en `text` justamente para que ninguna herramienta lo tome por un comando de este plan.
 
 ```text
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be
+cd .
 export DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
 /opt/homebrew/opt/libpq/bin/pg_dump "$DATABASE_URL" > backup_pre_0011_$(date +%Y%m%d).sql
 bun run db:apply drizzle/0011_academic_record.sql
@@ -8868,7 +8869,7 @@ Después, y recién después: registrar la 0011 en la tabla de `MIGRATIONS.md:10
 Caso normal —la Tarea 1 puso sus tres targets y la Tarea 4 su `[@test]`—: no hay nada que commitear. Comprueba y cierra:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git status --short
+cd . && git status --short
 ```
 
 Esperado: salida vacía. La Tarea 10 termina sin commit propio, que es el mejor resultado posible: quiere decir que las nueve tareas anteriores dejaron la spec completa.
@@ -8876,7 +8877,7 @@ Esperado: salida vacía. La Tarea 10 termina sin commit propio, que es el mejor 
 Si el Paso 3 o el Paso 4 sí editaron la spec, ese es el único archivo modificado y va en un commit:
 
 ```bash
-cd /Users/jjjangelosss/ULIMA++/.worktrees/readme-be && git add specs/features/academic-record/academic-record.spec.md && git commit -m "docs(academic-record): completa los targets y los enlaces [@test] de la spec" && git status --short
+cd . && git add specs/features/academic-record/academic-record.spec.md && git commit -m "docs(academic-record): completa los targets y los enlaces [@test] de la spec" && git status --short
 ```
 
 Sin trailer `Co-Authored-By` y sin `push`. `git status --short` debe quedar vacío después.
