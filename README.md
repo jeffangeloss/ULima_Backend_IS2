@@ -11,10 +11,10 @@
 
 [![API](https://img.shields.io/badge/API-Hono_4_serverless-E36002?style=for-the-badge&logo=hono&logoColor=white)](#-la-api)
 [![Base](https://img.shields.io/badge/Base-PostgreSQL_en_Neon-00E599?style=for-the-badge&logo=postgresql&logoColor=white)](#-el-modelo-de-datos)
-[![ORM](https://img.shields.io/badge/ORM-Drizzle_·_35_tablas-C5F74F?style=for-the-badge&logo=drizzle&logoColor=black)](#-el-modelo-de-datos)
+[![ORM](https://img.shields.io/badge/ORM-Drizzle_·_38_tablas-C5F74F?style=for-the-badge&logo=drizzle&logoColor=black)](#-el-modelo-de-datos)
 
-[![Superficie](https://img.shields.io/badge/Superficie-16_módulos_·_76_endpoints-1F3A5F?style=for-the-badge&logo=fastapi&logoColor=white)](#-la-api)
-[![Verificación](https://img.shields.io/badge/Verificación-99_suites_·_16_429_líneas-6D28D9?style=for-the-badge&logo=testinglibrary&logoColor=white)](#-pruebas-y-calidad)
+[![Superficie](https://img.shields.io/badge/Superficie-17_módulos_·_78_endpoints-1F3A5F?style=for-the-badge&logo=fastapi&logoColor=white)](#-la-api)
+[![Verificación](https://img.shields.io/badge/Verificación-108_suites_·_16_429_líneas-6D28D9?style=for-the-badge&logo=testinglibrary&logoColor=white)](#-pruebas-y-calidad)
 [![Frontend](https://img.shields.io/badge/Frontend-ULima%2B%2B_Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://github.com/jeffangeloss/ULima_Frontend_IS2)
 
 </div>
@@ -31,8 +31,8 @@
 | **Stack** | Bun · TypeScript 5 · Hono 4 · Drizzle ORM · PostgreSQL · Zod · JWT · bcryptjs |
 | **API en producción** | https://u-lima-backend-is-2-one.vercel.app — salud en [`/health`](https://u-lima-backend-is-2-one.vercel.app/health), commit desplegado en [`/version`](https://u-lima-backend-is-2-one.vercel.app/version) |
 | **Frontend** | [ULima_Frontend_IS2](https://github.com/jeffangeloss/ULima_Frontend_IS2) — app Flutter |
-| **Superficie de API** | **16 módulos** · **70 endpoints**: **67 rutas** declaradas en los 16 archivos `*.routes.ts` más 3 de servicio en la raíz (`/`, `/health`, `/version`) · **7** no exigen token |
-| **Modelo de datos** | **35 tablas** en `src/db/schema/schema.ts` · 12 archivos de migración |
+| **Superficie de API** | **17 módulos** · **70 endpoints**: **67 rutas** declaradas en los 16 archivos `*.routes.ts` más 3 de servicio en la raíz (`/`, `/health`, `/version`) · **7** no exigen token |
+| **Modelo de datos** | **38 tablas** en `src/db/schema/schema.ts` · 13 archivos de migración |
 | **Código** | 16 795 líneas TypeScript en 184 archivos bajo `src/` |
 | **Verificación** | **74 suites** · 16 429 líneas de prueba · *mutation testing* con Stryker, una configuración por persona |
 | **Specs** | **18 features** especificadas antes de implementarse, en `specs/features/` |
@@ -368,7 +368,7 @@ Dos observaciones que salen del diagrama y no del papel:
 
 ---
 
-### Los 16 módulos
+### Los 17 módulos
 
 Registrados en [`src/modules/index.ts`](src/modules/index.ts):20-35, en este orden exacto. La columna **Archivos** es `nivel 1 / recursivo`; solo difiere en los dos módulos con subcarpetas.
 
@@ -783,7 +783,7 @@ sí están en el esquema son otra cosa: el asistente conversacional (HU28).
 
 ---
 
-### Las 35 tablas
+### Las 38 tablas
 
 Convención de la columna de claves: `PK` = clave primaria; `UQ` = restricción única; `UQ‖` = índice
 único **parcial**; `IDX` = índice no único; `CK` = CHECK. Las 31 `id` enteras son
@@ -1802,7 +1802,7 @@ del portal **no** devuelve cupo.
 
 ---
 
-### El catálogo: 76 endpoints
+### El catálogo: 78 endpoints
 
 #### Raíz — 3 endpoints públicos
 
