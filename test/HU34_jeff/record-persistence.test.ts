@@ -236,6 +236,21 @@ describe("replaceRecordEntries", () => {
 });
 
 describe("upsertAcademicSnapshot", () => {
+  // Regresion de produccion (2026-09-20): la foto se enviaba con el `Date` de
+  // JavaScript como parametro y postgres.js lo rechaza al preparar la sentencia
+  // ("The string argument must be ... Received an instance of Date"), asi que la
+  // importacion entera respondia 500. El resto del repo escribe fechas como
+  // `${fecha.toISOString()}::timestamptz` (ver upsertRepresentativeClaims).
+  // La prueba mira los PARAMETROS, no solo el texto del SQL: el texto estaba bien.
+  test("ningun parametro es un Date: las fechas viajan como texto ISO con cast", async () => {
+    const { tx, consultas } = fakeTx([]);
+    await repo.upsertAcademicSnapshot(tx, 77, GENERAL, FECHA);
+    const { sql: texto, params } = consultas()[0]!;
+    expect(params.some((p) => p instanceof Date)).toBe(false);
+    expect(params).toContain(FECHA.toISOString());
+    expect(norm(texto)).toContain("::timestamptz");
+  });
+
   test("escribe la foto en UNA sentencia con ON CONFLICT sobre el alumno", async () => {
     const { tx, consultas, llamadas } = fakeTx([]);
     await repo.upsertAcademicSnapshot(tx, 77, GENERAL, FECHA);
@@ -264,14 +279,14 @@ describe("upsertAcademicSnapshot", () => {
   test("los valores viajan como parametros, en el orden de las columnas", async () => {
     const { tx, consultas } = fakeTx([]);
     await repo.upsertAcademicSnapshot(tx, 77, GENERAL, FECHA);
-    expect(consultas()[0]!.params).toEqual([77, 14.25, "TERCIO SUPERIOR", 2, 6, 30, 100, 106, 210, FECHA]);
+    expect(consultas()[0]!.params).toEqual([77, 14.25, "TERCIO SUPERIOR", 2, 6, 30, 100, 106, 210, FECHA.toISOString()]);
   });
 
   test("un campo que no se pudo leer entra como null, nunca como 0", async () => {
     const { tx, consultas } = fakeTx([]);
     await repo.upsertAcademicSnapshot(tx, 77, GENERAL_VACIO, FECHA);
     const { params } = consultas()[0]!;
-    expect(params).toEqual([77, null, null, null, null, null, null, null, null, FECHA]);
+    expect(params).toEqual([77, null, null, null, null, null, null, null, null, FECHA.toISOString()]);
     expect(params).not.toContain(0);
   });
 

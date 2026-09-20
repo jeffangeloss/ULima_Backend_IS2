@@ -1314,7 +1314,7 @@ export class PortalSyncRepository {
         ${studentId}, ${general.ppa ?? null}, ${general.relativePosition ?? null},
         ${general.convalidated.courses ?? null}, ${general.convalidated.credits ?? null},
         ${general.approved.courses ?? null}, ${general.approved.credits ?? null},
-        ${general.creditsAccumulated ?? null}, ${general.creditsRequired ?? null}, ${syncedAt}
+        ${general.creditsAccumulated ?? null}, ${general.creditsRequired ?? null}, ${syncedAt.toISOString()}::timestamptz
       )
       on conflict (student_id) do update set
         ppa = excluded.ppa,
