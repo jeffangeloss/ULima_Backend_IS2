@@ -55,7 +55,16 @@ export type Registrar = {
   importFromPortal(
     userId: number,
     studentId: number,
-    entrada: { cookies?: PortalCookies; credentials?: { password: string; passcode: string } },
+    entrada: {
+      cookies?: PortalCookies;
+      credentials?: { password: string; passcode: string };
+      /**
+       * RS-BE-29. Sin este campo en el tipo ESTRUCTURAL, `register` no puede
+       * pasar el consentimiento aunque `PortalSyncService` ya lo acepte: es
+       * este tipo, y no la clase, lo que `auth` conoce de `portal-sync`.
+       */
+      consent?: boolean;
+    },
     provision?: ProvisionFn,
     validate?: ValidateFn,
   ): Promise<ImportResult>;
@@ -200,6 +209,12 @@ export class AuthService {
    */
   async register(input: {
     code: string; portalPassword: string; passcode: string; password: string;
+    /**
+     * RS-BE-29: el alumno aceptó que se guarde la copia de su récord. Opcional
+     * porque las apps ya instaladas no lo mandan. `register` no lo interpreta:
+     * lo traslada a `importFromPortal`, que es el único que decide si guarda.
+     */
+    consent?: boolean;
   }) {
     if (!this.registrar || !this.portalSyncRepository) {
       throw new HttpError(503, "El registro no está disponible.", "REGISTRATION_UNAVAILABLE");
@@ -272,7 +287,19 @@ export class AuthService {
       // A partir de esta línea `importFromPortal` es dueño de `cookies`.
       entregadoAlImport = true;
       const resultado = await registrar.importFromPortal(
-        0, 0, { cookies },
+        // `input.consent === true` y no `input.consent` a secas: el registro
+        // manda SIEMPRE un booleano, así que un body de una app vieja llega
+        // como `false` y no como `undefined`. El gate del service queda con un
+        // solo caso que mirar (RS-BE-29).
+        //
+        // RS-BE-22: con esto el registro guarda el récord, la foto y el
+        // resumen exactamente igual que `POST /portal-sync/import`, porque es
+        // el MISMO `importFromPortal`. El candado de récord lo toma el service
+        // después de que `provision` devuelve el `studentId` real — antes vale
+        // 0 —, y todo cae dentro de la misma transacción: si `validate` lanza
+        // por falta de matrícula, la copia del récord se revierte con la
+        // cuenta.
+        0, 0, { cookies, consent: input.consent === true },
         // provision: crea la cuenta como primer paso de la transacción.
         async (tx, identidad) => {
           const base = await portalSyncRepository.findSoleCareerAndCurriculum(tx);

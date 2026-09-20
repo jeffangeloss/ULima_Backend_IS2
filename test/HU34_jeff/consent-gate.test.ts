@@ -8,6 +8,21 @@ import type {
   AcademicGeneral, AcademicPeriodBlock, RecordRow,
 } from "../../src/modules/portal-sync/portal-sync.types.js";
 
+// ── Tarea 8: el consentimiento también entra por POST /auth/register ─────────
+// `PortalSyncRepository` y `PortalClient` ya están importados arriba como tipos
+// y se reutilizan tal cual: un segundo import con el mismo nombre sería un
+// identificador duplicado. `describe`, `expect` y `test` también están ya.
+// `ImportSummary` y `PortalCookies` salen del MISMO módulo que la línea de
+// arriba, en un import aparte: así este bloque es puramente aditivo y no hay
+// que reescribir el import que ya estaba.
+import { AuthService } from "../../src/modules/auth/auth.service.js";
+import type { Registrar } from "../../src/modules/auth/auth.service.js";
+import { AuthController } from "../../src/modules/auth/auth.controller.js";
+import type { AuthRepository } from "../../src/modules/auth/auth.repository.js";
+import { registerSchema } from "../../src/modules/auth/auth.schemas.js";
+import type { ImportSummary, PortalCookies } from "../../src/modules/portal-sync/portal-sync.types.js";
+import { EventBus } from "../../src/events/index.js";
+
 /**
  * RS-BE-29 (consentimiento) y las consecuencias de RS-BE-21 en la importación
  * (specs/features/academic-record/academic-record.spec.md).
@@ -359,5 +374,187 @@ describe("informacion academica incompleta (RS-BE-24)", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+// ── RS-BE-29 en el registro: POST /auth/register acepta y traslada `consent` ──
+// El registro llama al MISMO `importFromPortal` (auth.service.ts:274-275), así
+// que acá NO se vuelve a probar qué se guarda —eso ya está más arriba en este
+// archivo, con el service real, incluido el modo registro con `provisionHook`—:
+// se prueba lo único que el registro decide, que es que el consentimiento
+// llegue, y que llegue siempre como booleano.
+
+/** Datos SINTÉTICOS (el repo es público): 20230001 no es el código de nadie y
+ *  las credenciales son inventadas. */
+const ENTRADA_REGISTRO = {
+  code: "20230001",
+  portalPassword: "clave-portal-sintetica",
+  passcode: "123456",
+  password: "clave-nueva-sintetica",
+};
+const CARRERA_SINTETICA = "INGENIERÍA INDUSTRIAL";
+
+/** El tercer argumento con el que `register` invoca al Registrar. Se escribe
+ *  entero (y no `Parameters<...>`) para que la prueba falle si alguien recorta
+ *  el tipo estructural de `Registrar` en vez de seguirlo. */
+type EntradaImport = {
+  cookies?: PortalCookies;
+  credentials?: { password: string; passcode: string };
+  consent?: boolean;
+};
+
+/**
+ * `AuthService.register` con todas sus dependencias falseadas. Es el armado de
+ * test/HU33_jeff/registro.service.test.ts:62-206 reducido a lo que esta prueba
+ * necesita: acá no se miden el 409 temprano, la atomicidad ni el doble logout,
+ * que ya tienen sus propios archivos en HU33. Por eso el Registrar falso
+ * tampoco simula el `finally` con `portalClient.logout(...)` que sí tiene el de
+ * HU33: `register` le entrega las cookies y no vuelve a cerrarlas, y ninguna
+ * aserción de este bloque cuenta logouts.
+ *
+ * `entradaDeLaImportacion` es una FUNCIÓN y no un valor desestructurado: leído
+ * antes de `register()` quedaría congelado en `null` y la aserción nunca podría
+ * fallar. Lleva anotación de retorno explícita para que el tipo no dependa de
+ * cómo TypeScript analice una variable que solo se asigna dentro de un closure.
+ */
+const armarRegistro = () => {
+  let entradaImport: EntradaImport | null = null;
+
+  const authRepository = {
+    codeExists: async () => false,
+    // Vuelve vacía a propósito: `register` cae a su `usuarioDeRespaldo`
+    // (auth.service.ts:114-141), que se arma con lo que `provision` insertó y
+    // no vuelve a la BD. Nada de lo que esta prueba mide depende del `user`.
+    findById: async () => null,
+  } as unknown as AuthRepository;
+
+  const portalSyncRepository = {
+    findSoleCareerAndCurriculum: async () => ({
+      careerId: 1, curriculumId: 1, careerName: CARRERA_SINTETICA,
+    }),
+    createStudentAccount: async () => ({
+      id: 77, userId: 55, careerId: 1, curriculumId: 1,
+      currentLevel: null, careerName: CARRERA_SINTETICA,
+    }),
+  } as unknown as PortalSyncRepository;
+
+  const portalClient = {
+    login: async () => ({ JSESSIONID: "a", LtpaToken2: "b" }),
+    logout: async () => {},
+  } as unknown as PortalClient;
+
+  const registrar: Registrar = {
+    importFromPortal: async (_userId, _studentId, entrada, provision, validate) => {
+      entradaImport = entrada;
+      await provision!({} as never, {
+        studentCode: ENTRADA_REGISTRO.code,
+        studentName: "ALUMNO DE PRUEBA",
+        careerName: CARRERA_SINTETICA,
+      });
+      // De todo `ImportSummary` acá solo interviene `enrollmentsUpserted`: es lo
+      // que mira el `validate` que pasa `register` (403 NOT_ENROLLED con 0). El
+      // resto de los campos no cambia ninguna aserción de este bloque.
+      const summary = { enrollmentsUpserted: 5 } as unknown as ImportSummary;
+      validate?.(summary);
+      return {
+        period: { id: 1, code: "2026-2", created: false },
+        identity: {
+          portalCode: ENTRADA_REGISTRO.code,
+          fullName: "ALUMNO DE PRUEBA",
+          career: CARRERA_SINTETICA,
+        },
+        summary,
+        warnings: [],
+        token: null,
+      };
+    },
+  };
+
+  const service = new AuthService(
+    authRepository, new EventBus(), undefined, portalSyncRepository, portalClient,
+  );
+  service.setRegistrar(registrar);
+
+  const entradaDeLaImportacion = (): EntradaImport | null => entradaImport;
+  return { service, controller: new AuthController(service), entradaDeLaImportacion };
+};
+
+describe("registerSchema con consent (RS-BE-29)", () => {
+  test("acepta consent true y lo conserva en el body validado", () => {
+    // Se mira el objeto VALIDADO y no `success`: hoy zod ya acepta este body
+    // —descarta en silencio la clave que el esquema no declara—, así que un
+    // `safeParse(...).success` solo no detectaría que `consent` se pierde antes
+    // de llegar al controller.
+    expect(registerSchema.parse({ ...ENTRADA_REGISTRO, consent: true }))
+      .toMatchObject({ consent: true });
+  });
+
+  test("acepta el body sin consent: es lo que mandan las apps ya instaladas", () => {
+    const body = registerSchema.parse(ENTRADA_REGISTRO);
+    expect(body.code).toBe("20230001");
+    expect(body.consent).toBeUndefined();
+  });
+
+  test("rechaza un consent que no es booleano en vez de descartarlo en silencio", () => {
+    expect(registerSchema.safeParse({ ...ENTRADA_REGISTRO, consent: "si" }).success).toBe(false);
+  });
+
+  test("consent no reemplaza a ningun campo obligatorio del registro", () => {
+    expect(registerSchema.safeParse({ code: "20230001", consent: true }).success).toBe(false);
+  });
+});
+
+describe("AuthService.register traslada el consentimiento (RS-BE-29, RS-BE-22)", () => {
+  test("con consent true el Registrar lo recibe en true", async () => {
+    const a = armarRegistro();
+    await a.service.register({ ...ENTRADA_REGISTRO, consent: true });
+    expect(a.entradaDeLaImportacion()?.consent).toBe(true);
+  });
+
+  test("sin el campo consent el Registrar recibe false, nunca undefined", async () => {
+    const a = armarRegistro();
+    await a.service.register(ENTRADA_REGISTRO);
+    // `false` y no `undefined`: el registro manda siempre un booleano, así el
+    // gate del service no depende de distinguir "no vino" de "vino en false".
+    expect(a.entradaDeLaImportacion()?.consent).toBe(false);
+  });
+
+  test("consent false llega como false", async () => {
+    const a = armarRegistro();
+    await a.service.register({ ...ENTRADA_REGISTRO, consent: false });
+    expect(a.entradaDeLaImportacion()?.consent).toBe(false);
+  });
+
+  test("el consentimiento no desplaza a las cookies ni cambia la respuesta del registro", async () => {
+    const a = armarRegistro();
+    const r = await a.service.register({ ...ENTRADA_REGISTRO, consent: true });
+    expect(a.entradaDeLaImportacion()?.cookies).toEqual({ JSESSIONID: "a", LtpaToken2: "b" });
+    // El registro SIEMPRE entrega la sesión ya hecha; nunca las credenciales.
+    expect(a.entradaDeLaImportacion()?.credentials).toBeUndefined();
+    expect(r.user.code).toBe("20230001");
+    expect(typeof r.token).toBe("string");
+  });
+
+  test("ni la contrasena del portal ni el passcode viajan en la entrada de la importacion", async () => {
+    const a = armarRegistro();
+    await a.service.register({ ...ENTRADA_REGISTRO, consent: true });
+    const serializada = JSON.stringify(a.entradaDeLaImportacion());
+    expect(serializada).not.toContain(ENTRADA_REGISTRO.portalPassword);
+    expect(serializada).not.toContain(ENTRADA_REGISTRO.passcode);
+    expect(serializada).not.toContain(ENTRADA_REGISTRO.password);
+  });
+});
+
+describe("el cuerpo validado del registro llega hasta la importacion (RS-BE-29)", () => {
+  test("el consent que sobrevive a registerSchema llega al Registrar", async () => {
+    // Las dos capas de arriba se prueban por separado; esta las COMPONE en el
+    // mismo orden que la ruta (auth.routes.ts:39-41): primero el esquema, y su
+    // salida —no el objeto original— entra al controller. Sin esto, un esquema
+    // que descarta `consent` y un service que lo reenvía pasarían sus pruebas
+    // por separado y el endpoint seguiría sin guardar nada.
+    const a = armarRegistro();
+    const body = registerSchema.parse({ ...ENTRADA_REGISTRO, consent: true });
+    await a.controller.register(body);
+    expect(a.entradaDeLaImportacion()?.consent).toBe(true);
   });
 });

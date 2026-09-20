@@ -53,12 +53,14 @@ Desde `portal-sync` existe una tercera vía que resuelve las dos cosas a la vez:
 `POST /auth/register` — pública, sin token.
 
 ```json
-{ "code": "20230001", "portalPassword": "…", "passcode": "123456", "password": "…" }
+{ "code": "20230001", "portalPassword": "…", "passcode": "123456", "password": "…", "consent": true }
 ```
 
 - `code`: código de alumno, `^\d{6,10}$`.
 - `portalPassword` y `passcode`: credenciales de **miUlima**. Se usan para el login y se descartan; no se persisten ni se registran en logs (RS-BE-7 de portal-sync, que esta feature hereda).
 - `password`: la contraseña que la persona quiere para ULima++.
+- `consent` (opcional, booleano): el alumno aceptó que se guarde la copia de su récord académico. Lo define RS-BE-29 de `../academic-record/academic-record.spec.md`; el registro no lo interpreta, solo lo traslada a la importación, que es la misma de `POST /portal-sync/import`. Con `true` se guardan el récord, la foto académica y el resumen del ciclo; sin el campo —lo que mandan las apps ya instaladas— el registro corre **exactamente igual que hoy** y no se guarda ninguno de los tres. Un valor que no sea booleano se rechaza con `400`.
+  `[@test] ../../../test/HU34_jeff/consent-gate.test.ts`
 
 > **Sobre la fortaleza de la contraseña.** El repo hoy **no valida ninguna**: es `z.string().min(1)` en el login, en el SSO y también en `password-reset/confirm`, que es donde se fija una contraseña nueva. El registro sigue esa misma regla a propósito. Ponerle un mínimo solo acá sería incoherente: alguien se registraría con una contraseña fuerte y a los dos minutos podría dejarla en un carácter desde el reset. Endurecer la política es una decisión de producto que abarca los tres endpoints y **no entra en esta feature**; queda anotada como deuda.
 
