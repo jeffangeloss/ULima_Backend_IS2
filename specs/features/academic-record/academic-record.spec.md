@@ -201,7 +201,7 @@ nivel del alumno no se mueve.
 
 `parseInfoAcademica` se amplía para extraer de `layout.jsp`:
 
-- **Información general:** PPA, ubicación relativa (texto, del tipo "QUINTO SUPERIOR"),
+- **Información general:** PPA, ubicación relativa (texto, del tipo "TERCIO SUPERIOR"),
   cursos y créditos convalidados, cursos y créditos aprobados, créditos acumulados y
   créditos requeridos de la especialidad.
 - **Información por período:** promedio, ubicación relativa, nivel, y cursos y créditos
@@ -320,9 +320,9 @@ GET /academic-record/me          (Bearer, roles de alumno)
 200 → {
   "syncedAt": "2026-09-18T15:00:00Z" | null,
   "snapshot": {
-    "ppa": 15.84, "relativePosition": "QUINTO SUPERIOR",
-    "creditsAccumulated": 168, "creditsRequired": 205,
-    "approved": { "courses": 50, "credits": 168 },
+    "ppa": 14.62, "relativePosition": "TERCIO SUPERIOR",
+    "creditsAccumulated": 164, "creditsRequired": 200,
+    "approved": { "courses": 50, "credits": 164 },
     "convalidated": { "courses": 0, "credits": 0 }
   } | null,
   "periods": [ {
@@ -335,7 +335,7 @@ GET /academic-record/me          (Bearer, roles de alumno)
   } ],
   "record": [ { "periodCode": "2026-1", "courses": [
       { "code": "650070", "name": "PARADIGMAS DE PROGRAMACIÓN", "attempt": 1,
-        "credits": 1.5, "grade": 17, "gradeRaw": "17", "section": "855",
+        "credits": 1.5, "grade": 17, "gradeRaw": "17", "section": "917",
         "observation": null } ] } ]
 }
 
