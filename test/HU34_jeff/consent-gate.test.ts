@@ -154,6 +154,11 @@ const armarServicio = (opts: { record?: string; layout?: string } = {}) => {
       escrituras.push({ metodo: "replacePeriodSummaries", studentId, periods });
       return periods.length;
     },
+    // Tarea 7 (RS-BE-23): con consentimiento y récord de confianza la limpieza
+    // corre dentro del mismo `if (guardarRecord)`. Inerte acá a propósito: este
+    // archivo mide el gate y el ORDEN de las escrituras del récord, no el
+    // borrado, que lo mide test/HU34_jeff/electives-cleanup.test.ts.
+    deleteUnbackedElectives: async () => 0,
   } as unknown as PortalSyncRepository;
 
   return {

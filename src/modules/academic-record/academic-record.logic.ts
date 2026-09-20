@@ -73,3 +73,47 @@ export const evaluateRecordTrust = (page: RecordPage): RecordTrust => {
   }
   return { ok: true };
 };
+
+/**
+ * RS-BE-23, precondición de la limpieza: códigos DISTINTOS de filas aprobadas
+ * que no resolvieron a la malla vigente y que tampoco están en la lista de
+ * códigos que se sabe que no respaldan un electivo
+ * (`SIN_EQUIVALENCIA_CONOCIDA`, todos de Estudios Generales).
+ *
+ * Lista vacía = la limpieza puede correr. Con cualquier código adentro no se
+ * borra nada: "si hay duda, no se borra" (decisión 7 del dueño). La tabla de
+ * equivalencias tiene 14 pares y ninguno es de un electivo, así que un
+ * electivo aprobado con un código viejo sin pareja no quedaría respaldado, se
+ * borraría, y ninguna importación posterior lo repondría.
+ *
+ * Solo miran las filas APROBADAS: una desaprobada o una fila sin nota no
+ * respalda nada, así que no poder resolverla no pone en riesgo ningún borrado.
+ *
+ * Devuelve los códigos en el orden en que aparecen en el récord y sin
+ * repetirlos: el resultado se escribe en el log del servidor.
+ */
+export const cleanupBlockers = (
+  rows: readonly RecordRow[], resolved: ReadonlySet<string>, knownUnmatched: readonly string[],
+): string[] => {
+  const conocidos = new Set(knownUnmatched);
+  const bloqueos: string[] = [];
+  for (const r of approvedRows(rows)) {
+    if (resolved.has(r.courseCode) || conocidos.has(r.courseCode)) continue;
+    if (!bloqueos.includes(r.courseCode)) bloqueos.push(r.courseCode);
+  }
+  return bloqueos;
+};
+
+/**
+ * Texto del warning `PROGRESS_REMOVED`. Es el ÚNICO texto nuevo que el récord
+ * académico le muestra al alumno: un récord no confiable o una información
+ * académica incompleta van solo al log. Solo el conteo, nunca la lista
+ * (decisión 5: la lista ya la muestra la pantalla del récord).
+ *
+ * Se llama únicamente con n > 0, pero la rama plural cubre el 0 sin inventar
+ * un texto aparte.
+ */
+export const progressRemovedMessage = (n: number): string =>
+  n === 1
+    ? "Se desmarcó 1 electivo que tu récord no respalda."
+    : `Se desmarcaron ${n} electivos que tu récord no respalda.`;

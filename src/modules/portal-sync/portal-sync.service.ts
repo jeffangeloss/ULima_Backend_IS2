@@ -21,7 +21,13 @@ import {
 // (`noUnusedLocals` rompería el build); sigue exportado para quien lo necesite.
 import { parseRecordPage, recordRows } from "./parsers/record.js";
 import { EMPTY_GENERAL } from "./parsers/info-academica.js";
-import { evaluateRecordTrust } from "../academic-record/academic-record.logic.js";
+import {
+  cleanupBlockers, evaluateRecordTrust, progressRemovedMessage,
+} from "../academic-record/academic-record.logic.js";
+// Vive en el seed porque de ahí sale `course_equivalence`, pero acá es otra
+// cosa: los 12 códigos de Estudios Generales que se sabe que NO respaldan un
+// electivo, y que por eso no bloquean la limpieza (RS-BE-23).
+import { SIN_EQUIVALENCIA_CONOCIDA } from "../../db/seed/equivalencias.logic.js";
 import { PORTAL_PATHS } from "../../services/portal.client.js";
 import type {
   AsistenciaCurso, DelegadosNomina,
@@ -55,7 +61,7 @@ export type ValidateFn = (summary: ImportSummary) => void;
 const emptySummary = (): ImportSummary => ({
   coursesCreated: 0, teachersCreated: 0, sectionsCreated: 0, sectionsUpdated: 0,
   sessionsUpserted: 0, enrollmentsUpserted: 0, enrollmentsWithdrawn: 0,
-  progressUpserted: 0, progressSkipped: 0, progressViaEquivalence: 0,
+  progressUpserted: 0, progressSkipped: 0, progressViaEquivalence: 0, progressRemoved: 0,
   alertsCreated: 0, syllabiUpserted: 0,
   claimsUpserted: 0, claimsDeleted: 0, representativesPromoted: 0, alertsDeleted: 0,
   attendanceUpdated: 0, attendanceSkipped: 0,
@@ -691,10 +697,66 @@ export class PortalSyncService {
         summary.progressUpserted += await this.repository.upsertProgressBatch(
           tx, studentId, student.curriculumId, aEscribir,
         );
+
+        // RS-BE-23: limpieza de los electivos aprobados que el récord no
+        // respalda. Corre acá —después de escribir el progreso y antes de
+        // calcular el nivel— y solo con consentimiento y récord de confianza
+        // (`guardarRecord`). La carga inicial de la base, anterior a
+        // portal-sync, marcó como aprobados TODOS los electivos de los ciclos
+        // ya cursados, y `upsertProgressBatch` nunca borra: sin esto esas
+        // filas sobreviven a cualquier importación.
+        //
+        // El conjunto de respaldo se recalcula sobre TODAS las filas del
+        // récord —con nota, sin nota o con una marca— y NO reutiliza
+        // `ccIdPorCodigo`/`ccIdPorLegado`: esos solo cubren `conEstado`, del
+        // que la fase de progreso ya sacó las filas sin nota numérica.
+        // Reutilizarlos dejaría fuera del respaldo a un electivo aprobado con
+        // una marca de convalidación, y esta misma limpieza lo borraría.
+        if (guardarRecord) {
+          const todos = [...new Set(rec.data.map((r) => r.courseCode))];
+          const directos = await this.repository.findCurriculumCourseIds(
+            tx, student.curriculumId, todos,
+          );
+          const restantes = todos.filter((c) => !directos.has(c));
+          const legados = restantes.length
+            ? await this.repository.findEquivalentCurriculumCourseIds(
+              tx, student.curriculumId, restantes,
+            )
+            : new Map<string, number>();
+          const resueltos = new Set([...directos.keys(), ...legados.keys()]);
+          // "Si hay duda, no se borra" (decisión 7): un código aprobado que no
+          // resuelve puede ser un electivo con un código viejo sin
+          // equivalencia, y borrarlo sería definitivo.
+          const bloqueos = cleanupBlockers(rec.data, resueltos, SIN_EQUIVALENCIA_CONOCIDA);
+          if (bloqueos.length) {
+            console.warn(
+              "[portal-sync] limpieza de electivos omitida: códigos aprobados sin resolver:",
+              bloqueos.join(", "),
+            );
+          } else {
+            const respaldo = [...new Set([...directos.values(), ...legados.values()])];
+            // Con el respaldo vacío la limpieza NO corre: `<> all('{}')` es
+            // verdadero para toda fila y borraría todos los electivos
+            // aprobados del alumno. El repository también se guarda de esto;
+            // la guarda está en los dos lados a propósito.
+            if (respaldo.length) {
+              summary.progressRemoved += await this.repository.deleteUnbackedElectives(
+                tx, studentId, student.curriculumId, respaldo,
+              );
+            }
+          }
+        }
+
         if (summary.progressSkipped > 0) {
           warnings.push({
             code: "PROGRESS_SKIPPED", block: "record",
             message: `${summary.progressSkipped} cursos del récord no están en tu malla (convalidaciones o códigos antiguos).`,
+          });
+        }
+        if (summary.progressRemoved > 0) {
+          warnings.push({
+            code: "PROGRESS_REMOVED", block: "record",
+            message: progressRemovedMessage(summary.progressRemoved),
           });
         }
       }

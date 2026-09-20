@@ -120,7 +120,11 @@ export type WarningCode =
   | "DELEGADOS_UNAVAILABLE"
   // La página de asistencia de un aula no se pudo DESCARGAR. Misma distinción
   // que arriba respecto de PARSER_FAILED.
-  | "ASISTENCIA_UNAVAILABLE";
+  | "ASISTENCIA_UNAVAILABLE"
+  // RS-BE-23: la limpieza desmarcó electivos que el récord no respalda. Es el
+  // único aviso nuevo del récord académico; los demás motivos (récord no
+  // confiable, información académica incompleta) van solo al log del servidor.
+  | "PROGRESS_REMOVED";
 export interface SyncWarning { code: WarningCode; block: string; message: string }
 
 export interface ImportSummary {
@@ -132,6 +136,12 @@ export interface ImportSummary {
    *  comparable con `progressUpserted`: dos códigos viejos fusionados en uno
    *  cuentan una vez. Existe para medir cuánto aporta la tabla sin leer la BD. */
   progressViaEquivalence: number;
+  /** Filas de `student_course_progress` BORRADAS por la limpieza de electivos
+   *  no respaldados (RS-BE-23). Es el único contador de la importación que
+   *  cuenta datos eliminados. Queda en 0 cuando la limpieza no corre: sin
+   *  consentimiento, con un récord no confiable, con un código aprobado sin
+   *  resolver o con el conjunto de respaldo vacío. */
+  progressRemoved: number;
   alertsCreated: number; syllabiUpserted: number;
   claimsUpserted: number; claimsDeleted: number; representativesPromoted: number;
   alertsDeleted: number;

@@ -459,6 +459,7 @@ const armarServicioHU34 = (opts: { layout?: string } = {}) => {
       escrituras.push({ metodo: "replacePeriodSummaries", studentId, periods });
       return periods.length;
     },
+    deleteUnbackedElectives: async () => 0,
   } as unknown as RepositorioPortalSync;
 
   return { service: new ServicioPortalSync(repo, client), escrituras };
