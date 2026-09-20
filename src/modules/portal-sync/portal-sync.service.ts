@@ -11,9 +11,17 @@ import {
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
-  parseInfoAcademica, parseRecordAcademico, parseSyllabusEntry,
+  parseInfoAcademica, parseSyllabusEntry,
   parseAulas, parseDelegados, parseAsistenciaCurso,
 } from "./parsers/index.js";
+// `parseRecordPage`, `recordRows` y `EMPTY_GENERAL` NO están en el barrel
+// `./parsers/index.js`, que no se toca: `scripts/verificar-readme.py:68` cuenta
+// sus `parse[A-Z]\w*` y el README cita esa cifra. Se importan del módulo concreto.
+// `parseRecordAcademico` sale de la lista de arriba porque deja de usarse acá
+// (`noUnusedLocals` rompería el build); sigue exportado para quien lo necesite.
+import { parseRecordPage, recordRows } from "./parsers/record.js";
+import { EMPTY_GENERAL } from "./parsers/info-academica.js";
+import { evaluateRecordTrust } from "../academic-record/academic-record.logic.js";
 import { PORTAL_PATHS } from "../../services/portal.client.js";
 import type {
   AsistenciaCurso, DelegadosNomina,
@@ -113,7 +121,14 @@ export class PortalSyncService {
    */
   async importFromPortal(
     userId: number, studentId: number,
-    entrada: { cookies?: PortalCookies; credentials?: { password: string; passcode: string } },
+    entrada: {
+      cookies?: PortalCookies;
+      credentials?: { password: string; passcode: string };
+      /** RS-BE-29: `true` solo si el alumno aceptó la pantalla de consentimiento.
+       *  Opcional para que `auth.service.ts` (registro) y las apps viejas sigan
+       *  llamando igual que siempre. */
+      consent?: boolean;
+    },
     /**
      * Enganche de registro (RS-BE-17/RS-BE-18), opcional: sin él el
      * comportamiento es idéntico al de siempre. Ver `ProvisionFn`/`ValidateFn`.
@@ -134,14 +149,14 @@ export class PortalSyncService {
     }
     const sesion = cookies;
     try {
-      return await this.runImport(userId, studentId, sesion, provision, validate);
+      return await this.runImport(userId, studentId, sesion, entrada.consent === true, provision, validate);
     } finally {
       await this.client.logout(sesion);   // best effort, siempre
     }
   }
 
   private async runImport(
-    userId: number, studentId: number, cookies: PortalCookies,
+    userId: number, studentId: number, cookies: PortalCookies, consent: boolean,
     provision?: ProvisionFn, validate?: ValidateFn,
   ): Promise<ImportResult> {
     const warnings: SyncWarning[] = [];
@@ -178,9 +193,37 @@ export class PortalSyncService {
     if (!aula.ok) warnings.push({ code: "PARSER_FAILED", block: "aula-virtual", message: aula.reason });
     const horario = parseHorario(layout);
     if (!horario.ok) warnings.push({ code: "PARSER_FAILED", block: "horario", message: horario.reason });
-    const rec = parseRecordAcademico(pages.record);
+    // RS-BE-19/RS-BE-20: se lee la PÁGINA entera (tabla del récord, pie y filas
+    // descartadas) y recién después se la reduce a las filas, que es lo único
+    // que el resto de la importación usaba hasta hoy. `rec` conserva su forma y
+    // su motivo de fallo exactos, así que nada de lo que sigue cambia.
+    const recordPage = parseRecordPage(pages.record);
+    const rec = recordRows(recordPage);
     if (!rec.ok) warnings.push({ code: "PARSER_FAILED", block: "record", message: rec.reason });
     const info = parseInfoAcademica(layout);
+
+    // RS-BE-21: la confianza se evalúa SIEMPRE, con o sin consentimiento, y su
+    // motivo va al log del servidor. El alumno NO recibe un aviso nuevo: no hay
+    // nada que pueda hacer al respecto, y el resto de la importación —horario,
+    // matrícula, malla y enrollment.final_grade— sigue exactamente igual.
+    //
+    // El log se emite SIEMPRE que el récord no sea de confianza, sin condición:
+    // RS-BE-21 no la pone, y el caso más grave —la página no trae ninguna fila
+    // legible: sesión caída, página de error con HTTP 200, récord truncado— es
+    // justamente el que no puede quedar sin traza. El `PARSER_FAILED` no lo
+    // sustituye: es un aviso al ALUMNO en la respuesta, no un registro en el
+    // servidor, y no lleva el motivo de la regla de confianza.
+    // Nunca lleva notas, nombres ni el código del alumno: este repo es público y
+    // estas líneas terminan en los logs de Vercel.
+    const confianza = evaluateRecordTrust(recordPage);
+    if (!confianza.ok) console.warn("[portal-sync] récord no confiable:", confianza.reason);
+    if (info.ok && info.data.unreadable.length) {
+      console.warn("[portal-sync] información académica incompleta:", info.data.unreadable.join(", "));
+    }
+    // RS-BE-22/RS-BE-25/RS-BE-29: la ÚNICA condición para tocar las tres tablas
+    // nuevas. Sin consentimiento o sin confianza, esta importación corre como la
+    // de hoy y no llama a ninguno de los métodos nuevos del repositorio.
+    const guardarRecord = consent && confianza.ok;
 
     const nameByCode = new Map<string, string>();
     const teacherByCourse = new Map<string, string>();
@@ -399,6 +442,14 @@ export class PortalSyncService {
         if (!found) throw new HttpError(422, "Perfil de alumno no encontrado.", "PORTAL_IDENTITY_UNVERIFIABLE");
         student = found;
       }
+      // RS-BE-22: el candado va PRIMERO, y este es el primer punto donde
+      // `studentId` ya es el definitivo en los dos modos (en el registro vale 0
+      // hasta que `provision` devuelve el perfil, unas líneas más arriba).
+      // Serializa dos importaciones del mismo alumno: el cliente corta a los
+      // 90 s y el servidor sigue hasta 300 s, así que el alumno puede reintentar
+      // mientras la primera todavía corre. Es `pg_advisory_xact_lock`: se suelta
+      // solo cuando la transacción termina, confirme o revierta.
+      if (guardarRecord) await this.repository.lockAcademicRecord(tx, studentId);
       if (careerNamesDiffer(mat.data.careerName, student.careerName)) {
         warnings.push({
           code: "CAREER_MISMATCH", block: "matricula",
@@ -646,6 +697,26 @@ export class PortalSyncService {
             message: `${summary.progressSkipped} cursos del récord no están en tu malla (convalidaciones o códigos antiguos).`,
           });
         }
+      }
+
+      // RS-BE-22 y RS-BE-25: la copia del récord, la foto acumulada y el resumen
+      // por ciclo. Van DENTRO de la misma transacción y bajo el mismo candado de
+      // arriba, así que si `validate` lanza (registro sin matrícula del ciclo
+      // activo) se revierten con todo lo demás, y una importación concurrente del
+      // mismo alumno espera en vez de pisar la copia a medio reemplazar.
+      //
+      // `rec.ok` ya está implícito en `guardarRecord` —un récord sin filas no es
+      // de confianza—, pero el ternario deja explícito que acá nunca se escribe
+      // una copia a medias. Con el layout ilegible se guarda `EMPTY_GENERAL`:
+      // todo en null, jamás ceros inventados.
+      if (guardarRecord) {
+        await this.repository.replaceRecordEntries(tx, studentId, rec.ok ? rec.data : []);
+        await this.repository.upsertAcademicSnapshot(
+          tx, studentId, info.ok ? info.data.general : EMPTY_GENERAL, new Date(),
+        );
+        await this.repository.replacePeriodSummaries(
+          tx, studentId, info.ok && info.data.period ? [info.data.period] : [],
+        );
       }
 
       // Nivel del alumno: el ciclo del curso obligatorio más bajo que aún le

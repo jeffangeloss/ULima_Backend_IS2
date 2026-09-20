@@ -7,6 +7,19 @@ import type {
   AcademicPeriodBlock,
   RecordRow,
 } from "../../src/modules/portal-sync/portal-sync.types.js";
+// ── Tarea 6: las tres escrituras vistas desde el service (RS-BE-22, RS-BE-25) ──
+// Alias en los nombres que ya usa este archivo para las pruebas de SQL del
+// repositorio. `EMPTY_GENERAL` va sin alias: `GENERAL_VACIO` ya es una const
+// de módulo acá (Tarea 5) y reusar ese nombre sería declararlo dos veces.
+import { PortalSyncService as ServicioPortalSync } from "../../src/modules/portal-sync/portal-sync.service.js";
+import type { PortalSyncRepository as RepositorioPortalSync } from "../../src/modules/portal-sync/portal-sync.repository.js";
+import type { PortalClient as ClientePortal } from "../../src/services/portal.client.js";
+import { EMPTY_GENERAL } from "../../src/modules/portal-sync/parsers/info-academica.js";
+import type {
+  AcademicGeneral as GeneralAcademico,
+  AcademicPeriodBlock as BloquePeriodo,
+  RecordRow as FilaRecord,
+} from "../../src/modules/portal-sync/portal-sync.types.js";
 
 /**
  * RS-BE-22 y RS-BE-25: dentro de la transaccion de la importacion, con record
@@ -298,5 +311,218 @@ describe("replacePeriodSummaries", () => {
     expect(await repo.replacePeriodSummaries(tx, 77, [])).toBe(0);
     expect(llamadas()).toBe(1);
     expect(norm(consultas()[0]!.sql)).toContain("delete from student_period_summary");
+  });
+});
+
+// ── Nivel service: qué reciben exactamente los métodos de la Tarea 5 ──────────
+// Fixtures INVENTADOS de HU34 (alumno sintético 20230001). Los de HU31 traen
+// datos reales y no se usan acá.
+const recordHU34 = await Bun.file("test/HU34_jeff/fixtures/record.html").text();
+const layoutHU34Base = await Bun.file("test/HU34_jeff/fixtures/layout.html").text();
+const matriculaHU34 = await Bun.file("test/HU34_jeff/fixtures/matricula.html").text();
+
+// El rótulo del ciclo vigente no está en el fixture de layout (es de la Tarea 3):
+// sin él `parseCicloActivo` aborta con 502.
+const layoutHU34 = layoutHU34Base.replace(
+  "</body>", '<span class="PortalChannelText">CICLO: 2026-2</span></body>',
+);
+const cookiesHU34 = { JSESSIONID: "a", LtpaToken2: "b" };
+
+/** Las seis filas del fixture, en el orden del documento. */
+const RECORD_ESPERADO: FilaRecord[] = [
+  {
+    periodCode: "2023-1", courseCode: "659001", courseName: "MATEMÁTICA DE PRUEBA",
+    attempt: 1, credits: 4, grade: 8, sectionCode: "101", gradeRaw: "08", observation: null,
+  },
+  {
+    periodCode: "2023-1", courseCode: "4901", courseName: "LENGUAJE DE PRUEBA",
+    attempt: 1, credits: 3, grade: 14, sectionCode: "102", gradeRaw: "14", observation: null,
+  },
+  {
+    periodCode: "2023-2", courseCode: "659001", courseName: "MATEMÁTICA DE PRUEBA",
+    attempt: 2, credits: 4, grade: 12, sectionCode: "201", gradeRaw: "12", observation: null,
+  },
+  {
+    periodCode: "2023-2", courseCode: "659002", courseName: "TALLER DE PRUEBA",
+    attempt: 1, credits: 1.5, grade: 17, sectionCode: "917", gradeRaw: "17",
+    observation: "OBSERVACIÓN DE PRUEBA",
+  },
+  {
+    periodCode: "2026-2", courseCode: "659003", courseName: "CURSO EN CURSO UNO",
+    attempt: 1, credits: 3, grade: null, sectionCode: "301", gradeRaw: null, observation: null,
+  },
+  {
+    periodCode: "2026-2", courseCode: "659004", courseName: "CURSO EN CURSO DOS",
+    attempt: 1, credits: 4, grade: null, sectionCode: "1302", gradeRaw: null, observation: null,
+  },
+];
+
+const GENERAL_ESPERADO: GeneralAcademico = {
+  ppa: 14.25,
+  relativePosition: "TERCIO SUPERIOR",
+  convalidated: { courses: 2, credits: 6 },
+  approved: { courses: 30, credits: 100 },
+  creditsAccumulated: 106,
+  creditsRequired: 210,
+};
+
+const PERIODO_ESPERADO: BloquePeriodo = {
+  periodCode: "2026-1",
+  average: 13.25,
+  relativePosition: "MEDIO SUPERIOR",
+  level: 4,
+  convalidated: { courses: 1, credits: 3 },
+  enrolled: { courses: 7, credits: 23 },
+  approved: { courses: 5, credits: 16 },
+  failed: { courses: 2, credits: 7 },
+};
+
+type EscrituraSvc =
+  | { metodo: "lockAcademicRecord"; studentId: number }
+  | { metodo: "replaceRecordEntries"; studentId: number; rows: FilaRecord[] }
+  | { metodo: "upsertAcademicSnapshot"; studentId: number; general: GeneralAcademico; syncedAt: Date }
+  | { metodo: "replacePeriodSummaries"; studentId: number; periods: BloquePeriodo[] };
+
+/** La escritura del método pedido, ya estrechada, o falla el test nombrándolo. */
+function escrituraSvc<T extends EscrituraSvc["metodo"]>(
+  todas: EscrituraSvc[], metodo: T,
+): Extract<EscrituraSvc, { metodo: T }> {
+  const hallada = todas.find((e) => e.metodo === metodo);
+  if (!hallada) throw new Error(`no se llamó a ${metodo}`);
+  return hallada as Extract<EscrituraSvc, { metodo: T }>;
+}
+
+/** Mismo armado que test/HU34_jeff/consent-gate.test.ts; acá solo interesan los
+ *  argumentos que reciben los métodos nuevos, no el orden. */
+const armarServicioHU34 = (opts: { layout?: string } = {}) => {
+  const escrituras: EscrituraSvc[] = [];
+
+  const client = {
+    fetchPage: async () => opts.layout ?? layoutHU34,
+    fetchAll: async () => ({ matricula: matriculaHU34, record: recordHU34 }),
+    fetchSyllabus: async () => null,
+    syllabusBaseUrl: "https://cactus.ulima.edu.pe",
+    logout: async () => {},
+  } as unknown as ClientePortal;
+
+  const repo = {
+    findActivePeriod: async () => ({ id: 1, code: "2026-1" }),
+    findUserCode: async () => "20230001",
+    findStudent: async () => ({
+      id: 7, userId: 3, careerId: 1, curriculumId: 1,
+      currentLevel: null, careerName: "INGENIERÍA INDUSTRIAL",
+    }),
+    countEnrollmentsInPeriod: async () => 0,
+    runInTransaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+    upsertPeriod: async () => ({
+      id: 2, code: "2026-2", created: false, datesDefaulted: false,
+      startDate: "2026-08-24", endDate: "2026-12-14",
+    }),
+    ensureAcademicWeeks: async () => {},
+    upsertTeacher: async () => ({ id: 10, created: true }),
+    upsertCourse: async () => ({ id: 20, created: true }),
+    upsertOffering: async () => ({ id: 30, created: true }),
+    recomputeOfferingHoursFromSchedule: async () => {},
+    upsertSection: async () => ({ id: 40, created: true }),
+    upsertScheduleSession: async () => {},
+    upsertEnrollment: async () => ({ id: 50, created: true }),
+    upsertRepresentativeClaims: async () => ({ upserted: 0, deleted: 0 }),
+    promoteClaimIfAny: async () => null,
+    deleteClaimsOfInactivePeriods: async () => 0,
+    findActiveRepresentativePosition: async () => null,
+    withdrawMissingEnrollments: async () => 0,
+    countActiveEnrollments: async () => 5,
+    findCurriculumCourseIds: async (_tx: unknown, _cid: number, codes: string[]) =>
+      new Map(codes.map((c, i) => [c, 60 + i])),
+    findEquivalentCurriculumCourseIds: async () => new Map<string, number>(),
+    upsertProgressBatch: async (_tx: unknown, _sid: number, _cid: number, items: unknown[]) => items.length,
+    deleteImpedimentAlert: async () => 0,
+    findCycleCoverage: async () => [],
+    updateStudentLevel: async () => {},
+    fillFullNameIfEmpty: async () => {},
+    upsertSyllabus: async () => ({ id: 999, created: true }),
+    lockAcademicRecord: async (_tx: unknown, studentId: number) => {
+      escrituras.push({ metodo: "lockAcademicRecord", studentId });
+    },
+    replaceRecordEntries: async (_tx: unknown, studentId: number, rows: FilaRecord[]) => {
+      escrituras.push({ metodo: "replaceRecordEntries", studentId, rows });
+      return rows.length;
+    },
+    upsertAcademicSnapshot: async (
+      _tx: unknown, studentId: number, general: GeneralAcademico, syncedAt: Date,
+    ) => {
+      escrituras.push({ metodo: "upsertAcademicSnapshot", studentId, general, syncedAt });
+    },
+    replacePeriodSummaries: async (
+      _tx: unknown, studentId: number, periods: BloquePeriodo[],
+    ) => {
+      escrituras.push({ metodo: "replacePeriodSummaries", studentId, periods });
+      return periods.length;
+    },
+  } as unknown as RepositorioPortalSync;
+
+  return { service: new ServicioPortalSync(repo, client), escrituras };
+};
+
+describe("la importacion con consentimiento guarda la copia del record (RS-BE-22)", () => {
+  test("replaceRecordEntries recibe las seis filas del fixture, sin redondear los creditos", async () => {
+    const a = armarServicioHU34();
+    await a.service.importFromPortal(3, 7, { cookies: cookiesHU34, consent: true });
+    const e = escrituraSvc(a.escrituras, "replaceRecordEntries");
+    expect(e.rows).toEqual(RECORD_ESPERADO);
+    expect(e.rows.map((f) => f.credits)).toContain(1.5);
+    expect(e.studentId).toBe(7);
+  });
+
+  test("las filas en curso van con grade y gradeRaw en null, nunca en cadena vacia", async () => {
+    const a = armarServicioHU34();
+    await a.service.importFromPortal(3, 7, { cookies: cookiesHU34, consent: true });
+    const enCurso = escrituraSvc(a.escrituras, "replaceRecordEntries")
+      .rows.filter((f) => f.periodCode === "2026-2");
+    expect(enCurso).toHaveLength(2);
+    expect(enCurso.map((f) => f.grade)).toEqual([null, null]);
+    expect(enCurso.map((f) => f.gradeRaw)).toEqual([null, null]);
+  });
+});
+
+describe("la importacion con consentimiento guarda la foto y el resumen (RS-BE-25)", () => {
+  test("upsertAcademicSnapshot recibe la informacion general del layout y la fecha de la importacion", async () => {
+    const antes = Date.now();
+    const a = armarServicioHU34();
+    await a.service.importFromPortal(3, 7, { cookies: cookiesHU34, consent: true });
+    const e = escrituraSvc(a.escrituras, "upsertAcademicSnapshot");
+    expect(e.general).toEqual(GENERAL_ESPERADO);
+    expect(e.syncedAt).toBeInstanceOf(Date);
+    expect(e.syncedAt.getTime()).toBeGreaterThanOrEqual(antes);
+    expect(e.syncedAt.getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  test("replacePeriodSummaries recibe el unico bloque por periodo del layout", async () => {
+    const a = armarServicioHU34();
+    await a.service.importFromPortal(3, 7, { cookies: cookiesHU34, consent: true });
+    expect(escrituraSvc(a.escrituras, "replacePeriodSummaries").periods).toEqual([PERIODO_ESPERADO]);
+  });
+
+  test("un layout sin bloque por periodo deja el resumen vacio, no lo inventa", async () => {
+    const sinPeriodo = layoutHU34.replace(
+      "- Informaci&oacute;n por Per&iacute;odo", "- Otra secci&oacute;n",
+    );
+    const a = armarServicioHU34({ layout: sinPeriodo });
+    await a.service.importFromPortal(3, 7, { cookies: cookiesHU34, consent: true });
+    expect(escrituraSvc(a.escrituras, "replacePeriodSummaries").periods).toEqual([]);
+    // La copia del récord se guarda igual: no depende del layout.
+    expect(escrituraSvc(a.escrituras, "replaceRecordEntries").rows).toHaveLength(6);
+  });
+
+  test("un bloque general ilegible guarda la foto vacia, nunca ceros", async () => {
+    const generalRota = layoutHU34.replace(
+      'size="1">Cr&eacute;ditos Acumulados</font>',
+      'size="1">Cr&eacute;ditos Totales</font>',
+    );
+    const a = armarServicioHU34({ layout: generalRota });
+    await a.service.importFromPortal(3, 7, { cookies: cookiesHU34, consent: true });
+    // Contra el `EMPTY_GENERAL` real del parser, no contra la copia literal que
+    // la Tarea 5 dejó en este archivo como `GENERAL_VACIO`.
+    expect(escrituraSvc(a.escrituras, "upsertAcademicSnapshot").general).toEqual(EMPTY_GENERAL);
   });
 });

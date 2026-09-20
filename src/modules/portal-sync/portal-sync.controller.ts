@@ -20,9 +20,17 @@ export class PortalSyncController {
   async importFromPortal(c: Context) {
     // El body NUNCA se registra en logs: lleva cookies de sesión del portal o,
     // en la variante con credenciales, la contraseña de miUlima del alumno.
-    const { cookies, credentials } = await validateJson(c, importSchema);
+    //
+    // `consent` (RS-BE-29) viaja en el body y no en un header ni en la query:
+    // es parte de la petición que el alumno acaba de autorizar en la pantalla de
+    // consentimiento, y así queda validado por el mismo esquema que el resto.
+    // Se normaliza a booleano acá: `undefined` (apps viejas) y `false` son lo
+    // mismo para el service, que solo entiende "aceptó" o "no aceptó".
+    const { cookies, credentials, consent } = await validateJson(c, importSchema);
     const studentId = this.requireStudentId(c);
     const userId = Number(c.get("userId"));
-    return c.json(await this.service.importFromPortal(userId, studentId, { cookies, credentials }));
+    return c.json(await this.service.importFromPortal(
+      userId, studentId, { cookies, credentials, consent: consent === true },
+    ));
   }
 }

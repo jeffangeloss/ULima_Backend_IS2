@@ -605,7 +605,8 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
   - Response: `{ "activePeriod": { "id": number, "code": "2026-2" } | null, "enrollmentsInActivePeriod": number, "needsImport": boolean }`
   - `needsImport` = no hay período activo o el alumno no tiene `enrollment` activa en él.
 - `POST /portal-sync/import`
-  - Body: `{ "cookies": { "JSESSIONID": string, "LtpaToken2": string, "LtpaToken": string|null } }` (cookies de `webaloe.ulima.edu.pe`; nunca se persisten ni se registran en logs)
+  - Body: `{ "cookies": { "JSESSIONID": string, "LtpaToken2": string, "LtpaToken": string|null } }` **o** `{ "credentials": { "password": string, "passcode": string } }`, exactamente uno de los dos (cookies de `webaloe.ulima.edu.pe`; nunca se persisten ni se registran en logs), más el campo opcional `"consent": true`.
+  - `consent` (RS-BE-29 de `specs/features/academic-record/academic-record.spec.md`): la app lo manda después de que el alumno acepta la pantalla de consentimiento del récord académico. Con `consent: true` **y** un récord de confianza, la importación guarda además la copia del récord, la foto acumulada y el resumen por ciclo. Sin él —es lo que mandan las apps ya instaladas— la importación corre igual que siempre (horario, matrícula, malla y `enrollment.final_grade`) y no se guarda nada de eso. Cualquier valor que no sea booleano se rechaza con `400 INVALID_REQUEST_BODY`.
   - Response `200`:
     ```json
     {

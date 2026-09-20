@@ -121,7 +121,7 @@ src/services/portal.client.ts  cliente HTTP del portal (patrón de cohere.client
 Ver `docs/specs/api-contracts.md`, sección **Portal Sync**.
 
 - `GET /portal-sync/status` — `{ activePeriod, needsImport, enrollmentsInActivePeriod }`.
-- `POST /portal-sync/import` — body `{ cookies }` **o** `{ credentials }`; response `{ period, identity, summary, warnings }`.
+- `POST /portal-sync/import` — body `{ cookies }` **o** `{ credentials }`, más el campo opcional `consent` (RS-BE-29 de `../academic-record/academic-record.spec.md`); response `{ period, identity, summary, warnings }`.
 
 ## Rules
 
@@ -151,6 +151,8 @@ El body de `POST /portal-sync/import` acepta **una de dos formas**, nunca las do
 
 - `{ cookies: { JSESSIONID, LtpaToken2, LtpaToken? } }` — la sesión del portal ya la obtuvo el cliente.
 - `{ credentials: { password, passcode } }` — el backend hace el login contra miUlima y obtiene la sesión él mismo.
+
+Junto a cualquiera de las dos viaja el campo **opcional** `consent: true` (**RS-BE-29** de `../academic-record/academic-record.spec.md`): el alumno aceptó la pantalla de consentimiento del récord académico. Es ortogonal a la forma de la sesión y no interviene en el login; solo decide si la importación guarda además la copia del récord, la foto acumulada y el resumen por ciclo. Sin él la importación corre igual que hoy.
 
 **Decisión del owner (2026-09-02)**: el diseño original era que el alumno se
 logueara dentro de un WebView y la app solo leyera las cookies, de modo que la
@@ -386,13 +388,13 @@ Medido sobre el récord real de 20235218 (`spike-portal/fixtures/10_gada_servlet
 
 - Boletas de pago, cuenta corriente, datos laborales, información vehicular, DNI, dirección, celular, fecha de nacimiento, brevete, carné y anuncios del buzón (`tab=1`): **no se descargan ni se guardan**.
 - Ciclos pasados no crean `section`, `enrollment` ni `course`: solo alimentan `student_course_progress`.
-- No se persiste fecha de última sincronización: `needsImport` se deriva de la matrícula en el período activo.
+- No se persiste fecha de última sincronización **para esta feature**: `needsImport` se deriva de la matrícula en el período activo. **Enmendado por `../academic-record/academic-record.spec.md` (RS-BE-25)**: la copia del récord sí guarda su `student_academic_snapshot.synced_at`, que es la fecha de la copia visible y **no** interviene en `needsImport` ni en `GET /portal-sync/status`.
 
 ### Privacidad y base legal
 
 - La pantalla del WebView debe mostrar, antes del login, qué datos se importarán y con qué finalidad, y requiere aceptación explícita del alumno (consentimiento informado, Ley 29733 de Protección de Datos Personales del Perú). Sin aceptación no se abre el portal.
-- Inventario de datos importados: nombre completo, código de alumno, carrera, nivel, cursos, secciones, docentes, horarios, matrícula, notas históricas y estado de impedimento/deuda. Nada más.
-- El alumno puede pedir el borrado de lo importado; el procedimiento debe existir antes de publicar la feature (decisión pendiente: si es autoservicio o vía soporte).
+- Inventario de datos importados: nombre completo, código de alumno, carrera, nivel, cursos, secciones, docentes, horarios, matrícula, notas históricas y estado de impedimento/deuda. Con `consent: true` (**RS-BE-29**) se agregan, y solo entonces: la copia del récord académico (ciclo, código y nombre del curso, vez, créditos, nota, sección y observación), el promedio ponderado acumulado, la ubicación relativa, los cursos y créditos convalidados y aprobados, los créditos acumulados y requeridos, y el resumen del último ciclo (promedio, ubicación, nivel y cursos y créditos convalidados, matriculados, aprobados y desaprobados). Nada más.
+- El alumno puede pedir el borrado de lo importado. Para los datos que agrega `academic-record` el procedimiento es **autoservicio**: `DELETE /academic-record/me` (**RS-BE-27**). Ver la decisión #7 abajo.
 - Antes de implementar se requiere autorización escrita del área de Sistemas de la Universidad para que una app reciba cookies de sesión del portal institucional.
 
 ### Manejo de errores
@@ -404,8 +406,9 @@ Medido sobre el récord real de 20235218 (`spike-portal/fixtures/10_gada_servlet
 
 ### DTO validation
 
-- Body de `POST /portal-sync/import`: `cookies.JSESSIONID` y `cookies.LtpaToken2` string 1..4096 obligatorios; `cookies.LtpaToken` opcional. Cualquier otra clave se ignora. El body nunca se registra en logs.
+- Body de `POST /portal-sync/import`: `cookies.JSESSIONID` y `cookies.LtpaToken2` string 1..4096 obligatorios; `cookies.LtpaToken` opcional; `consent` booleano opcional (RS-BE-29) — un valor que no sea booleano se rechaza con `400`, no se descarta. Cualquier otra clave se ignora. El body nunca se registra en logs.
   `[@test] ../../../test/HU31_jeff/schemas.import.test.ts`
+  `[@test] ../../../test/HU34_jeff/consent-gate.test.ts`
 
 ## Decisiones
 
@@ -423,7 +426,6 @@ Resueltas por diseño, sin cambio de BD:
 
 | # | Decisión | Resolución |
 | --- | --- | --- |
-| 2 | PPA y ubicación relativa | **DESCARTADO**: no se extraen ni se guardan. No existe columna y no los consume ninguna pantalla. |
 | 5 | `maxDuration` en `vercel.json` | **RESUELTA (2026-09-02)**: no se declara. Con Fluid compute el plan Hobby ya da 300 s por defecto y por tope, verificado contra la API de Vercel; declarar un número solo podría bajarlo. Lo que sí se fijó es `regions: ["iad1"]`. Ver `platform-runtime.spec.md`, BR-PLATFORM-10 y BR-PLATFORM-11. |
 | 6 | Ubicación de tests | `test/HU31_jeff/`, siguiendo el patrón `test/HU<NN>_<owner>/`. Renombrar si el equipo asigna otro número de HU. |
 
@@ -431,8 +433,14 @@ Pendiente, no bloquea el desarrollo:
 
 | # | Decisión | Por qué importa |
 | --- | --- | --- |
-| 7 | Procedimiento de borrado de los datos importados a pedido del alumno | Requisito de la Ley 29733. Debe existir antes de publicar la feature, no antes de implementarla. |
 | 10 | El visor de sílabos de la app Flutter no puede abrir la URL de Domino guardada | La URL de `syllabus.drive_file_url` apunta a un documento **protegido por sesión** en Domino (§Sílabos, §SSO), a diferencia de las URLs de Google Drive que el visor in-app maneja hoy: sin una sesión de Domino, el visor no podrá abrirla directamente. Alcance real desde que el upsert es `on conflict do nothing` (§Sincronización paso 12): solo afecta a las ofertas que NO tenían fila `syllabus`; donde ya había un enlace de Drive sembrado, ese enlace se conserva. No se resuelve en esta feature; queda documentado para que el owner decida (¿proxear la descarga por el backend con la sesión del alumno? ¿abrir en navegador externo? ¿otra cosa?). |
+
+Reabiertas y resueltas por `../academic-record/academic-record.spec.md`, aprobada por el dueño el 2026-09-18:
+
+| # | Decisión | Resolución |
+| --- | --- | --- |
+| 2 | PPA y ubicación relativa | **REABIERTA y APROBADA (2026-09-18)**: sí se extraen y sí se guardan, con cambio de BD (`student_academic_snapshot` y `student_period_summary`, migración `0011_academic_record.sql`), y los consume la pantalla de récord académico. Solo con `consent: true` y un récord de confianza (RS-BE-24, RS-BE-25, RS-BE-29). |
+| 7 | Procedimiento de borrado de los datos importados a pedido del alumno | **RESUELTA (2026-09-18)** a favor del **autoservicio**, para los datos que agrega `academic-record`: `DELETE /academic-record/me` borra la copia del récord, la foto y el resumen del alumno, y no toca `student_course_progress` (RS-BE-27). El resto del inventario de esta spec sigue sin procedimiento de borrado propio. |
 
 ## Verification
 
