@@ -314,7 +314,7 @@ Crea `test/HU34_jeff/fixtures/record.html` (la carpeta `test/HU34_jeff/` todaví
                             17
 
                         </td>
-                        <td class="text-center">855</td>
+                        <td class="text-center">917</td>
                         <td class="text-center">0102</td>
                         <td class="text-center">0011</td>
                         <td>
