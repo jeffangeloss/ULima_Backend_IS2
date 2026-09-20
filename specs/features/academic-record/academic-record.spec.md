@@ -320,6 +320,8 @@ de Drizzle está desalineado desde la `0010` y reemitiría ese cambio.
 `ON DELETE CASCADE` es la base del borrado: si algún día se borra a un alumno, su récord
 no queda huérfano.
 
+`[@test] ../../../test/HU34_jeff/migration-0011.test.ts`
+
 ## Contrato
 
 ```
