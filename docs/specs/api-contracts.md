@@ -627,3 +627,73 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
   - **Sílabos**: además de matrícula y récord, la importación busca en paralelo el sílabo de cada curso importado en la base Domino de sílabos (`cactus.ulima.edu.pe`, host separado y con su propia allowlist — ver `specs/features/portal-sync/portal-sync.spec.md` §SSO). `summary.syllabiUpserted` cuenta las filas **efectivamente escritas**. Que un curso no tenga sílabo publicado es normal y no genera advertencia por curso; solo si NINGÚN curso del ciclo trae sílabo se agrega una única advertencia `SYLLABUS_UNAVAILABLE` (esa advertencia se decide con el resultado de la descarga, no con el contador, y su mensaje no afirma que el portal no publicó nada: desde el backend no se distingue eso de un fallo de red o de sesión). Un fallo al buscar o guardar un sílabo nunca aborta la importación ni afecta el resto del `summary`: la búsqueda se degrada por curso y la escritura usa `on conflict do nothing` sin conflict target, que cubre las dos restricciones únicas de la tabla y por eso no puede levantar un `23505`.
   - **La importación NO pisa sílabos existentes**: si la oferta ya tenía fila `syllabus` (sembrada o de una importación anterior), se conserva tal cual — incluido su `silaboUrl` de Google Drive, que `GET /grades/me/courses` sirve a todos los alumnos de la oferta. La contrapartida aceptada es que **un sílabo republicado no se actualiza** al re-importar el mismo ciclo.
   - **Limpieza de electivos (RS-BE-23)**: con `consent: true` y un récord de confianza, la importación borra de `student_course_progress` los electivos en estado `approved` que ninguna fila del récord respalda, y cuenta lo borrado en `summary.progressRemoved`. Es la única parte de la importación que BORRA progreso. No corre si alguna fila aprobada del récord no resolvió a la malla (ni por código directo ni por `course_equivalence`, salvo los códigos de Estudios Generales ya conocidos), ni si el conjunto de respaldo queda vacío; en esos casos el motivo va al log del servidor y `progressRemoved` queda en 0. Nunca toca un obligatorio ni un curso de Estudios Generales, ni una fila `in_progress`, `failed` o `withdrawn`, ni `student_curriculum_simulation`. Si `progressRemoved` es mayor que 0 la respuesta trae el warning `PROGRESS_REMOVED` con el mensaje `"Se desmarcaron N electivos que tu récord no respalda."` (con `"Se desmarcó 1 electivo que tu récord no respalda."` en singular). El nivel del alumno no se mueve: la cobertura de ciclos ya excluye electivos. Ver `specs/features/academic-record/academic-record.spec.md` §RS-BE-23.
+
+## Academic Record (récord académico)
+
+Copia del récord que la importación guarda cuando el alumno da su consentimiento y el récord es de confianza. Detalle en `specs/features/academic-record/academic-record.spec.md`. **Solo el dueño de los datos los lee**: el alumno sale del JWT, no hay parámetro ni ruta para docentes o delegados, y el chatbot no toca estas tablas (RS-BE-28).
+
+### GET /academic-record/me
+
+Récord del alumno autenticado: la foto acumulada, el resumen por ciclo y el récord agrupado por ciclo, del más reciente al más viejo.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK` (todos los valores del ejemplo son inventados; el DTO no lleva código de alumno, porque el alumno se identifica por el token):
+  ```json
+  {
+    "syncedAt": "2026-09-18T15:00:00.000Z",
+    "snapshot": {
+      "ppa": 14.62,
+      "relativePosition": "TERCIO SUPERIOR",
+      "creditsAccumulated": 164,
+      "creditsRequired": 200,
+      "approved": { "courses": 50, "credits": 164 },
+      "convalidated": { "courses": 0, "credits": 0 }
+    },
+    "periods": [
+      {
+        "periodCode": "2025-2",
+        "average": 13.25,
+        "relativePosition": "MEDIO SUPERIOR",
+        "level": 4,
+        "convalidated": { "courses": 0, "credits": 0 },
+        "enrolled": { "courses": 7, "credits": 23 },
+        "approved": { "courses": 5, "credits": 16 },
+        "failed": { "courses": 2, "credits": 7 }
+      }
+    ],
+    "record": [
+      {
+        "periodCode": "2026-1",
+        "courses": [
+          {
+            "code": "659003",
+            "name": "CURSO DE PRUEBA TRES",
+            "attempt": 1,
+            "credits": 1.5,
+            "grade": null,
+            "gradeRaw": null,
+            "section": "917",
+            "observation": null
+          }
+        ]
+      }
+    ]
+  }
+  ```
+- **`Cache-Control: no-store`** en la respuesta: son las notas del alumno y no se guardan en ninguna caché intermedia.
+- **Orden**: `record` y `periods` van del ciclo más reciente al más viejo; dentro de cada ciclo, los cursos en el orden en que el portal los listó.
+- **Tipos**: todo numérico es `number`, nunca string; `credits`, `ppa`, `average` y los `credits*` pueden traer decimal, y `attempt`, `grade`, `level` y los `courses` son enteros. Un campo sin dato es `null`, nunca 0, y en los pares `{ courses, credits }` cada número va por separado.
+- `syncedAt` es `student_academic_snapshot.synced_at` en ISO-8601 UTC con milisegundos, o `null` si no hay foto.
+- **Estado vacío**: si el alumno nunca sincronizó —o nunca con consentimiento y un récord de confianza— la respuesta es `{ "syncedAt": null, "snapshot": null, "periods": [], "record": [] }` con `200`.
+- **Errors**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`
+
+### DELETE /academic-record/me
+
+Borra la copia del récord del alumno autenticado: `student_record_entry`, `student_period_summary` y `student_academic_snapshot`, en una sola transacción.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK`: `{ "ok": true }`
+- **`Cache-Control: no-store`** también en esta respuesta.
+- **No** toca `student_course_progress`: ese progreso lo necesita la malla y es de otra funcionalidad. Tampoco borra matrícula, horario ni notas oficiales.
+- Si el alumno vuelve a sincronizar y acepta de nuevo, la copia se guarda otra vez.
+- **Errors**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`

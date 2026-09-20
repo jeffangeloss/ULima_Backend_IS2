@@ -20,6 +20,7 @@ This index connects real user stories, product requirements, backend modules, an
 | 13 | Portal Sync (carga de ciclo desde miUlima) | `specs/features/portal-sync/portal-sync.spec.md` | HU-SYNC-01, HU-SYNC-02 | Importación idempotente por alumno desde miUlima vía sesión de WebView; sin contraseñas en backend | `src/modules/portal-sync`, `src/config/app-config.ts` | Implementado (backend) — **pendiente la verificación manual end-to-end contra el portal real** |
 | 14 | Asistencia del Aula Virtual | `specs/features/asistencia-portal/asistencia-portal.spec.md` | RS-BE-15, RS-BE-16 | Importa las horas de asistencia del alumno desde el panel Asistencia; sin sesiones ni observaciones del docente | `src/modules/portal-sync`, `src/modules/schedule`, `src/modules/course-detail`, `src/modules/attendance-risk` | Implementado (pendiente medir tiempos del import) |
 | 16 | Registro de alumno | `specs/features/registro/registro.spec.md` | RS-BE-17, RS-BE-18 | Alta de cuenta autenticando contra miUlima y cargando el ciclo en el mismo acto | `src/modules/auth`, `src/modules/portal-sync` | Aprobada — pendiente de implementar |
+| 17 | Récord académico | `specs/features/academic-record/academic-record.spec.md` | RS-BE-19 … RS-BE-29 | Copia del récord del portal con el consentimiento del alumno, lectura y borrado por su propio dueño, y limpieza de los electivos que el récord no respalda | `src/modules/academic-record`, `src/modules/portal-sync`, `src/modules/auth` | Aprobada — en implementación |
 
 ## Workflow
 

@@ -6,6 +6,12 @@
  * importación, así que este archivo no importa `db` ni nada que lo cargue.
  */
 import type { RecordPage, RecordRow } from "../portal-sync/portal-sync.types.js";
+import type {
+  AcademicRecordDto,
+  EntryRecord,
+  PeriodSummaryRecord,
+  SnapshotRecord,
+} from "./academic-record.types.js";
 
 /** Veredicto de la regla de confianza (RS-BE-21). `reason` va solo al log del
  *  servidor: describe la condición que falló y nunca lleva notas, nombres ni
@@ -117,3 +123,68 @@ export const progressRemovedMessage = (n: number): string =>
   n === 1
     ? "Se desmarcó 1 electivo que tu récord no respalda."
     : `Se desmarcaron ${n} electivos que tu récord no respalda.`;
+
+/** Orden de ciclos del más reciente al más viejo. Los códigos son "AAAA-N":
+ *  mismo largo, dígitos y guion, así que el orden de string descendente es el
+ *  cronológico inverso ("2026-2" > "2026-1" > "2025-2"). */
+const cicloDesc = (a: string, b: string): number => (a < b ? 1 : a > b ? -1 : 0);
+
+/**
+ * RS-BE-26: arma la respuesta de `GET /academic-record/me` con lo que leyó el
+ * repository. Función pura: no consulta nada, no inventa valores y no
+ * convierte un null en 0. Los ciclos salen del más reciente al más viejo; los
+ * cursos de cada ciclo, en el orden en que llegaron.
+ */
+export const buildAcademicRecordDto = (
+  snapshot: SnapshotRecord | null,
+  entries: EntryRecord[],
+  periods: PeriodSummaryRecord[],
+): AcademicRecordDto => {
+  const porCiclo = new Map<string, AcademicRecordDto["record"][number]["courses"]>();
+  for (const entrada of entries) {
+    const cursos = porCiclo.get(entrada.periodCode) ?? [];
+    cursos.push({
+      code: entrada.courseCode,
+      name: entrada.courseName,
+      attempt: entrada.attempt,
+      credits: entrada.credits,
+      grade: entrada.grade,
+      gradeRaw: entrada.gradeRaw,
+      section: entrada.sectionCode,
+      observation: entrada.observation,
+    });
+    porCiclo.set(entrada.periodCode, cursos);
+  }
+
+  return {
+    syncedAt: snapshot ? snapshot.syncedAt.toISOString() : null,
+    snapshot: snapshot
+      ? {
+          ppa: snapshot.ppa,
+          relativePosition: snapshot.relativePosition,
+          creditsAccumulated: snapshot.creditsAccumulated,
+          creditsRequired: snapshot.creditsRequired,
+          approved: { courses: snapshot.approvedCourses, credits: snapshot.approvedCredits },
+          convalidated: {
+            courses: snapshot.convalidatedCourses,
+            credits: snapshot.convalidatedCredits,
+          },
+        }
+      : null,
+    periods: [...periods]
+      .sort((a, b) => cicloDesc(a.periodCode, b.periodCode))
+      .map((p) => ({
+        periodCode: p.periodCode,
+        average: p.average,
+        relativePosition: p.relativePosition,
+        level: p.level,
+        convalidated: { courses: p.convalidatedCourses, credits: p.convalidatedCredits },
+        enrolled: { courses: p.enrolledCourses, credits: p.enrolledCredits },
+        approved: { courses: p.approvedCourses, credits: p.approvedCredits },
+        failed: { courses: p.failedCourses, credits: p.failedCredits },
+      })),
+    record: [...porCiclo.entries()]
+      .map(([periodCode, courses]) => ({ periodCode, courses }))
+      .sort((a, b) => cicloDesc(a.periodCode, b.periodCode)),
+  };
+};
