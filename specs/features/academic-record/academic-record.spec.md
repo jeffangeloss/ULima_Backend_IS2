@@ -249,6 +249,14 @@ tablas: se conservan la copia, la foto, el resumen y su `synced_at` anteriores. 
 `syncedAt` corresponde siempre a la copia visible, y una primera importación no confiable
 deja al alumno en el estado vacío (`syncedAt: null`).
 
+Si la información general no se puede leer, no se escriben la foto ni el resumen: se
+conserva lo anterior con su fecha, igual que con un récord que no es de confianza. El
+récord (`student_record_entry`) es una página distinta del portal y **sí** se sigue
+escribiendo con normalidad: un rótulo que cambió en "Información General" de
+`layout.jsp` no dice nada sobre la confiabilidad del récord. Un bloque "por período"
+ausente (alumno de primer ciclo) no cuenta como información general ilegible: la foto se
+escribe y el resumen queda vacío, como hoy. Decisión del dueño, 2026-09-20.
+
 `[@test] ../../../test/HU34_jeff/record-persistence.test.ts`
 
 ### RS-BE-26 — Lectura: `GET /academic-record/me`

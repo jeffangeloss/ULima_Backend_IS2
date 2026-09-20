@@ -1249,6 +1249,18 @@ export class PortalSyncRepository {
       vistas.add(clave);
       return true;
     });
+    // El dedupe de arriba es una defensa silenciosa por diseño (el parser no
+    // debería producir duplicados), pero silenciosa no es lo mismo que muda: si
+    // alguna vez descarta algo, que quede en el log del servidor. Se registra
+    // acá, junto al cálculo, para no repetir la misma lógica de agrupar por
+    // clave en el service solo para poder loguearla.
+    const descartadas = rows.length - unicas.length;
+    if (descartadas > 0) {
+      console.warn(
+        "[portal-sync] replaceRecordEntries descartó filas duplicadas del récord (mismo ciclo+curso+vez):",
+        descartadas,
+      );
+    }
     if (!unicas.length) return 0;
     const payload = JSON.stringify(unicas.map((r) => ({
       p: r.periodCode,

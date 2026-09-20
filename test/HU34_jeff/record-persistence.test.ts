@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { PortalSyncRepository } from "../../src/modules/portal-sync/portal-sync.repository.js";
@@ -9,12 +9,10 @@ import type {
 } from "../../src/modules/portal-sync/portal-sync.types.js";
 // ── Tarea 6: las tres escrituras vistas desde el service (RS-BE-22, RS-BE-25) ──
 // Alias en los nombres que ya usa este archivo para las pruebas de SQL del
-// repositorio. `EMPTY_GENERAL` va sin alias: `GENERAL_VACIO` ya es una const
-// de módulo acá (Tarea 5) y reusar ese nombre sería declararlo dos veces.
+// repositorio.
 import { PortalSyncService as ServicioPortalSync } from "../../src/modules/portal-sync/portal-sync.service.js";
 import type { PortalSyncRepository as RepositorioPortalSync } from "../../src/modules/portal-sync/portal-sync.repository.js";
 import type { PortalClient as ClientePortal } from "../../src/services/portal.client.js";
-import { EMPTY_GENERAL } from "../../src/modules/portal-sync/parsers/info-academica.js";
 import type {
   AcademicGeneral as GeneralAcademico,
   AcademicPeriodBlock as BloquePeriodo,
@@ -190,6 +188,35 @@ describe("replaceRecordEntries", () => {
     expect(payload.some((x) => x.n === "FILA REPETIDA")).toBe(false);
   });
 
+  test("una fila descartada por el dedupe va al log del servidor", async () => {
+    // Arreglo 4 de la revision final (minor): el dedupe no debe ser mudo. Con
+    // dos filas de la misma clave, la que se descarta se cuenta y se avisa.
+    const repetida: RecordRow = { ...FILAS[0]!, courseName: "FILA REPETIDA" };
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { tx } = fakeTx([{ id: 1 }]);
+      await repo.replaceRecordEntries(tx, 77, [...FILAS, repetida]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toBe(
+        "[portal-sync] replaceRecordEntries descartó filas duplicadas del récord (mismo ciclo+curso+vez):",
+      );
+      expect(warn.mock.calls[0]?.[1]).toBe(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("sin duplicados no se registra nada en el log", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { tx } = fakeTx([{ id: 1 }]);
+      await repo.replaceRecordEntries(tx, 77, FILAS);
+      expect(warn).toHaveBeenCalledTimes(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test("sin filas borra igual y no intenta insertar nada", async () => {
     // El record confiable siempre trae filas (RS-BE-21 condicion 3), pero el
     // service llama igual con [] cuando `rec` no es ok: la copia vieja no
@@ -213,6 +240,10 @@ describe("upsertAcademicSnapshot", () => {
     const { tx, consultas, llamadas } = fakeTx([]);
     await repo.upsertAcademicSnapshot(tx, 77, GENERAL, FECHA);
     expect(llamadas()).toBe(1);
+    // Arreglo 6 de la revision final (minor): un typo en el nombre de la tabla
+    // hoy tumbaria la importacion entera en produccion (23P01/42P01) sin que
+    // ninguna prueba lo notara, porque nada verificaba el nombre en el SQL.
+    expect(norm(consultas()[0]!.sql)).toContain("insert into student_academic_snapshot");
     expect(norm(consultas()[0]!.sql)).toContain("on conflict (student_id) do update set");
   });
 
@@ -504,7 +535,7 @@ describe("la importacion con consentimiento guarda la foto y el resumen (RS-BE-2
     expect(escrituraSvc(a.escrituras, "replacePeriodSummaries").periods).toEqual([PERIODO_ESPERADO]);
   });
 
-  test("un layout sin bloque por periodo deja el resumen vacio, no lo inventa", async () => {
+  test("un layout sin bloque por periodo deja el resumen vacio, pero la foto si se escribe", async () => {
     const sinPeriodo = layoutHU34.replace(
       "- Informaci&oacute;n por Per&iacute;odo", "- Otra secci&oacute;n",
     );
@@ -513,17 +544,34 @@ describe("la importacion con consentimiento guarda la foto y el resumen (RS-BE-2
     expect(escrituraSvc(a.escrituras, "replacePeriodSummaries").periods).toEqual([]);
     // La copia del récord se guarda igual: no depende del layout.
     expect(escrituraSvc(a.escrituras, "replaceRecordEntries").rows).toHaveLength(6);
+    // Arreglo 3 (RS-BE-25): un bloque "por período" ausente es normal (alumno
+    // de primer ciclo) y NO bloquea la foto — solo "general" ilegible lo hace.
+    expect(escrituraSvc(a.escrituras, "upsertAcademicSnapshot").general).toEqual(GENERAL_ESPERADO);
   });
 
-  test("un bloque general ilegible guarda la foto vacia, nunca ceros", async () => {
+  // Arreglo 3 de la revisión final (decisión del dueño, RS-BE-25): si el
+  // rótulo de "Información General" cambia y el bloque queda ilegible, ya NO
+  // se escribe una foto vacía con fecha de hoy — se conserva la anterior tal
+  // cual, con su fecha, y el motivo queda en el log. El récord (tabla
+  // separada) sigue escribiéndose igual: es una página distinta del portal.
+  test("un bloque general ilegible no pisa la foto ni el resumen: se conserva lo anterior con su fecha", async () => {
     const generalRota = layoutHU34.replace(
       'size="1">Cr&eacute;ditos Acumulados</font>',
       'size="1">Cr&eacute;ditos Totales</font>',
     );
-    const a = armarServicioHU34({ layout: generalRota });
-    await a.service.importFromPortal(3, 7, { cookies: cookiesHU34, consent: true });
-    // Contra el `EMPTY_GENERAL` real del parser, no contra la copia literal que
-    // la Tarea 5 dejó en este archivo como `GENERAL_VACIO`.
-    expect(escrituraSvc(a.escrituras, "upsertAcademicSnapshot").general).toEqual(EMPTY_GENERAL);
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const a = armarServicioHU34({ layout: generalRota });
+      await a.service.importFromPortal(3, 7, { cookies: cookiesHU34, consent: true });
+      expect(a.escrituras.some((e) => e.metodo === "upsertAcademicSnapshot")).toBe(false);
+      expect(a.escrituras.some((e) => e.metodo === "replacePeriodSummaries")).toBe(false);
+      // El récord y el layout son páginas distintas: la copia SÍ se escribe.
+      expect(escrituraSvc(a.escrituras, "replaceRecordEntries").rows).toHaveLength(6);
+      expect(warn.mock.calls.some((c) =>
+        String(c[0]).startsWith("[portal-sync]") && String(c[0]).includes("información general ilegible"),
+      )).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

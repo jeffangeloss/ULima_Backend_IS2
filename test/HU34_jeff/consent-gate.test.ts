@@ -368,9 +368,15 @@ describe("informacion academica incompleta (RS-BE-24)", () => {
     try {
       const a = armarServicio({ layout: layoutGeneralRota });
       await a.service.importFromPortal(3, 7, { cookies, consent: true });
-      expect(warn).toHaveBeenCalledTimes(1);
+      // Dos avisos: el de esta spec (incondicional, sin importar
+      // `guardarRecord`) y el nuevo de RS-BE-25 (arreglo 3) que además explica
+      // que con "general" ilegible no se pisa la foto ni el resumen.
+      expect(warn).toHaveBeenCalledTimes(2);
       expect(warn.mock.calls[0]?.[0]).toBe("[portal-sync] información académica incompleta:");
       expect(warn.mock.calls[0]?.[1]).toBe("general");
+      expect(warn.mock.calls[1]?.[0]).toBe(
+        "[portal-sync] información general ilegible, no se actualiza la foto ni el resumen del ciclo:",
+      );
     } finally {
       warn.mockRestore();
     }

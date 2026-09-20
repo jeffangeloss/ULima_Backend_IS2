@@ -14,13 +14,12 @@ import {
   parseInfoAcademica, parseSyllabusEntry,
   parseAulas, parseDelegados, parseAsistenciaCurso,
 } from "./parsers/index.js";
-// `parseRecordPage`, `recordRows` y `EMPTY_GENERAL` NO están en el barrel
-// `./parsers/index.js`, que no se toca: `scripts/verificar-readme.py:68` cuenta
-// sus `parse[A-Z]\w*` y el README cita esa cifra. Se importan del módulo concreto.
+// `parseRecordPage` y `recordRows` NO están en el barrel `./parsers/index.js`,
+// que no se toca: `scripts/verificar-readme.py:68` cuenta sus `parse[A-Z]\w*`
+// y el README cita esa cifra. Se importan del módulo concreto.
 // `parseRecordAcademico` sale de la lista de arriba porque deja de usarse acá
 // (`noUnusedLocals` rompería el build); sigue exportado para quien lo necesite.
 import { parseRecordPage, recordRows } from "./parsers/record.js";
-import { EMPTY_GENERAL } from "./parsers/info-academica.js";
 import {
   cleanupBlockers, evaluateRecordTrust, progressRemovedMessage,
 } from "../academic-record/academic-record.logic.js";
@@ -769,16 +768,38 @@ export class PortalSyncService {
       //
       // `rec.ok` ya está implícito en `guardarRecord` —un récord sin filas no es
       // de confianza—, pero el ternario deja explícito que acá nunca se escribe
-      // una copia a medias. Con el layout ilegible se guarda `EMPTY_GENERAL`:
-      // todo en null, jamás ceros inventados.
+      // una copia a medias.
       if (guardarRecord) {
+        // El récord (esta copia) y el layout ("Información General"/"por
+        // Período") son páginas DISTINTAS del portal: un rótulo que cambió en
+        // el layout no dice nada sobre la confiabilidad del récord, así que
+        // `replaceRecordEntries` se escribe siempre que `guardarRecord` sea
+        // true, sin condición sobre `info`.
         await this.repository.replaceRecordEntries(tx, studentId, rec.ok ? rec.data : []);
-        await this.repository.upsertAcademicSnapshot(
-          tx, studentId, info.ok ? info.data.general : EMPTY_GENERAL, new Date(),
-        );
-        await this.repository.replacePeriodSummaries(
-          tx, studentId, info.ok && info.data.period ? [info.data.period] : [],
-        );
+
+        // La foto (`upsertAcademicSnapshot`) y el resumen por ciclo
+        // (`replacePeriodSummaries`) sí dependen de que "Información General"
+        // se haya podido leer. Si no —`!info.ok`, o el bloque general quedó en
+        // `unreadable`—, NO se toca ninguna de las dos tablas: se conserva la
+        // foto anterior con su `synced_at` de esa vez. Escribir acá pisaría el
+        // PPA, la ubicación y los créditos de TODOS los que dieron su
+        // consentimiento con nulos y una fecha de HOY, a la vez, y además
+        // vaciaría el resumen del ciclo; el alumno vería una foto "fresca" con
+        // todo en blanco en lugar de la buena. Un bloque "por período" ausente
+        // SÍ es normal (alumno de primer ciclo sin ese bloque) y no bloquea la
+        // foto: solo dice que el resumen del ciclo queda vacío, como ya hacía.
+        const generalIlegible = !info.ok || info.data.unreadable.includes("general");
+        if (generalIlegible) {
+          console.warn(
+            "[portal-sync] información general ilegible, no se actualiza la foto ni el resumen del ciclo:",
+            info.ok ? info.data.unreadable.join(", ") : "bloque Información Académica no encontrado",
+          );
+        } else {
+          await this.repository.upsertAcademicSnapshot(tx, studentId, info.data.general, new Date());
+          await this.repository.replacePeriodSummaries(
+            tx, studentId, info.data.period ? [info.data.period] : [],
+          );
+        }
       }
 
       // Nivel del alumno: el ciclo del curso obligatorio más bajo que aún le
