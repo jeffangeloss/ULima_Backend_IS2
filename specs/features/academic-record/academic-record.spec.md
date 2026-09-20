@@ -3,13 +3,16 @@ name: Academic Record
 description: Guardar una copia del récord académico del portal en cada sincronización aceptada, mostrarla solo a su dueño, limpiar los electivos aprobados que el récord no respalda y permitir borrarla a pedido
 targets:
   - ../../../src/modules/academic-record/**
+  - ../../../src/modules/portal-sync/parsers/html.ts
   - ../../../src/modules/portal-sync/parsers/record.ts
   - ../../../src/modules/portal-sync/parsers/info-academica.ts
   - ../../../src/modules/portal-sync/portal-sync.service.ts
+  - ../../../src/modules/portal-sync/portal-sync.controller.ts
   - ../../../src/modules/portal-sync/portal-sync.repository.ts
   - ../../../src/modules/portal-sync/portal-sync.schemas.ts
   - ../../../src/modules/portal-sync/portal-sync.types.ts
   - ../../../src/modules/auth/auth.schemas.ts
+  - ../../../src/modules/auth/auth.controller.ts
   - ../../../src/modules/auth/auth.service.ts
   - ../../../src/modules/index.ts
   - ../../../src/db/schema/schema.ts
@@ -63,7 +66,12 @@ de datos.
 
 - **Se lee por tabla, no por página.** La página trae dos tablas: la del récord (12
   columnas) y la del pie (10 columnas). El parser ubica la tabla del récord por su
-  cabecera y recorre solo sus filas; ya no usa `trsOf` sobre la página entera.
+  cabecera y recorre solo sus filas. Si esa tabla no aparece con su cabecera exacta
+  —y solo entonces— el lector cae al **modo compatible** de hoy: recorre las `<tr>` de
+  toda la página, devuelve `headerOk: false` y no cuenta descartes. Ese récord nunca es
+  de confianza (RS-BE-21), así que no se guarda ni dispara la limpieza; el modo existe
+  únicamente para que el resto de la importación —`enrollment.final_grade` y el
+  progreso— siga funcionando como hoy.
 - **Cabecera validada.** La cabecera normalizada debe ser exactamente
   `CICLO|COD.|ASIGNATURA|VIG.|FAC.|VEZ|CRD.|NOTA|SEC.|TOMO|FOLIO|OBSERVACION`. Si el portal
   agregó o reordenó una columna, el récord no es de confianza (RS-BE-21) en vez de leer
@@ -75,9 +83,11 @@ de datos.
   que también pase un mojibake: `portal.client.ts` decodifica con el charset del
   `Content-Type` y usa ISO-8859-1 si no viene.
 - **Fila de datos** es cada `<tr>` de la tabla del récord posterior a su cabecera. Se
-  **descarta** si no tiene 12 celdas, si su código no cumple `/^\d{4,6}$/`, si VEZ no es un
-  entero ≥ 1 o si CRD. no es numérico. Las descartadas se cuentan. La cabecera y las filas
-  del pie no son filas de datos y nunca cuentan como descartadas.
+  **descarta** si no tiene 12 celdas, si todavía no se ha leído ningún CICLO con valor
+  (la celda CICLO llega vacía antes de la primera fila de un grupo), si su código no
+  cumple `/^\d{4,6}$/`, si VEZ no es un entero ≥ 1 o si CRD. no es numérico. Las
+  descartadas se cuentan. La cabecera y las filas del pie no son filas de datos y nunca
+  cuentan como descartadas.
 - **Créditos con decimal**, sin redondear: se quita el `Math.ceil` de
   `parsers/record.ts:34`. Hoy `RecordRow.credits` no lo consume nadie. El `Math.ceil` de
   `parsers/matricula.ts:57` y el de `portal-sync.repository.ts:549` son de la matrícula y

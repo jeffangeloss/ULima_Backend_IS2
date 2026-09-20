@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { mismaPersona } from "../../shared/utils/nombre-persona.js";
+import { normalizeCareerName } from "./parsers/html.js";
 import type { DelegadosNomina, RecordRow, SyllabusEntry } from "./portal-sync.types.js";
 
 /** Transacción de Drizzle/postgres-js; se tipa laxo para no acoplar a la versión. */
@@ -227,14 +228,13 @@ export const teacherCodeFor = (fullName: string): string => {
  * avisando de una diferencia que no existe, y esa advertencia es justamente la
  * que debe significar "ojo, el portal dice que estudias otra cosa".
  *
- * Se normaliza quitando acentos, pasando a mayúsculas y colapsando espacios.
- * Los acentos entran porque el portal es ISO-8859-1 y no siempre los conserva
- * igual; el espacio, porque el consolidado a veces trae dobles.
+ * Por eso se comparan con `normalizeCareerName` (sin acentos, en mayúsculas y
+ * con los espacios colapsados). Su definición se mudó sin cambios a
+ * `parsers/html.ts`: el lector del récord la reutiliza para comparar rótulos y
+ * un parser no puede importar este archivo sin cargar la base de datos. Se
+ * re-exporta aquí para que quien la importe de este módulo no cambie.
  */
-export const normalizeCareerName = (name: string): string =>
-  (name ?? "")
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase().replace(/\s+/g, " ").trim();
+export { normalizeCareerName };
 
 /** Distinta carrera de verdad, no una diferencia de mayúsculas o acentos. */
 export const careerNamesDiffer = (portal: string | null, local: string | null): boolean => {

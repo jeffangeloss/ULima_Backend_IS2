@@ -16,9 +16,36 @@ export interface HorarioSession {
   courseCode: string; dayOfWeek: number; startTime: string; endTime: string; classroom: string | null;
 }
 
+/** Una fila del récord académico (RS-BE-19 de academic-record). `credits` trae
+ *  el decimal del portal, sin redondear. `grade` es la nota entera 0–20 o `null`
+ *  (alimenta `enrollment.final_grade`); `gradeRaw` es el texto de la celda NOTA
+ *  tal cual, o `null` si vino vacía. `observation` es `null` si la celda no trae
+ *  texto. */
 export interface RecordRow {
   periodCode: string; courseCode: string; courseName: string;
   attempt: number; credits: number; grade: number | null; sectionCode: string;
+  gradeRaw: string | null; observation: string | null;
+}
+
+/** Totales del pie del récord (RS-BE-20), leídos por posición. La celda
+ *  COD. CAR. no se guarda. */
+export interface RecordFooter {
+  weightedAverage: number; convalidatedCredits: number; approvedCredits: number; validCredits: number;
+  convalidatedCourses: number; approvedCourses: number; validCourses: number;
+  failedCredits: number; failedCourses: number;
+}
+
+/** Lo que el lector ve en la página del récord. La regla de confianza
+ *  (RS-BE-21) decide con esto si la copia se puede guardar. */
+export interface RecordPage {
+  /** Filas leídas. */
+  rows: RecordRow[];
+  /** Se halló la tabla con la cabecera exacta y se leyó solo esa tabla. */
+  headerOk: boolean;
+  /** Filas de datos descartadas; solo se cuentan con `headerOk`. */
+  discarded: number;
+  /** `null` = pie ausente o ilegible. */
+  footer: RecordFooter | null;
 }
 
 export interface InfoAcademica { careerName: string | null }
