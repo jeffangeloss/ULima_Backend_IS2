@@ -121,7 +121,7 @@ src/services/portal.client.ts  cliente HTTP del portal (patrón de cohere.client
 Ver `docs/specs/api-contracts.md`, sección **Portal Sync**.
 
 - `GET /portal-sync/status` — `{ activePeriod, needsImport, enrollmentsInActivePeriod }`.
-- `POST /portal-sync/import` — body `{ cookies }` **o** `{ credentials }`; response `{ period, identity, summary, warnings }`.
+- `POST /portal-sync/import` — body `{ cookies }` **o** `{ credentials }`, más el campo opcional `consent` (RS-BE-29 de `../academic-record/academic-record.spec.md`); response `{ period, identity, summary, warnings }`.
 
 ## Rules
 
@@ -151,6 +151,8 @@ El body de `POST /portal-sync/import` acepta **una de dos formas**, nunca las do
 
 - `{ cookies: { JSESSIONID, LtpaToken2, LtpaToken? } }` — la sesión del portal ya la obtuvo el cliente.
 - `{ credentials: { password, passcode } }` — el backend hace el login contra miUlima y obtiene la sesión él mismo.
+
+Junto a cualquiera de las dos viaja el campo **opcional** `consent: true` (**RS-BE-29** de `../academic-record/academic-record.spec.md`): el alumno aceptó la pantalla de consentimiento del récord académico. Es ortogonal a la forma de la sesión y no interviene en el login; solo decide si la importación guarda además la copia del récord, la foto acumulada y el resumen por ciclo. Sin él la importación corre igual que hoy.
 
 **Decisión del owner (2026-09-02)**: el diseño original era que el alumno se
 logueara dentro de un WebView y la app solo leyera las cookies, de modo que la
@@ -224,10 +226,12 @@ Regla común de normalización, obligatoria antes de comparar o guardar cualquie
   `[@test] ../../../test/HU31_jeff/parsers.horario.test.ts`
 - `parseHorario(html)` → sesiones. La tabla es de 16 franjas × 6 días = 96 celdas y **el portal emite el atributo `title` en las 96, vacío en las libres** (`<font ... size="1" title>`): su presencia no indica clase. Solo aporta sesión la celda cuyo `title` tenga valor que case con `^\s*(\d{4,6})\s+\S`. La cabecera de hora es `7-8` … `22-23` y se convierte a `HH:MM` (`7-8` → `07:00`–`08:00`). Bloques consecutivos del mismo curso, día y aula se fusionan.
   `[@test] ../../../test/HU31_jeff/parsers.horario.test.ts`
-- `parseRecordAcademico(html)` → `[{ periodCode, courseCode, courseName, attempt, credits, grade|null, sectionCode }]`. La fila real tiene 12 columnas (`CICLO, COD., ASIGNATURA, VIG., FAC., VEZ, CRD., NOTA, SEC., TOMO, FOLIO, OBSERVACIÓN`): el mapeo es por índice de columna, no por orden de la lista anterior. La celda `CICLO` solo trae valor en la **primera fila de cada grupo** (`&nbsp;` en las demás): se arrastra el último valor no vacío. `NOTA` vacía = curso en curso; `NOTA` no numérica se trata como sin nota.
+- `parseRecordPage(html)` → `{ rows, headerOk, discarded, footer }`, y `parseRecordAcademico(html)` = `recordRows(parseRecordPage(html))` → `[{ periodCode, courseCode, courseName, attempt, credits, grade|null, sectionCode, gradeRaw|null, observation|null }]`, con la forma que fijan **RS-BE-19 y RS-BE-20** de `../academic-record/academic-record.spec.md`. Se lee **por tabla, no por página**: la tabla del récord se ubica por su cabecera normalizada de 12 columnas (`CICLO, COD., ASIGNATURA, VIG., FAC., VEZ, CRD., NOTA, SEC., TOMO, FOLIO, OBSERVACIÓN`) y la del pie por la suya de 10; el mapeo es por índice de columna. La celda `CICLO` solo trae valor en la **primera fila de cada grupo** (`&nbsp;` en las demás): se arrastra el último valor no vacío. `NOTA` vacía = curso en curso; `NOTA` no numérica se trata como sin nota en `grade`, pero el texto de la celda se conserva en `gradeRaw`. Los créditos **no se redondean**. Las filas de datos que no pasan la validación se cuentan en `discarded`, y `footer` es `null` si el pie falta o si alguna de sus celdas numéricas no se lee. Si la tabla no aparece con su cabecera exacta, el lector cae al modo compatible (recorre toda la página, `headerOk: false`) y ese récord nunca es de confianza.
   `[@test] ../../../test/HU31_jeff/parsers.record.test.ts`
-- `parseInfoAcademica(html)` → `{ careerName, lastPeriodLevel }`. Los bloques "Información General" e "Información por Período" son dos tablas de marcado idéntico separadas solo por el texto rotulador: hay que anclarse en ese rótulo, no en el orden de tablas. **PPA y ubicación relativa no se extraen**: no existe columna donde guardarlos (ver §Decisiones pendientes).
+  `[@test] ../../../test/HU34_jeff/record-parser.test.ts`
+- `parseInfoAcademica(html)` → `{ careerName, general, period, unreadable }`, con la forma que fija **RS-BE-24** de `../academic-record/academic-record.spec.md`. Los bloques "Información General" e "Información por Período" son dos tablas de marcado idéntico separadas solo por el texto rotulador: hay que anclarse en ese rótulo, no en el orden de tablas. De "Información General" salen PPA, ubicación relativa, cursos y créditos convalidados y aprobados, créditos acumulados y créditos requeridos de la especialidad; de "Información por Período", su código de ciclo, promedio, ubicación relativa, nivel y los cursos y créditos convalidados, matriculados, aprobados y desaprobados. Son tres niveles de tablas anidadas, así que el bloque se recorta desde su rótulo hasta el primer cierre de tabla (con regex insensible a mayúsculas: la página mezcla `</table>` y `</TABLE>`). La secuencia normalizada de rótulos de la cabecera se valida antes de leer los valores por posición; si no coincide, todos los campos de ese bloque quedan `null`. Un campo que no se puede leer queda `null` —nunca 0— y su nombre va en `unreadable`, que el service escribe en el log del servidor.
   `[@test] ../../../test/HU31_jeff/parsers.info.test.ts`
+  `[@test] ../../../test/HU34_jeff/info-academica-parser.test.ts`
 - `parseImpedimentos(html)` → `{ hasImpediment, hasDebt, text }`.
   `[@test] ../../../test/HU31_jeff/parsers.info.test.ts`
 - `parseSyllabusEntry(json, baseUrl)` → `{ unid, fileName, url } | null` (§Sílabos). La base del host de sílabos llega **por parámetro**, no de `config`: los parsers son puros, y el service le pasa la MISMA base con la que el cliente descargó (leyendo la global se podía descargar de un host y persistir la URL de otro). Valida el `@unid` como `^[0-9A-Fa-f]{1,120}$` antes de meterlo en la URL que se persiste y se entrega al cliente como enlace. **NO** sigue el patrón `{ ok, data|reason }` de arriba: a diferencia de los parsers de HTML del portal, acá "este curso no tiene sílabo" es un resultado legítimo y frecuente, no un fallo, de ahí `null` directo en vez de `reason`. Guarda de longitud antes de devolver: `fileName` (futuro `title`) ≤ 150 y la URL construida ≤ 255 (`syllabus.title`/`drive_file_url`); si excede, `null` — mejor sin sílabo que una fila que la BD rechace y haga rollback de toda la importación.
@@ -288,6 +292,9 @@ Todo upsert usa `ON CONFLICT` sobre una constraint **existente**; nada de read-t
     b. **Por equivalencia** — solo con los códigos que sobraron de (a): `course_equivalence` por `(curriculum_id, legacy_code)` (`findEquivalentCurriculumCourseIds`). No se consulta si no sobró nada, para no gastar un viaje dentro de la transacción. Ver §Equivalencias de malla.
 
     Un código que no resuelve por ninguno de los dos se omite y se cuenta en `summary.progressSkipped`, con el warning `PROGRESS_SKIPPED` (convalidaciones, cursos de otra facultad, códigos legados aún sin equivalencia). Lo recuperado por (b) se cuenta aparte en `summary.progressViaEquivalence`.
+
+    **Limpieza de electivos (RS-BE-23).** Justo después de escribir el progreso, y solo con el consentimiento del alumno y un récord de confianza, se borran de `student_course_progress` los electivos `approved` que ninguna fila del récord respalda. Es la única parte de la importación que BORRA progreso: no corre si alguna fila aprobada del récord no resolvió a la malla, ni si el conjunto de respaldo queda vacío. Lo borrado se cuenta en `summary.progressRemoved` y, si es mayor que 0, agrega el warning `PROGRESS_REMOVED`. El respaldo se recalcula sobre TODAS las filas del récord y **no** reutiliza el resultado de (a) y (b) de arriba, que ya descartó las filas sin nota numérica. Ver `specs/features/academic-record/academic-record.spec.md` §RS-BE-23.
+    `[@test] ../../../test/HU34_jeff/electives-cleanup.test.ts`
     `[@test] ../../../test/HU31_jeff/repository.student.test.ts`
     `[@test] ../../../test/HU31_jeff/repository.equivalencias.test.ts`
     `[@test] ../../../test/HU31_jeff/service.equivalencias.test.ts`
@@ -385,13 +392,13 @@ Medido sobre el récord real de 20235218 (`spike-portal/fixtures/10_gada_servlet
 
 - Boletas de pago, cuenta corriente, datos laborales, información vehicular, DNI, dirección, celular, fecha de nacimiento, brevete, carné y anuncios del buzón (`tab=1`): **no se descargan ni se guardan**.
 - Ciclos pasados no crean `section`, `enrollment` ni `course`: solo alimentan `student_course_progress`.
-- No se persiste fecha de última sincronización: `needsImport` se deriva de la matrícula en el período activo.
+- No se persiste fecha de última sincronización **para esta feature**: `needsImport` se deriva de la matrícula en el período activo. **Enmendado por `../academic-record/academic-record.spec.md` (RS-BE-25)**: la copia del récord sí guarda su `student_academic_snapshot.synced_at`, que es la fecha de la copia visible y **no** interviene en `needsImport` ni en `GET /portal-sync/status`.
 
 ### Privacidad y base legal
 
 - La pantalla del WebView debe mostrar, antes del login, qué datos se importarán y con qué finalidad, y requiere aceptación explícita del alumno (consentimiento informado, Ley 29733 de Protección de Datos Personales del Perú). Sin aceptación no se abre el portal.
-- Inventario de datos importados: nombre completo, código de alumno, carrera, nivel, cursos, secciones, docentes, horarios, matrícula, notas históricas y estado de impedimento/deuda. Nada más.
-- El alumno puede pedir el borrado de lo importado; el procedimiento debe existir antes de publicar la feature (decisión pendiente: si es autoservicio o vía soporte).
+- Inventario de datos importados: nombre completo, código de alumno, carrera, nivel, cursos, secciones, docentes, horarios, matrícula, notas históricas y estado de impedimento/deuda. Con `consent: true` (**RS-BE-29**) se agregan, y solo entonces: la copia del récord académico (ciclo, código y nombre del curso, vez, créditos, nota, sección y observación), el promedio ponderado acumulado, la ubicación relativa, los cursos y créditos convalidados y aprobados, los créditos acumulados y requeridos, y el resumen del último ciclo (promedio, ubicación, nivel y cursos y créditos convalidados, matriculados, aprobados y desaprobados). Nada más.
+- El alumno puede pedir el borrado de lo importado. Para los datos que agrega `academic-record` el procedimiento es **autoservicio**: `DELETE /academic-record/me` (**RS-BE-27**). Ver la decisión #7 abajo.
 - Antes de implementar se requiere autorización escrita del área de Sistemas de la Universidad para que una app reciba cookies de sesión del portal institucional.
 
 ### Manejo de errores
@@ -403,8 +410,9 @@ Medido sobre el récord real de 20235218 (`spike-portal/fixtures/10_gada_servlet
 
 ### DTO validation
 
-- Body de `POST /portal-sync/import`: `cookies.JSESSIONID` y `cookies.LtpaToken2` string 1..4096 obligatorios; `cookies.LtpaToken` opcional. Cualquier otra clave se ignora. El body nunca se registra en logs.
+- Body de `POST /portal-sync/import`: `cookies.JSESSIONID` y `cookies.LtpaToken2` string 1..4096 obligatorios; `cookies.LtpaToken` opcional; `consent` booleano opcional (RS-BE-29) — un valor que no sea booleano se rechaza con `400`, no se descarta. Cualquier otra clave se ignora. El body nunca se registra en logs.
   `[@test] ../../../test/HU31_jeff/schemas.import.test.ts`
+  `[@test] ../../../test/HU34_jeff/consent-gate.test.ts`
 
 ## Decisiones
 
@@ -422,7 +430,6 @@ Resueltas por diseño, sin cambio de BD:
 
 | # | Decisión | Resolución |
 | --- | --- | --- |
-| 2 | PPA y ubicación relativa | **DESCARTADO**: no se extraen ni se guardan. No existe columna y no los consume ninguna pantalla. |
 | 5 | `maxDuration` en `vercel.json` | **RESUELTA (2026-09-02)**: no se declara. Con Fluid compute el plan Hobby ya da 300 s por defecto y por tope, verificado contra la API de Vercel; declarar un número solo podría bajarlo. Lo que sí se fijó es `regions: ["iad1"]`. Ver `platform-runtime.spec.md`, BR-PLATFORM-10 y BR-PLATFORM-11. |
 | 6 | Ubicación de tests | `test/HU31_jeff/`, siguiendo el patrón `test/HU<NN>_<owner>/`. Renombrar si el equipo asigna otro número de HU. |
 
@@ -430,8 +437,14 @@ Pendiente, no bloquea el desarrollo:
 
 | # | Decisión | Por qué importa |
 | --- | --- | --- |
-| 7 | Procedimiento de borrado de los datos importados a pedido del alumno | Requisito de la Ley 29733. Debe existir antes de publicar la feature, no antes de implementarla. |
 | 10 | El visor de sílabos de la app Flutter no puede abrir la URL de Domino guardada | La URL de `syllabus.drive_file_url` apunta a un documento **protegido por sesión** en Domino (§Sílabos, §SSO), a diferencia de las URLs de Google Drive que el visor in-app maneja hoy: sin una sesión de Domino, el visor no podrá abrirla directamente. Alcance real desde que el upsert es `on conflict do nothing` (§Sincronización paso 12): solo afecta a las ofertas que NO tenían fila `syllabus`; donde ya había un enlace de Drive sembrado, ese enlace se conserva. No se resuelve en esta feature; queda documentado para que el owner decida (¿proxear la descarga por el backend con la sesión del alumno? ¿abrir en navegador externo? ¿otra cosa?). |
+
+Reabiertas y resueltas por `../academic-record/academic-record.spec.md`, aprobada por el dueño el 2026-09-18:
+
+| # | Decisión | Resolución |
+| --- | --- | --- |
+| 2 | PPA y ubicación relativa | **REABIERTA y APROBADA (2026-09-18)**: sí se extraen y sí se guardan, con cambio de BD (`student_academic_snapshot` y `student_period_summary`, migración `0011_academic_record.sql`), y los consume la pantalla de récord académico. Solo con `consent: true` y un récord de confianza (RS-BE-24, RS-BE-25, RS-BE-29). |
+| 7 | Procedimiento de borrado de los datos importados a pedido del alumno | **RESUELTA (2026-09-18)** a favor del **autoservicio**, para los datos que agrega `academic-record`: `DELETE /academic-record/me` borra la copia del récord, la foto y el resumen del alumno, y no toca `student_course_progress` (RS-BE-27). El resto del inventario de esta spec sigue sin procedimiento de borrado propio. |
 
 ## Verification
 

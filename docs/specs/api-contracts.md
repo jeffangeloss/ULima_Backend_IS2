@@ -57,7 +57,7 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
   - En ambos casos se vincula `app_user.google_id`, se incrementa `tokenVersion` y se mantiene disponible el login con código/contraseña.
   - Errores: `401 INVALID_TOKEN`, `401 USER_NOT_FOUND`, `403 INVALID_DOMAIN`; `403 NOT_ENROLLED` solo para alumnos.
 - `POST /auth/register` (público) — alta de cuenta para un alumno que todavía no existe en la base, autenticando contra miUlima en el mismo acto. Ver `specs/features/registro/registro.spec.md`.
-  - Request: `{ "code": "string", "portalPassword": "string", "passcode": "string", "password": "string" }`. `code`: `^\d{6,10}$`. `portalPassword`/`passcode` son credenciales de **miUlima** (se usan para el login y se descartan, nunca se persisten ni se registran en logs). `password` es la contraseña nueva de ULima++.
+  - Request: `{ "code": "string", "portalPassword": "string", "passcode": "string", "password": "string", "consent"?: true }`. `code`: `^\d{6,10}$`. `portalPassword`/`passcode` son credenciales de **miUlima** (se usan para el login y se descartan, nunca se persisten ni se registran en logs). `password` es la contraseña nueva de ULima++. `consent` es opcional y booleano (RS-BE-29, `specs/features/academic-record/academic-record.spec.md`): con `true` la importación que corre dentro del registro guarda la copia del récord académico, la foto académica y el resumen por ciclo, igual que `POST /portal-sync/import`; sin el campo el registro funciona como hoy y no guarda ninguno de los tres. Un valor no booleano responde `400`.
   - Response `201`: el mismo cuerpo que `POST /auth/login` (`token`, `tokenType`, `expiresIn`, `user`) más `summary` y `warnings`, el resumen y los avisos de la importación del ciclo (mismo shape que `summary` y `warnings` de `POST /portal-sync/import`, ver sección Portal Sync).
   - El `token` es el que **re-firma la importación** con el cargo vigente releído de la BD, no uno emitido por el registro: un alumno que la importación reconoce como delegado recibe un token de delegado, y `user.role` dice lo mismo que el JWT. Solo si la importación no re-firma (`token: null`) el registro firma uno propio de `student`.
   - La identidad la certifica **el portal**, no el `code` del body: si difieren, gana el del portal. Si el portal no reporta matrícula en el ciclo activo, no se crea ninguna cuenta (todo o nada).
@@ -605,7 +605,8 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
   - Response: `{ "activePeriod": { "id": number, "code": "2026-2" } | null, "enrollmentsInActivePeriod": number, "needsImport": boolean }`
   - `needsImport` = no hay período activo o el alumno no tiene `enrollment` activa en él.
 - `POST /portal-sync/import`
-  - Body: `{ "cookies": { "JSESSIONID": string, "LtpaToken2": string, "LtpaToken": string|null } }` (cookies de `webaloe.ulima.edu.pe`; nunca se persisten ni se registran en logs)
+  - Body: `{ "cookies": { "JSESSIONID": string, "LtpaToken2": string, "LtpaToken": string|null } }` **o** `{ "credentials": { "password": string, "passcode": string } }`, exactamente uno de los dos (cookies de `webaloe.ulima.edu.pe`; nunca se persisten ni se registran en logs), más el campo opcional `"consent": true`.
+  - `consent` (RS-BE-29 de `specs/features/academic-record/academic-record.spec.md`): la app lo manda después de que el alumno acepta la pantalla de consentimiento del récord académico. Con `consent: true` **y** un récord de confianza, la importación guarda además la copia del récord, la foto acumulada y el resumen por ciclo. Sin él —es lo que mandan las apps ya instaladas— la importación corre igual que siempre (horario, matrícula, malla y `enrollment.final_grade`) y no se guarda nada de eso. Cualquier valor que no sea booleano se rechaza con `400 INVALID_REQUEST_BODY`.
   - Response `200`:
     ```json
     {
@@ -614,9 +615,9 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
       "summary": {
         "coursesCreated": 0, "teachersCreated": 0, "sectionsCreated": 0, "sectionsUpdated": 5,
         "sessionsUpserted": 12, "enrollmentsUpserted": 5, "enrollmentsWithdrawn": 0,
-        "progressUpserted": 53, "progressSkipped": 4, "alertsCreated": 1, "syllabiUpserted": 3
+        "progressUpserted": 53, "progressSkipped": 4, "progressRemoved": 2, "alertsCreated": 1, "syllabiUpserted": 3
       },
-      "warnings": [ { "code": "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE" | "SYLLABUS_UNAVAILABLE", "block": "string", "message": "string" } ]
+      "warnings": [ { "code": "PERIOD_DATES_DEFAULTED" | "PERIOD_NOT_ACTIVATED_YET" | "TEACHER_MISSING" | "PARSER_FAILED" | "CAREER_MISMATCH" | "PROGRESS_SKIPPED" | "PROGRESS_REMOVED" | "WITHDRAW_SKIPPED_WOULD_LOCK_OUT" | "LEVEL_OUT_OF_RANGE" | "SYLLABUS_UNAVAILABLE", "block": "string", "message": "string" } ]
     }
     ```
   - Errores: **`409 PORTAL_SESSION_INVALID`** (el portal devolvió `inicio.jsp` o pidió passcode — es 409 y no 401 a propósito: `ApiClient` del frontend trata todo 401 como expiración del JWT y cerraría la sesión del usuario), `403 PORTAL_IDENTITY_MISMATCH` (código del portal ≠ `app_user.code`), `422 PORTAL_IDENTITY_UNVERIFIABLE` (no se pudo leer el código del portal), `502 PORTAL_UNAVAILABLE`, `504 PORTAL_TIMEOUT`, `429 RATE_LIMITED` (máx. 5 importaciones por alumno por hora).
@@ -625,3 +626,74 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
   - **La primera importación de un ciclo nuevo activa ese `academic_period` para TODOS los alumnos** (`is_active` es único global). Solo avanza el ciclo, nunca lo retrocede, y solo activa si la fecha de inicio del ciclo ya llegó (la Universidad publica el calendario días antes de que empiecen las clases). Si el período se crea antes de esa fecha, queda inactivo y la respuesta trae el warning `PERIOD_NOT_ACTIVATED_YET`; una importación posterior en o después de esa fecha lo activa.
   - **Sílabos**: además de matrícula y récord, la importación busca en paralelo el sílabo de cada curso importado en la base Domino de sílabos (`cactus.ulima.edu.pe`, host separado y con su propia allowlist — ver `specs/features/portal-sync/portal-sync.spec.md` §SSO). `summary.syllabiUpserted` cuenta las filas **efectivamente escritas**. Que un curso no tenga sílabo publicado es normal y no genera advertencia por curso; solo si NINGÚN curso del ciclo trae sílabo se agrega una única advertencia `SYLLABUS_UNAVAILABLE` (esa advertencia se decide con el resultado de la descarga, no con el contador, y su mensaje no afirma que el portal no publicó nada: desde el backend no se distingue eso de un fallo de red o de sesión). Un fallo al buscar o guardar un sílabo nunca aborta la importación ni afecta el resto del `summary`: la búsqueda se degrada por curso y la escritura usa `on conflict do nothing` sin conflict target, que cubre las dos restricciones únicas de la tabla y por eso no puede levantar un `23505`.
   - **La importación NO pisa sílabos existentes**: si la oferta ya tenía fila `syllabus` (sembrada o de una importación anterior), se conserva tal cual — incluido su `silaboUrl` de Google Drive, que `GET /grades/me/courses` sirve a todos los alumnos de la oferta. La contrapartida aceptada es que **un sílabo republicado no se actualiza** al re-importar el mismo ciclo.
+  - **Limpieza de electivos (RS-BE-23)**: con `consent: true` y un récord de confianza, la importación borra de `student_course_progress` los electivos en estado `approved` que ninguna fila del récord respalda, y cuenta lo borrado en `summary.progressRemoved`. Es la única parte de la importación que BORRA progreso. No corre si alguna fila aprobada del récord no resolvió a la malla (ni por código directo ni por `course_equivalence`, salvo los códigos de Estudios Generales ya conocidos), ni si el conjunto de respaldo queda vacío; en esos casos el motivo va al log del servidor y `progressRemoved` queda en 0. Nunca toca un obligatorio ni un curso de Estudios Generales, ni una fila `in_progress`, `failed` o `withdrawn`, ni `student_curriculum_simulation`. Si `progressRemoved` es mayor que 0 la respuesta trae el warning `PROGRESS_REMOVED` con el mensaje `"Se desmarcaron N electivos que tu récord no respalda."` (con `"Se desmarcó 1 electivo que tu récord no respalda."` en singular). El nivel del alumno no se mueve: la cobertura de ciclos ya excluye electivos. Ver `specs/features/academic-record/academic-record.spec.md` §RS-BE-23.
+
+## Academic Record (récord académico)
+
+Copia del récord que la importación guarda cuando el alumno da su consentimiento y el récord es de confianza. Detalle en `specs/features/academic-record/academic-record.spec.md`. **Solo el dueño de los datos los lee**: el alumno sale del JWT, no hay parámetro ni ruta para docentes o delegados, y el chatbot no toca estas tablas (RS-BE-28).
+
+### GET /academic-record/me
+
+Récord del alumno autenticado: la foto acumulada, el resumen por ciclo y el récord agrupado por ciclo, del más reciente al más viejo.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK` (todos los valores del ejemplo son inventados; el DTO no lleva código de alumno, porque el alumno se identifica por el token):
+  ```json
+  {
+    "syncedAt": "2026-09-18T15:00:00.000Z",
+    "snapshot": {
+      "ppa": 14.62,
+      "relativePosition": "TERCIO SUPERIOR",
+      "creditsAccumulated": 164,
+      "creditsRequired": 200,
+      "approved": { "courses": 50, "credits": 164 },
+      "convalidated": { "courses": 0, "credits": 0 }
+    },
+    "periods": [
+      {
+        "periodCode": "2025-2",
+        "average": 13.25,
+        "relativePosition": "MEDIO SUPERIOR",
+        "level": 4,
+        "convalidated": { "courses": 0, "credits": 0 },
+        "enrolled": { "courses": 7, "credits": 23 },
+        "approved": { "courses": 5, "credits": 16 },
+        "failed": { "courses": 2, "credits": 7 }
+      }
+    ],
+    "record": [
+      {
+        "periodCode": "2026-1",
+        "courses": [
+          {
+            "code": "659003",
+            "name": "CURSO DE PRUEBA TRES",
+            "attempt": 1,
+            "credits": 1.5,
+            "grade": null,
+            "gradeRaw": null,
+            "section": "917",
+            "observation": null
+          }
+        ]
+      }
+    ]
+  }
+  ```
+- **`Cache-Control: no-store`** en la respuesta: son las notas del alumno y no se guardan en ninguna caché intermedia.
+- **Orden**: `record` y `periods` van del ciclo más reciente al más viejo; dentro de cada ciclo, los cursos en el orden en que el portal los listó.
+- **Tipos**: todo numérico es `number`, nunca string; `credits`, `ppa`, `average` y los `credits*` pueden traer decimal, y `attempt`, `grade`, `level` y los `courses` son enteros. Un campo sin dato es `null`, nunca 0, y en los pares `{ courses, credits }` cada número va por separado.
+- `syncedAt` es `student_academic_snapshot.synced_at` en ISO-8601 UTC con milisegundos, o `null` si no hay foto.
+- **Estado vacío**: si el alumno nunca sincronizó —o nunca con consentimiento y un récord de confianza— la respuesta es `{ "syncedAt": null, "snapshot": null, "periods": [], "record": [] }` con `200`.
+- **Errors**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`
+
+### DELETE /academic-record/me
+
+Borra la copia del récord del alumno autenticado: `student_record_entry`, `student_period_summary` y `student_academic_snapshot`, en una sola transacción.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK`: `{ "ok": true }`
+- **`Cache-Control: no-store`** también en esta respuesta.
+- **No** toca `student_course_progress`: ese progreso lo necesita la malla y es de otra funcionalidad. Tampoco borra matrícula, horario ni notas oficiales.
+- Si el alumno vuelve a sincronizar y acepta de nuevo, la copia se guarda otra vez.
+- **Errors**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`

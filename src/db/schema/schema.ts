@@ -630,3 +630,100 @@ export const chatbotMessage = pgTable("chatbot_message", {
 }, (t) => ({
   idxChatbotMessageSession: index("idx_chatbot_message_session").on(t.sessionId),
 }));
+
+/**
+ * RS-BE-22 · Copia del récord académico del portal, curso por curso.
+ *
+ * Es una COPIA, no historia propia de la app: cada sincronización aceptada
+ * borra las filas del alumno y vuelve a insertar las que trae el portal. El
+ * alumno puede borrarla entera (DELETE /academic-record/me), y por eso cuelga
+ * de `student` con borrado en cascada.
+ *
+ * SIN relación con la malla, a propósito: el récord es histórico y trae cursos
+ * de planes anteriores que ya no existen en `curriculum_course`. Guardarlos con
+ * su código y su nombre originales es lo único que conserva la historia real
+ * del alumno; emparejarlos con la malla es trabajo de `student_course_progress`.
+ *
+ * `course_name`, `grade_raw`, `section_code` y `observation` son `text` y no
+ * `varchar(n)`: un valor más largo que el límite abortaría TODA la transacción
+ * de la importación, y con ella el horario y la matrícula del alumno. Los tres
+ * CHECK que sí van ya los garantiza el parser (RS-BE-19).
+ */
+export const studentRecordEntry = pgTable("student_record_entry", {
+  id: integer("id").generatedByDefaultAsIdentity().primaryKey(),
+  studentId: integer("student_id").notNull().references(() => student.id, { onDelete: "cascade" }),
+  /** Ciclo tal como lo publica el récord: "2026-1", "2025-0". */
+  periodCode: varchar("period_code", { length: 10 }).notNull(),
+  courseCode: varchar("course_code", { length: 10 }).notNull(),
+  courseName: text("course_name").notNull(),
+  /** Columna VEZ: 1 la primera matrícula del curso, 2 la repetición. */
+  attempt: smallint("attempt").notNull(),
+  /** Créditos SIN redondear (RS-BE-19): un curso de 1.5 no es uno de 2. */
+  credits: decimal("credits", { precision: 4, scale: 1 }).notNull(),
+  /** Nota entera 0-20; NULL si la celda no es un número (ciclo en curso o marca). */
+  grade: smallint("grade"),
+  /** La celda NOTA tal cual, para no perder las marcas que no son un número. */
+  gradeRaw: text("grade_raw"),
+  sectionCode: text("section_code"),
+  observation: text("observation"),
+}, (t) => ({
+  uqStudentRecordEntry: unique("uq_student_record_entry").on(t.studentId, t.periodCode, t.courseCode, t.attempt),
+  chkStudentRecordEntryAttempt: check("chk_student_record_entry_attempt", sql`${t.attempt} >= 1`),
+  chkStudentRecordEntryCredits: check("chk_student_record_entry_credits", sql`${t.credits} >= 0`),
+  chkStudentRecordEntryGrade: check(
+    "chk_student_record_entry_grade",
+    sql`${t.grade} IS NULL OR ${t.grade} BETWEEN 0 AND 20`,
+  ),
+  idxStudentRecordEntryStudent: index("idx_student_record_entry_student").on(t.studentId),
+}));
+
+/**
+ * RS-BE-25 · Foto de la Información Académica general del alumno (layout.jsp).
+ *
+ * Una fila por alumno, reemplazada en cada sincronización aceptada. Todos los
+ * campos son nulables porque el portal puede no publicarlos: un campo que no se
+ * lee se guarda como NULL y NUNCA como 0 (RS-BE-24). `ppa` no lleva CHECK de
+ * rango: un valor inesperado del portal no debe abortar la importación entera.
+ */
+export const studentAcademicSnapshot = pgTable("student_academic_snapshot", {
+  studentId: integer("student_id").primaryKey().references(() => student.id, { onDelete: "cascade" }),
+  ppa: decimal("ppa", { precision: 6, scale: 4 }),
+  relativePosition: text("relative_position"),
+  convalidatedCourses: integer("convalidated_courses"),
+  convalidatedCredits: decimal("convalidated_credits", { precision: 6, scale: 1 }),
+  approvedCourses: integer("approved_courses"),
+  approvedCredits: decimal("approved_credits", { precision: 6, scale: 1 }),
+  creditsAccumulated: decimal("credits_accumulated", { precision: 6, scale: 1 }),
+  creditsRequired: decimal("credits_required", { precision: 6, scale: 1 }),
+  /** Cuándo se tomó la foto: es la fecha que la pantalla del récord le muestra al alumno. */
+  syncedAt: timestamp("synced_at", { mode: "date", withTimezone: true }).notNull(),
+});
+
+/**
+ * RS-BE-25 · Resumen del bloque "Información por Período Académico" de layout.jsp.
+ *
+ * Una fila por ciclo. Hoy el portal publica un solo bloque —el último ciclo con
+ * notas—, así que en la práctica hay 0 o 1 fila por alumno; la clave
+ * (student_id, period_code) deja el lugar listo para los demás ciclos cuando
+ * exista el lector del resumen académico completo. Sin columna de procedencia
+ * mientras la fuente sea una sola: esa decisión es de la migración que traiga
+ * la segunda.
+ */
+export const studentPeriodSummary = pgTable("student_period_summary", {
+  id: integer("id").generatedByDefaultAsIdentity().primaryKey(),
+  studentId: integer("student_id").notNull().references(() => student.id, { onDelete: "cascade" }),
+  periodCode: varchar("period_code", { length: 10 }).notNull(),
+  average: decimal("average", { precision: 6, scale: 4 }),
+  relativePosition: text("relative_position"),
+  level: smallint("level"),
+  convalidatedCourses: integer("convalidated_courses"),
+  convalidatedCredits: decimal("convalidated_credits", { precision: 6, scale: 1 }),
+  enrolledCourses: integer("enrolled_courses"),
+  enrolledCredits: decimal("enrolled_credits", { precision: 6, scale: 1 }),
+  approvedCourses: integer("approved_courses"),
+  approvedCredits: decimal("approved_credits", { precision: 6, scale: 1 }),
+  failedCourses: integer("failed_courses"),
+  failedCredits: decimal("failed_credits", { precision: 6, scale: 1 }),
+}, (t) => ({
+  uqStudentPeriodSummary: unique("uq_student_period_summary").on(t.studentId, t.periodCode),
+}));

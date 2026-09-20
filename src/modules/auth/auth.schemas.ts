@@ -42,4 +42,15 @@ export const registerSchema = z.object({
   portalPassword: z.string().min(1),
   passcode: z.string().min(1),
   password: z.string().min(1),
+  /**
+   * RS-BE-29 (academic-record). Consentimiento para guardar la copia del
+   * récord académico, la foto y el resumen por ciclo.
+   *
+   * OPCIONAL a propósito: las apps ya instaladas no tienen la pantalla de
+   * consentimiento y no lo mandan, y su registro tiene que seguir funcionando
+   * exactamente igual que hoy (decisión 8 del dueño). Booleano estricto y no
+   * `z.any()`: un `"si"` de un cliente mal escrito tiene que salir como 400 y
+   * no colarse como verdadero.
+   */
+  consent: z.boolean().optional(),
 });

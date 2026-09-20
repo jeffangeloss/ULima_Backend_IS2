@@ -36,6 +36,17 @@ const credentialsObject = z.object({
 export const importSchema = z.object({
   cookies: cookiesObject.optional(),
   credentials: credentialsObject.optional(),
+  /**
+   * RS-BE-29. `true` solo si el alumno aceptó la pantalla de consentimiento del
+   * récord académico. Es OPCIONAL a propósito: las apps ya instaladas no tienen
+   * esa pantalla y su importación tiene que seguir corriendo igual que hoy.
+   *
+   * Va DENTRO del `z.object` y antes del `.refine`: después, `importSchema` ya
+   * es un `ZodEffects` (zod 3) y no acepta claves nuevas. Tipado como booleano y
+   * no como `unknown` para que un `"si"` se rechace con 400 en vez de descartarse
+   * en silencio y dejar al alumno creyendo que aceptó.
+   */
+  consent: z.boolean().optional(),
 }).refine(
   (d) => (d.cookies === undefined) !== (d.credentials === undefined),
   { message: "Manda `cookies` o `credentials`, exactamente uno de los dos." },

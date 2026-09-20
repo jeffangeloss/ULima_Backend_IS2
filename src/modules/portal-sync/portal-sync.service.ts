@@ -11,9 +11,22 @@ import {
 } from "./portal-sync.repository.js";
 import {
   parseAulaVirtual, parseCicloActivo, parseConsolidadoMatricula, parseHorario,
-  parseInfoAcademica, parseRecordAcademico, parseSyllabusEntry,
+  parseInfoAcademica, parseSyllabusEntry,
   parseAulas, parseDelegados, parseAsistenciaCurso,
 } from "./parsers/index.js";
+// `parseRecordPage` y `recordRows` NO están en el barrel `./parsers/index.js`,
+// que no se toca: `scripts/verificar-readme.py:68` cuenta sus `parse[A-Z]\w*`
+// y el README cita esa cifra. Se importan del módulo concreto.
+// `parseRecordAcademico` sale de la lista de arriba porque deja de usarse acá
+// (`noUnusedLocals` rompería el build); sigue exportado para quien lo necesite.
+import { parseRecordPage, recordRows } from "./parsers/record.js";
+import {
+  cleanupBlockers, evaluateRecordTrust, progressRemovedMessage,
+} from "../academic-record/academic-record.logic.js";
+// Vive en el seed porque de ahí sale `course_equivalence`, pero acá es otra
+// cosa: los 12 códigos de Estudios Generales que se sabe que NO respaldan un
+// electivo, y que por eso no bloquean la limpieza (RS-BE-23).
+import { SIN_EQUIVALENCIA_CONOCIDA } from "../../db/seed/equivalencias.logic.js";
 import { PORTAL_PATHS } from "../../services/portal.client.js";
 import type {
   AsistenciaCurso, DelegadosNomina,
@@ -47,7 +60,7 @@ export type ValidateFn = (summary: ImportSummary) => void;
 const emptySummary = (): ImportSummary => ({
   coursesCreated: 0, teachersCreated: 0, sectionsCreated: 0, sectionsUpdated: 0,
   sessionsUpserted: 0, enrollmentsUpserted: 0, enrollmentsWithdrawn: 0,
-  progressUpserted: 0, progressSkipped: 0, progressViaEquivalence: 0,
+  progressUpserted: 0, progressSkipped: 0, progressViaEquivalence: 0, progressRemoved: 0,
   alertsCreated: 0, syllabiUpserted: 0,
   claimsUpserted: 0, claimsDeleted: 0, representativesPromoted: 0, alertsDeleted: 0,
   attendanceUpdated: 0, attendanceSkipped: 0,
@@ -113,7 +126,14 @@ export class PortalSyncService {
    */
   async importFromPortal(
     userId: number, studentId: number,
-    entrada: { cookies?: PortalCookies; credentials?: { password: string; passcode: string } },
+    entrada: {
+      cookies?: PortalCookies;
+      credentials?: { password: string; passcode: string };
+      /** RS-BE-29: `true` solo si el alumno aceptó la pantalla de consentimiento.
+       *  Opcional para que `auth.service.ts` (registro) y las apps viejas sigan
+       *  llamando igual que siempre. */
+      consent?: boolean;
+    },
     /**
      * Enganche de registro (RS-BE-17/RS-BE-18), opcional: sin él el
      * comportamiento es idéntico al de siempre. Ver `ProvisionFn`/`ValidateFn`.
@@ -134,14 +154,14 @@ export class PortalSyncService {
     }
     const sesion = cookies;
     try {
-      return await this.runImport(userId, studentId, sesion, provision, validate);
+      return await this.runImport(userId, studentId, sesion, entrada.consent === true, provision, validate);
     } finally {
       await this.client.logout(sesion);   // best effort, siempre
     }
   }
 
   private async runImport(
-    userId: number, studentId: number, cookies: PortalCookies,
+    userId: number, studentId: number, cookies: PortalCookies, consent: boolean,
     provision?: ProvisionFn, validate?: ValidateFn,
   ): Promise<ImportResult> {
     const warnings: SyncWarning[] = [];
@@ -178,9 +198,37 @@ export class PortalSyncService {
     if (!aula.ok) warnings.push({ code: "PARSER_FAILED", block: "aula-virtual", message: aula.reason });
     const horario = parseHorario(layout);
     if (!horario.ok) warnings.push({ code: "PARSER_FAILED", block: "horario", message: horario.reason });
-    const rec = parseRecordAcademico(pages.record);
+    // RS-BE-19/RS-BE-20: se lee la PÁGINA entera (tabla del récord, pie y filas
+    // descartadas) y recién después se la reduce a las filas, que es lo único
+    // que el resto de la importación usaba hasta hoy. `rec` conserva su forma y
+    // su motivo de fallo exactos, así que nada de lo que sigue cambia.
+    const recordPage = parseRecordPage(pages.record);
+    const rec = recordRows(recordPage);
     if (!rec.ok) warnings.push({ code: "PARSER_FAILED", block: "record", message: rec.reason });
     const info = parseInfoAcademica(layout);
+
+    // RS-BE-21: la confianza se evalúa SIEMPRE, con o sin consentimiento, y su
+    // motivo va al log del servidor. El alumno NO recibe un aviso nuevo: no hay
+    // nada que pueda hacer al respecto, y el resto de la importación —horario,
+    // matrícula, malla y enrollment.final_grade— sigue exactamente igual.
+    //
+    // El log se emite SIEMPRE que el récord no sea de confianza, sin condición:
+    // RS-BE-21 no la pone, y el caso más grave —la página no trae ninguna fila
+    // legible: sesión caída, página de error con HTTP 200, récord truncado— es
+    // justamente el que no puede quedar sin traza. El `PARSER_FAILED` no lo
+    // sustituye: es un aviso al ALUMNO en la respuesta, no un registro en el
+    // servidor, y no lleva el motivo de la regla de confianza.
+    // Nunca lleva notas, nombres ni el código del alumno: este repo es público y
+    // estas líneas terminan en los logs de Vercel.
+    const confianza = evaluateRecordTrust(recordPage);
+    if (!confianza.ok) console.warn("[portal-sync] récord no confiable:", confianza.reason);
+    if (info.ok && info.data.unreadable.length) {
+      console.warn("[portal-sync] información académica incompleta:", info.data.unreadable.join(", "));
+    }
+    // RS-BE-22/RS-BE-25/RS-BE-29: la ÚNICA condición para tocar las tres tablas
+    // nuevas. Sin consentimiento o sin confianza, esta importación corre como la
+    // de hoy y no llama a ninguno de los métodos nuevos del repositorio.
+    const guardarRecord = consent && confianza.ok;
 
     const nameByCode = new Map<string, string>();
     const teacherByCourse = new Map<string, string>();
@@ -399,6 +447,14 @@ export class PortalSyncService {
         if (!found) throw new HttpError(422, "Perfil de alumno no encontrado.", "PORTAL_IDENTITY_UNVERIFIABLE");
         student = found;
       }
+      // RS-BE-22: el candado va PRIMERO, y este es el primer punto donde
+      // `studentId` ya es el definitivo en los dos modos (en el registro vale 0
+      // hasta que `provision` devuelve el perfil, unas líneas más arriba).
+      // Serializa dos importaciones del mismo alumno: el cliente corta a los
+      // 90 s y el servidor sigue hasta 300 s, así que el alumno puede reintentar
+      // mientras la primera todavía corre. Es `pg_advisory_xact_lock`: se suelta
+      // solo cuando la transacción termina, confirme o revierta.
+      if (guardarRecord) await this.repository.lockAcademicRecord(tx, studentId);
       if (careerNamesDiffer(mat.data.careerName, student.careerName)) {
         warnings.push({
           code: "CAREER_MISMATCH", block: "matricula",
@@ -640,11 +696,109 @@ export class PortalSyncService {
         summary.progressUpserted += await this.repository.upsertProgressBatch(
           tx, studentId, student.curriculumId, aEscribir,
         );
+
+        // RS-BE-23: limpieza de los electivos aprobados que el récord no
+        // respalda. Corre acá —después de escribir el progreso y antes de
+        // calcular el nivel— y solo con consentimiento y récord de confianza
+        // (`guardarRecord`). La carga inicial de la base, anterior a
+        // portal-sync, marcó como aprobados TODOS los electivos de los ciclos
+        // ya cursados, y `upsertProgressBatch` nunca borra: sin esto esas
+        // filas sobreviven a cualquier importación.
+        //
+        // El conjunto de respaldo se recalcula sobre TODAS las filas del
+        // récord —con nota, sin nota o con una marca— y NO reutiliza
+        // `ccIdPorCodigo`/`ccIdPorLegado`: esos solo cubren `conEstado`, del
+        // que la fase de progreso ya sacó las filas sin nota numérica.
+        // Reutilizarlos dejaría fuera del respaldo a un electivo aprobado con
+        // una marca de convalidación, y esta misma limpieza lo borraría.
+        if (guardarRecord) {
+          const todos = [...new Set(rec.data.map((r) => r.courseCode))];
+          const directos = await this.repository.findCurriculumCourseIds(
+            tx, student.curriculumId, todos,
+          );
+          const restantes = todos.filter((c) => !directos.has(c));
+          const legados = restantes.length
+            ? await this.repository.findEquivalentCurriculumCourseIds(
+              tx, student.curriculumId, restantes,
+            )
+            : new Map<string, number>();
+          const resueltos = new Set([...directos.keys(), ...legados.keys()]);
+          // "Si hay duda, no se borra" (decisión 7): un código aprobado que no
+          // resuelve puede ser un electivo con un código viejo sin
+          // equivalencia, y borrarlo sería definitivo.
+          const bloqueos = cleanupBlockers(rec.data, resueltos, SIN_EQUIVALENCIA_CONOCIDA);
+          if (bloqueos.length) {
+            console.warn(
+              "[portal-sync] limpieza de electivos omitida: códigos aprobados sin resolver:",
+              bloqueos.join(", "),
+            );
+          } else {
+            const respaldo = [...new Set([...directos.values(), ...legados.values()])];
+            // Con el respaldo vacío la limpieza NO corre: `<> all('{}')` es
+            // verdadero para toda fila y borraría todos los electivos
+            // aprobados del alumno. El repository también se guarda de esto;
+            // la guarda está en los dos lados a propósito.
+            if (respaldo.length) {
+              summary.progressRemoved += await this.repository.deleteUnbackedElectives(
+                tx, studentId, student.curriculumId, respaldo,
+              );
+            }
+          }
+        }
+
         if (summary.progressSkipped > 0) {
           warnings.push({
             code: "PROGRESS_SKIPPED", block: "record",
             message: `${summary.progressSkipped} cursos del récord no están en tu malla (convalidaciones o códigos antiguos).`,
           });
+        }
+        if (summary.progressRemoved > 0) {
+          warnings.push({
+            code: "PROGRESS_REMOVED", block: "record",
+            message: progressRemovedMessage(summary.progressRemoved),
+          });
+        }
+      }
+
+      // RS-BE-22 y RS-BE-25: la copia del récord, la foto acumulada y el resumen
+      // por ciclo. Van DENTRO de la misma transacción y bajo el mismo candado de
+      // arriba, así que si `validate` lanza (registro sin matrícula del ciclo
+      // activo) se revierten con todo lo demás, y una importación concurrente del
+      // mismo alumno espera en vez de pisar la copia a medio reemplazar.
+      //
+      // `rec.ok` ya está implícito en `guardarRecord` —un récord sin filas no es
+      // de confianza—, pero el ternario deja explícito que acá nunca se escribe
+      // una copia a medias.
+      if (guardarRecord) {
+        // El récord (esta copia) y el layout ("Información General"/"por
+        // Período") son páginas DISTINTAS del portal: un rótulo que cambió en
+        // el layout no dice nada sobre la confiabilidad del récord, así que
+        // `replaceRecordEntries` se escribe siempre que `guardarRecord` sea
+        // true, sin condición sobre `info`.
+        await this.repository.replaceRecordEntries(tx, studentId, rec.ok ? rec.data : []);
+
+        // La foto (`upsertAcademicSnapshot`) y el resumen por ciclo
+        // (`replacePeriodSummaries`) sí dependen de que "Información General"
+        // se haya podido leer. Si no —`!info.ok`, o el bloque general quedó en
+        // `unreadable`—, NO se toca ninguna de las dos tablas: se conserva la
+        // foto anterior con su `synced_at` de esa vez. Escribir acá pisaría el
+        // PPA, la ubicación y los créditos de TODOS los que dieron su
+        // consentimiento con nulos y una fecha de HOY, a la vez, y además
+        // vaciaría el resumen del ciclo; el alumno vería una foto "fresca" con
+        // todo en blanco en lugar de la buena. Un bloque "por período" ausente
+        // SÍ es normal (alumno de primer ciclo sin ese bloque) y no bloquea la
+        // foto: solo dice que el resumen del ciclo queda vacío, como ya hacía.
+        const generalIlegible = !info.ok || info.data.unreadable.includes("general");
+        if (generalIlegible) {
+          console.warn(
+            "[portal-sync] información general ilegible, no se actualiza la foto ni el resumen del ciclo:",
+            info.ok ? info.data.unreadable.join(", ") : "bloque Información Académica no encontrado",
+          );
+        } else {
+          await this.repository.upsertAcademicSnapshot(tx, studentId, info.data.general, new Date());
+          await this.repository.replacePeriodSummaries(
+            tx, studentId, info.data.period ? [info.data.period] : [],
+          );
         }
       }
 

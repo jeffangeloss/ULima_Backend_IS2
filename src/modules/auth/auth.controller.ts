@@ -12,7 +12,12 @@ export class AuthController {
     return this.service.loginWithGoogle(input);
   }
 
-  register(input: { code: string; portalPassword: string; passcode: string; password: string }) {
+  /** `consent` (RS-BE-29) viaja tal cual hasta la importación: el controller no
+   *  decide nada con él, solo lo deja pasar, igual que hace
+   *  `portal-sync.controller.ts` con el body de `/import`. */
+  register(input: {
+    code: string; portalPassword: string; passcode: string; password: string; consent?: boolean;
+  }) {
     return this.service.register(input);
   }
 

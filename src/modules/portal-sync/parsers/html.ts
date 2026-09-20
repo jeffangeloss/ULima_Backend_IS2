@@ -36,6 +36,31 @@ export const tdsOf = (tr: string): string[] => tr.match(/<td[\s\S]*?<\/td>/gi) ?
 export const cellsOf = (tr: string): string[] =>
   (tr.match(/<t[dh][\s\S]*?<\/t[dh]>/gi) ?? []).map((td) => clean(stripTags(td)));
 
+/**
+ * Texto del portal listo para COMPARAR (no para guardar): sin acentos, en
+ * mayúsculas y con los espacios colapsados.
+ *
+ * Los acentos se quitan porque el portal es ISO-8859-1 y no siempre los conserva
+ * igual; el espacio, porque el consolidado a veces trae dobles. Nació para
+ * comparar carreras (`careerNamesDiffer`, en el repository, que además la
+ * re-exporta) y vive aquí desde el récord académico: un parser no puede importar
+ * el repository sin cargar la base de datos.
+ */
+export const normalizeCareerName = (name: string): string =>
+  (name ?? "")
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase().replace(/\s+/g, " ").trim();
+
+/**
+ * Rótulo de cabecera listo para comparar contra una secuencia esperada
+ * (RS-BE-19 de academic-record): `normalizeCareerName` y, además, todo carácter
+ * fuera de `[A-Z0-9. ]` pasa a espacio y se vuelven a colapsar los espacios.
+ * "Relativa (*)" queda "RELATIVA"; un mojibake como "OBSERVACIÃ“N" queda
+ * "OBSERVACIA N", que conserva el prefijo "OBSERVACI".
+ */
+export const normalizeLabel = (s: string): string =>
+  normalizeCareerName(s).replace(/[^A-Z0-9. ]/g, " ").replace(/\s+/g, " ").trim();
+
 /** Escapa un literal para incrustarlo en un `RegExp` construido en caliente. */
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

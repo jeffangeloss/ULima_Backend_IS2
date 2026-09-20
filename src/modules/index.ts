@@ -15,6 +15,7 @@ import { chatbotRoutes } from "./chatbot/index.js";
 import { attendanceRiskRoutes } from "./attendance-risk/index.js";
 import { networkingRoutes } from "./networking/index.js";
 import { portalSyncRoutes } from "./portal-sync/index.js";
+import { academicRecordRoutes } from "./academic-record/index.js";
 
 export const registerModules = (app: Hono) => {
   app.route("/auth", authRoutes);
@@ -33,4 +34,5 @@ export const registerModules = (app: Hono) => {
   app.route("/networking", networkingRoutes);
   app.route("/avatar", avatarRoutes);
   app.route("/portal-sync", portalSyncRoutes);
+  app.route("/academic-record", academicRecordRoutes);
 };
