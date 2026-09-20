@@ -2,7 +2,9 @@ import { sql } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { mismaPersona } from "../../shared/utils/nombre-persona.js";
 import { normalizeCareerName } from "./parsers/html.js";
-import type { DelegadosNomina, RecordRow, SyllabusEntry } from "./portal-sync.types.js";
+import type {
+  AcademicGeneral, AcademicPeriodBlock, DelegadosNomina, RecordRow, SyllabusEntry,
+} from "./portal-sync.types.js";
 
 /** Transacción de Drizzle/postgres-js; se tipa laxo para no acoplar a la versión. */
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -1186,5 +1188,225 @@ export class PortalSyncRepository {
       currentLevel: null as number | null,
       careerName: input.careerName,
     };
+  }
+
+  /**
+   * Candado de TRANSACCIÓN para toda la escritura del récord (RS-BE-22).
+   *
+   * Dos importaciones del mismo alumno pueden solaparse de verdad: el cliente
+   * corta a los 90 s y el servidor sigue hasta 300 s, así que el alumno
+   * reintenta mientras la primera todavía corre. Sin candado, las dos borran e
+   * insertan `student_record_entry` a la vez y la segunda puede violar
+   * `uq_student_record_entry` o dejar la copia mezclada.
+   *
+   * `_xact_` y no `pg_advisory_lock`: el candado de sesión se suelta a mano o
+   * al cerrar la conexión, y acá la conexión vuelve al pool de postgres-js. El
+   * de transacción se libera solo en el commit o el rollback.
+   *
+   * `hashtext('academic-record')` da el espacio de nombres para que no choque
+   * con ningún otro candado futuro, y el `::int` explícito evita la ambigüedad
+   * entre `pg_advisory_xact_lock(int4, int4)` y la variante de un `int8`.
+   */
+  async lockAcademicRecord(tx: Tx, studentId: number): Promise<void> {
+    await tx.execute(sql`
+      select pg_advisory_xact_lock(hashtext('academic-record'), ${studentId}::int)
+    `);
+  }
+
+  /**
+   * Reemplaza ENTERA la copia del récord del alumno (RS-BE-22).
+   *
+   * Es una copia del portal, no historia propia: borrar e insertar es más
+   * simple y más fiel que reconciliar fila por fila, y deja el estado igual a
+   * lo que el portal muestra hoy. Va dentro de la transacción de la
+   * importación y bajo el candado de `lockAcademicRecord`.
+   *
+   * Se deduplica en JS por `ciclo|curso|vez` antes de armar el payload: la
+   * misma sentencia con dos filas de la misma clave choca contra
+   * `uq_student_record_entry` con 23505 y aborta la transacción ENTERA de la
+   * importación, no solo esta escritura. Gana la primera, que es el orden en
+   * que el portal las muestra. El parser no debería producir duplicados, así
+   * que esto es una defensa, no la regla.
+   *
+   * Las filas viajan como UN parámetro JSON y se expanden con
+   * `json_array_elements`, igual que `upsertProgressBatch`: el número de
+   * parámetros no crece con el tamaño del récord y la consulta que llega a
+   * Postgres es siempre la misma.
+   *
+   * `x->>'…'` siempre devuelve texto, de ahí los cast explícitos; y
+   * `nullif(x->>'s', '')` porque una sección vacía del portal es "no hay
+   * sección", no la cadena vacía. Una nota nula sigue nula: `->>` sobre un
+   * `null` de JSON devuelve NULL, no "null".
+   */
+  async replaceRecordEntries(tx: Tx, studentId: number, rows: RecordRow[]): Promise<number> {
+    await tx.execute(sql`
+      delete from student_record_entry where student_id = ${studentId}
+    `);
+    const vistas = new Set<string>();
+    const unicas = rows.filter((r) => {
+      const clave = `${r.periodCode}|${r.courseCode}|${r.attempt}`;
+      if (vistas.has(clave)) return false;
+      vistas.add(clave);
+      return true;
+    });
+    if (!unicas.length) return 0;
+    const payload = JSON.stringify(unicas.map((r) => ({
+      p: r.periodCode,
+      c: r.courseCode,
+      n: r.courseName,
+      a: Number(r.attempt),
+      cr: Number(r.credits),
+      g: r.grade == null ? null : Number(r.grade),
+      gr: r.gradeRaw ?? null,
+      s: r.sectionCode ?? "",
+      o: r.observation ?? null,
+    })));
+    const escritas = (await tx.execute(sql`
+      insert into student_record_entry
+        (student_id, period_code, course_code, course_name, attempt, credits,
+         grade, grade_raw, section_code, observation)
+      select ${studentId}, x->>'p', x->>'c', x->>'n', (x->>'a')::smallint, (x->>'cr')::numeric,
+             (x->>'g')::smallint, x->>'gr', nullif(x->>'s', ''), x->>'o'
+        from json_array_elements(${payload}::json) as x
+      returning id
+    `)) as unknown as Array<{ id: number }>;
+    return escritas.length;
+  }
+
+  /**
+   * Foto acumulada del alumno (RS-BE-25). Una fila por alumno, de ahí el
+   * `on conflict (student_id) do update` sobre la PK.
+   *
+   * El `do update` pisa TODAS las columnas, incluida `synced_at`: si alguna se
+   * quedara afuera, la foto sería una mezcla de dos importaciones y `syncedAt`
+   * dejaría de corresponder a la copia visible, que es justo la garantía que
+   * da RS-BE-25.
+   *
+   * Cada valor nulable va con `?? null`. No es decorativo: la plantilla `sql`
+   * de Drizzle rinde un chunk `undefined` como cadena VACÍA en vez de como
+   * parámetro, así que un campo `undefined` no dejaría un NULL, correría todo
+   * el `values` una columna y escribiría la ubicación relativa en otro campo.
+   * `??` no toca el 0, que acá es un dato válido.
+   *
+   * Sin CHECK de rango en `ppa`: un valor raro del portal no puede abortar la
+   * transacción de la importación (ver la migración 0011).
+   */
+  async upsertAcademicSnapshot(
+    tx: Tx, studentId: number, general: AcademicGeneral, syncedAt: Date,
+  ): Promise<void> {
+    await tx.execute(sql`
+      insert into student_academic_snapshot
+        (student_id, ppa, relative_position, convalidated_courses, convalidated_credits,
+         approved_courses, approved_credits, credits_accumulated, credits_required, synced_at)
+      values (
+        ${studentId}, ${general.ppa ?? null}, ${general.relativePosition ?? null},
+        ${general.convalidated.courses ?? null}, ${general.convalidated.credits ?? null},
+        ${general.approved.courses ?? null}, ${general.approved.credits ?? null},
+        ${general.creditsAccumulated ?? null}, ${general.creditsRequired ?? null}, ${syncedAt}
+      )
+      on conflict (student_id) do update set
+        ppa = excluded.ppa,
+        relative_position = excluded.relative_position,
+        convalidated_courses = excluded.convalidated_courses,
+        convalidated_credits = excluded.convalidated_credits,
+        approved_courses = excluded.approved_courses,
+        approved_credits = excluded.approved_credits,
+        credits_accumulated = excluded.credits_accumulated,
+        credits_required = excluded.credits_required,
+        synced_at = excluded.synced_at
+    `);
+  }
+
+  /**
+   * Reemplaza ENTERO el resumen por ciclo del alumno (RS-BE-25).
+   *
+   * DELETE + INSERT y no upsert: hoy la única fuente es el bloque "por
+   * período" de `layout.jsp`, que trae UN ciclo (el anterior al que se
+   * importa). Si el layout deja de traerlo, el resumen tiene que quedar
+   * vacío y no con el del ciclo de hace seis meses, que ya sería un dato
+   * falso. Por eso el borrado no depende de que haya algo que insertar.
+   *
+   * El payload va en JSON como en `replaceRecordEntries`, aunque hoy sean 0 o
+   * 1 filas: cuando exista el lector de `ComandoListarResumenAcademico` van a
+   * ser N y la sentencia no cambia. El DELETE previo garantiza que
+   * `uq_student_period_summary` no pueda chocar con filas viejas.
+   */
+  async replacePeriodSummaries(
+    tx: Tx, studentId: number, periods: AcademicPeriodBlock[],
+  ): Promise<number> {
+    await tx.execute(sql`
+      delete from student_period_summary where student_id = ${studentId}
+    `);
+    if (!periods.length) return 0;
+    const payload = JSON.stringify(periods.map((p) => ({
+      pc: p.periodCode,
+      av: p.average ?? null,
+      rp: p.relativePosition ?? null,
+      lv: p.level ?? null,
+      cc: p.convalidated.courses ?? null,
+      ccr: p.convalidated.credits ?? null,
+      ec: p.enrolled.courses ?? null,
+      ecr: p.enrolled.credits ?? null,
+      ac: p.approved.courses ?? null,
+      acr: p.approved.credits ?? null,
+      fc: p.failed.courses ?? null,
+      fcr: p.failed.credits ?? null,
+    })));
+    const escritas = (await tx.execute(sql`
+      insert into student_period_summary
+        (student_id, period_code, average, relative_position, level,
+         convalidated_courses, convalidated_credits, enrolled_courses, enrolled_credits,
+         approved_courses, approved_credits, failed_courses, failed_credits)
+      select ${studentId}, x->>'pc', (x->>'av')::numeric, x->>'rp', (x->>'lv')::smallint,
+             (x->>'cc')::int, (x->>'ccr')::numeric, (x->>'ec')::int, (x->>'ecr')::numeric,
+             (x->>'ac')::int, (x->>'acr')::numeric, (x->>'fc')::int, (x->>'fcr')::numeric
+        from json_array_elements(${payload}::json) as x
+      returning id
+    `)) as unknown as Array<{ id: number }>;
+    return escritas.length;
+  }
+
+  /**
+   * Borra los electivos APROBADOS que el récord no respalda (RS-BE-23).
+   *
+   * Es la única escritura de esta funcionalidad que borra datos propios del
+   * alumno, así que las condiciones son todas explícitas y el filtro por
+   * categoría y estado va en el SQL, no en quien llama:
+   * `cc.category = 'elective'` y `scp.status = 'approved'`. Nunca un
+   * obligatorio, nunca un `in_progress`, `failed` ni `withdrawn`, y nunca
+   * `student_curriculum_simulation`. Por qué solo electivos: la tabla de
+   * equivalencias está incompleta y para un obligatorio el código no puede
+   * distinguir "no lo aprobó" de "lo aprobó con un código que no sé leer".
+   *
+   * **La guarda del arreglo vacío no es defensiva, es la funcionalidad.**
+   * `intArray([])` rinde `string_to_array('', ',')::int[]`, o sea `'{}'`, y
+   * `<> all('{}')` es VERDADERO para toda fila: la consulta borraría todos los
+   * electivos aprobados del alumno. Por eso se corta antes de consultar, como
+   * pide la spec y como ya hace `withdrawMissingEnrollments` con su centinela
+   * `[-1]`.
+   *
+   * Los ids van por `intArray`: interpolar el arreglo de JS lo convertiría en
+   * `all(($3, $4))`, un constructor de fila, y Postgres lo rechaza con 42809
+   * (ver el comentario de `intArray` arriba).
+   *
+   * Devuelve cuántas filas borró de verdad, que es lo que suma
+   * `summary.progressRemoved`.
+   */
+  async deleteUnbackedElectives(
+    tx: Tx, studentId: number, curriculumId: number, backingIds: number[],
+  ): Promise<number> {
+    if (!backingIds.length) return 0;
+    const rows = (await tx.execute(sql`
+      delete from student_course_progress scp
+      using curriculum_course cc
+      where scp.curriculum_course_id = cc.id
+        and scp.student_id = ${studentId}
+        and scp.curriculum_id = ${curriculumId}
+        and cc.category = 'elective'
+        and scp.status = 'approved'
+        and scp.curriculum_course_id <> all(${intArray(backingIds)})
+      returning scp.id
+    `)) as unknown as Array<{ id: number }>;
+    return rows.length;
   }
 }
