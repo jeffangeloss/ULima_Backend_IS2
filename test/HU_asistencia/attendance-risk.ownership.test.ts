@@ -26,7 +26,7 @@ const serviceWith = (pertenece: boolean) =>
 
 describe("assertTeacherOwnsSection", () => {
   test("el docente de la seccion pasa", async () => {
-    await serviceWith(true).assertTeacherOwnsSection(7, 42);
+    await expect(serviceWith(true).assertTeacherOwnsSection(7, 42)).resolves.toBeUndefined();
   });
 
   test("un docente ajeno recibe 403, no 404 ni 500", async () => {
