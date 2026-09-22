@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
   GRID_END,
   GRID_START,
@@ -86,10 +86,28 @@ const OCHO_DIAS = [
   "2026-10-19 14:00-18:00 #12",
 ];
 
+// `bun test` corre en UTC cuando la shell no trae TZ, y en UTC un getDay local
+// coincide con getUTCDay, así que ninguna prueba vería el corrimiento. Si TZ
+// llega vacío, este gancho pone Lima, y si llega con valor (el Paso 5 corre
+// Lima, UTC y Tokio) lo respeta. Al terminar deja "UTC" en vez de borrar la
+// variable, porque sin ella los archivos siguientes del mismo proceso tomarían
+// el huso del sistema.
+let husoPrevio: string | undefined;
+
+beforeAll(() => {
+  husoPrevio = process.env.TZ;
+  if (!husoPrevio) process.env.TZ = "America/Lima";
+});
+
+afterAll(() => {
+  process.env.TZ = husoPrevio || "UTC";
+});
+
 describe("helpers de fecha y hora", () => {
   test("dayOfWeekOf usa 1 lunes y 7 domingo, y no se corre por el huso", () => {
-    // En Lima (UTC-5) `new Date("2026-09-21").getDay()` da 0: el lunes se lee
-    // como domingo. Estas cuatro fechas fijan que eso no pase.
+    // En Lima (UTC-5) `new Date("2026-09-21").getDay()` da 0 y el lunes se lee
+    // como domingo. El beforeAll de arriba fija ese huso cuando TZ llega vacío,
+    // y estas cuatro fechas comprueban que eso no pase.
     expect(dayOfWeekOf("2026-09-21")).toBe(1);
     expect(dayOfWeekOf("2026-09-26")).toBe(6);
     expect(dayOfWeekOf("2026-09-27")).toBe(7);
