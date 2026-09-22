@@ -727,3 +727,100 @@ export const studentPeriodSummary = pgTable("student_period_summary", {
 }, (t) => ({
   uqStudentPeriodSummary: unique("uq_student_period_summary").on(t.studentId, t.periodCode),
 }));
+
+/**
+ * RS-BE-30 · Estado de un día que se sale del patrón de un bloque propio.
+ *
+ * Vive acá, pegado a su tabla, y no en el bloque de enums de arriba: su único
+ * uso es `student_time_block_exception`.
+ */
+export const timeBlockExceptionStatusEnum = pgEnum("time_block_exception_status", [
+  "cancelled",
+  "moved",
+]);
+
+/**
+ * RS-BE-30 · La REGLA de un bloque propio del alumno: prácticas, trabajo,
+ * voluntariado. Título, color, días de la semana, horas y rango de fechas.
+ *
+ * No cuelga de `section`, `course_offering` ni `academic_period` a propósito
+ * (decisión 5 de la spec): unas prácticas preprofesionales cruzan ciclos y
+ * vacaciones, así que la vigencia son fechas propias del bloque. Es la primera
+ * tabla del horario con fechas de inicio y fin suyas.
+ *
+ * Tampoco toca `schedule_session`: ahí `section_id` es NOT NULL y
+ * `recomputeOfferingHoursFromSchedule` (`portal-sync.repository.ts:599`) suma
+ * TODAS las filas de una sección para pisar `course_offering.total_hours`, que
+ * es el denominador del % de inasistencia de attendance-risk.
+ *
+ * `days_of_week` es un arreglo y no una tabla hija porque la expansión ocurre
+ * en código (`time-blocks.logic.ts`) y nunca se pregunta desde SQL "qué
+ * bloques caen el martes".
+ */
+export const studentTimeBlock = pgTable("student_time_block", {
+  id: integer("id").generatedByDefaultAsIdentity().primaryKey(),
+  studentId: integer("student_id").notNull().references(() => student.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 60 }).notNull(),
+  /** `#RRGGBB` elegido por el alumno: 7 caracteres exactos. */
+  colorHex: varchar("color_hex", { length: 7 }).notNull(),
+  /** 1 = lunes … 7 = domingo, la misma convención que `schedule_session.day_of_week`. */
+  daysOfWeek: smallint("days_of_week").array().notNull(),
+  startTime: time("start_time").notNull(),
+  endTime: time("end_time").notNull(),
+  startDate: date("start_date", { mode: "string" }).notNull(),
+  endDate: date("end_date", { mode: "string" }).notNull(),
+  createdAt: timestamp("created_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  chkTimeBlockHoras: check("chk_time_block_horas", sql`${t.endTime} > ${t.startTime}`),
+  // 07:00-22:00 es lo que la grilla del horario puede pintar: un bloque fuera
+  // de ese rango sería invisible en la app, así que se rechaza y no se guarda.
+  chkTimeBlockGrilla: check(
+    "chk_time_block_grilla",
+    sql`${t.startTime} >= '07:00' AND ${t.endTime} <= '22:00'`,
+  ),
+  chkTimeBlockFechas: check("chk_time_block_fechas", sql`${t.endDate} >= ${t.startDate}`),
+  // El `coalesce` no es adorno (RS-BE-30, "Modelo de datos" de la spec): sobre
+  // un arreglo vacío `array_length` devuelve NULL, y una restricción que evalúa
+  // a NULL se da por satisfecha, así que sin él un `days_of_week` vacío pasaría.
+  chkTimeBlockDias: check(
+    "chk_time_block_dias",
+    sql`coalesce(array_length(${t.daysOfWeek}, 1), 0) BETWEEN 1 AND 7 AND ${t.daysOfWeek} <@ ARRAY[1,2,3,4,5,6,7]::smallint[]`,
+  ),
+  chkTimeBlockColor: check("chk_time_block_color", sql`${t.colorHex} ~ '^#[0-9A-Fa-f]{6}$'`),
+  chkTimeBlockTitulo: check(
+    "chk_time_block_titulo",
+    sql`length(btrim(${t.title})) BETWEEN 1 AND 60`,
+  ),
+  idxTimeBlockStudent: index("idx_time_block_student").on(t.studentId),
+}));
+
+/**
+ * RS-BE-30 · Lo que se sale de la regla: una fila por fecha.
+ *
+ * `cancelled` = ese día no va; `moved` = ese día tiene otras horas. Editar la
+ * regla (PATCH) NO borra estas filas: mover el patrón de las 14:00 a las 15:00
+ * deja el día cancelado igual de cancelado (RS-BE-31).
+ *
+ * El UNIQUE (block_id, occurrence_date) es lo que hace idempotente al PUT de
+ * la excepción: `on conflict do update`.
+ */
+export const studentTimeBlockException = pgTable("student_time_block_exception", {
+  id: integer("id").generatedByDefaultAsIdentity().primaryKey(),
+  blockId: integer("block_id").notNull().references(() => studentTimeBlock.id, { onDelete: "cascade" }),
+  occurrenceDate: date("occurrence_date", { mode: "string" }).notNull(),
+  status: timeBlockExceptionStatusEnum("status").notNull(),
+  /** NULL en `cancelled`; obligatorias en `moved`, y el CHECK lo exige. */
+  startTime: time("start_time"),
+  endTime: time("end_time"),
+}, (t) => ({
+  uqTimeBlockException: unique("uq_time_block_exception").on(t.blockId, t.occurrenceDate),
+  chkTimeBlockExcMovido: check(
+    "chk_time_block_exc_movido",
+    sql`(${t.status} = 'cancelled' AND ${t.startTime} IS NULL AND ${t.endTime} IS NULL) OR (${t.status} = 'moved' AND ${t.startTime} IS NOT NULL AND ${t.endTime} IS NOT NULL AND ${t.endTime} > ${t.startTime})`,
+  ),
+  chkTimeBlockExcGrilla: check(
+    "chk_time_block_exc_grilla",
+    sql`${t.startTime} IS NULL OR (${t.startTime} >= '07:00' AND ${t.endTime} <= '22:00')`,
+  ),
+}));

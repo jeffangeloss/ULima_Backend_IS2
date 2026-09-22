@@ -4,14 +4,19 @@ description: Bloques de horario que el propio alumno registra (prácticas, traba
 targets:
   - ../../../src/modules/time-blocks/**
   - ../../../src/modules/index.ts
+  - ../../../src/server.ts
+  - ../../../src/modules/schedule/schedule.service.ts
+  - ../../../src/modules/schedule/schedule.types.ts
   - ../../../src/db/schema/schema.ts
   - ../../../drizzle/0012_time_blocks.sql
 ---
 
 # Bloques de horario propios
 
-> Estado: **diseñada con el dueño del proyecto el 2026-09-20**, sección por sección.
-> Pendiente de su aprobación de esta spec escrita antes de planificar.
+> Estado: **APROBADA** por el dueño del proyecto el 2026-09-22, incluido el cambio de base de datos
+> que exige `AGENTS.md`. Diseñada con él sección por sección.
+> Revisada el 2026-09-21 con las decisiones de la planificación: `PATCH` en el CORS, tope de
+> 20 bloques guardados, semanas enteras en `weeks` y la fecha exacta del horario (RS-BE-36).
 > Contraparte de frontend: `ULima_Frontend_IS2/specs/features/time-blocks/time-blocks.spec.md`.
 
 ## El problema
@@ -37,7 +42,7 @@ escriba nada de su horario. Esta funcionalidad es el primero.
 ### RS-BE-30 — Modelo de datos
 
 Dos tablas nuevas, sin relación con curso, sección, ciclo ni matrícula. El precedente más
-cercano del repo es `course_advising_session` (`schema.ts:417-454`), que ya mezcla día de
+cercano del repo es `course_advising_session` (`schema.ts:480-517`), que ya mezcla día de
 la semana con fecha concreta; de ahí se copia el estilo, no el esquema.
 
 - **`student_time_block`** guarda la regla: título, color, días de la semana, hora de
@@ -53,9 +58,12 @@ Detalle en "Modelo de datos".
 
 `POST`, `PATCH` y `DELETE` sobre los bloques del alumno. El alumno sale **solo del token**
 (`authMiddleware` + `requireRole(...STUDENT_ROLES)`), como en `academic-record`: no hay
-parámetro de alumno ni ruta para docentes o delegados.
+parámetro de alumno ni ruta para docentes o delegados. Un bloque de otro alumno responde
+igual que uno que no existe (`TIME_BLOCK_NOT_FOUND`, 404), para no confirmar que ese id existe.
 
-Validación con Zod, y las mismas reglas repetidas como CHECK en la base:
+Validación con Zod. Las reglas de una sola fila se repiten además como CHECK en la base
+(ver "Modelo de datos"); el rango de años y el tope de bloques los hace cumplir solo el
+servidor.
 
 - `title`: 1 a 60 caracteres, sin espacios al borde.
 - `colorHex`: `^#[0-9A-Fa-f]{6}$`.
@@ -67,13 +75,31 @@ Validación con Zod, y las mismas reglas repetidas como CHECK en la base:
 - Ambas horas dentro de **07:00–22:00**, el rango que la grilla del horario puede pintar
   (`horario.dart:21-22`). Un bloque fuera de ese rango sería invisible en la app, así que
   se rechaza con `TIME_BLOCK_OUT_OF_GRID` en vez de guardarse.
-- `startDate` y `endDate`: fechas planas (`YYYY-MM-DD`), `endDate >= startDate`.
-- Máximo **20 bloques activos** por alumno (`TIME_BLOCK_LIMIT_REACHED`). No es una regla de
-  negocio: es un tope para que una ventana de ocurrencias no crezca sin control.
+- `startDate` y `endDate`: fechas planas (`YYYY-MM-DD`) que existen en el calendario
+  (`2026-02-30` no), entre **2000-01-01 y 2099-12-31**, con `endDate >= startDate`. El tope
+  de años no es de negocio: Postgres acepta fechas mucho más lejanas, pero pasado el
+  9999-12-31 una fecha ya no cabe en `YYYY-MM-DD` y la expansión de RS-BE-33 se rompería.
+  Un horario de prácticas no necesita otro siglo.
+- Un campo con mal formato, o una regla que cruza dos campos (horas invertidas, fechas al
+  revés, días repetidos), es un `400 INVALID_REQUEST_BODY` con el campo en
+  `details.fieldErrors`, sin código propio: `TIME_BLOCK_OUT_OF_GRID` es solo de la grilla.
+- Máximo **20 bloques guardados** por alumno, **vencidos incluidos**
+  (`TIME_BLOCK_LIMIT_REACHED`). No es una regla de negocio: es un tope para que una ventana
+  de ocurrencias no crezca sin control. Cuenta todos los guardados y no solo los vigentes
+  porque el borrado es físico y un bloque vencido se sigue expandiendo en una ventana pasada:
+  contarlo es lo que acota la expansión. El mensaje del error lo dice así y sugiere borrar un
+  bloque viejo para crear otro.
 
 `PATCH` reemplaza la regla entera y **conserva las excepciones**: si el alumno mueve el
 patrón de 14:00 a 15:00, el día que ya había cancelado sigue cancelado. Editar la regla es
-"cambiar todas las semanas"; tocar un día suelto es RS-BE-32.
+"cambiar todas las semanas"; tocar un día suelto es RS-BE-32. Una excepción que por el
+cambio queda fuera del rango o de los días del bloque sigue guardada, la expansión la
+ignora, y se limpia con el `DELETE` de RS-BE-32.
+
+`PATCH /time-blocks/me/:id` es la primera ruta `PATCH` del backend, así que `src/server.ts`
+agrega ese verbo a `allowMethods` del CORS. La app nativa no hace preflight, pero la build
+web sí: sin `PATCH` ahí, el navegador cortaría la edición de un bloque antes de llegar al
+servidor.
 
 `DELETE` borra el bloque y sus excepciones en cascada.
 
@@ -83,15 +109,22 @@ patrón de 14:00 a 15:00, el día que ya había cancelado sigue cancelado. Edita
 
 `PUT /time-blocks/me/:id/occurrences/:date` fija la excepción de esa fecha:
 
-- `{ "status": "cancelled" }` — ese día no va.
-- `{ "status": "moved", "startTime": "15:00", "endTime": "19:00" }` — ese día tiene otras
+- `{ "status": "cancelled" }` — ese día no va. Se guarda y vuelve con `startTime` y
+  `endTime` en `null`; si el body trae horas, se ignoran.
+- `{ "status": "moved", "startTime": "15:00", "endTime": "19:30" }` — ese día tiene otras
   horas, con las mismas validaciones de RS-BE-31 (rango 07:00–22:00 incluido).
 
-`DELETE /time-blocks/me/:id/occurrences/:date` quita la excepción: ese día vuelve al patrón.
+Responde la excepción con la misma forma que tiene dentro de su bloque en
+`GET /time-blocks/me`, sin `blockId`, que ya va en la ruta:
+`{ "exception": { date, status, startTime, endTime } }`.
 
-La fecha tiene que caer **dentro del rango del bloque y en uno de sus días de la semana**;
-si no, `TIME_BLOCK_OCCURRENCE_NOT_IN_PATTERN`. Una excepción sobre un día que el patrón no
-genera no significa nada y solo ensucia la tabla.
+La fecha del `PUT` tiene que caer **dentro del rango del bloque y en uno de sus días de la
+semana**; si no, `TIME_BLOCK_OCCURRENCE_NOT_IN_PATTERN`. Una excepción sobre un día que el
+patrón no genera no significa nada y solo ensucia la tabla.
+
+`DELETE /time-blocks/me/:id/occurrences/:date` quita la excepción: ese día vuelve al patrón.
+No exige que la fecha esté en el patrón, para poder limpiar la que quedó fuera después de
+un `PATCH` (RS-BE-31), y si ese día no tenía excepción responde igual.
 
 Es idempotente: repetir el mismo `PUT` deja el mismo estado (`on conflict do update`).
 
@@ -102,11 +135,14 @@ Es idempotente: repetir el mismo `PUT` deja el mismo estado (`on conflict do upd
 `GET /time-blocks/me/occurrences?from=YYYY-MM-DD&to=YYYY-MM-DD` devuelve los bloques ya
 concretos de esa ventana: el servidor expande la regla día por día y aplica las excepciones.
 
-- Un día `cancelled` no aparece.
+- Un día `cancelled` no aparece. La app pinta los días cancelados a partir de las
+  excepciones que ya trae `GET /time-blocks/me`; esta ruta no los manda.
 - Un día `moved` aparece con sus horas nuevas y `moved: true`.
-- Las ocurrencias salen ordenadas por fecha y hora de inicio.
-- La ventana es **obligatoria** y de **120 días como máximo** (`TIME_BLOCK_WINDOW_TOO_WIDE`).
-  Sin tope, un rango de años expandiría cientos de miles de filas en memoria.
+- Las ocurrencias salen ordenadas por fecha, por hora de inicio y, si empatan, por `blockId`.
+- La ventana es **obligatoria**, incluye sus dos extremos, `to` no puede ser anterior a
+  `from` (`400 INVALID_QUERY_PARAMS`) y cubre **120 días como máximo**
+  (`TIME_BLOCK_WINDOW_TOO_WIDE`). Sin tope, un rango de años expandiría cientos de miles de
+  filas en memoria.
 
 La expansión es una **función pura** (`time-blocks.logic.ts`), sin base de datos: recibe las
 reglas, las excepciones y la ventana, y devuelve las ocurrencias. Ahí viven las pruebas de
@@ -118,13 +154,20 @@ rango del bloque.
 
 ### RS-BE-34 — Horas por semana
 
-La misma respuesta de RS-BE-33 trae `weeks`: una entrada por semana tocada por la ventana,
-con el lunes de esa semana y el total de horas de los bloques del alumno en ella.
+La misma respuesta de RS-BE-33 trae `weeks`: una entrada por cada semana entre el lunes de
+`from` y el lunes de `to`, en orden, cada una con su lunes (`weekStart`, que puede ser
+anterior a `from`) y el total de horas de los bloques del alumno en esa semana.
 
+- El total es el de la semana **entera**, de lunes a domingo, aunque la ventana la corte: una
+  ventana que empieza un miércoles suma también el lunes de esa semana, que no sale en
+  `occurrences`.
+- Una semana sin nada sale con `hours: 0`. Es un total conocido, no un dato que falta, así
+  que no va en `null`.
 - Se suma sobre las **ocurrencias**, no sobre la regla: un día cancelado no suma, y un día
   movido suma su duración nueva.
 - Las semanas van de **lunes a domingo**, en hora de Lima.
 - El total se expresa en horas decimales (1.5 = una hora y media), sin redondear.
+- Solo suman los bloques propios, nunca las clases.
 
 También es función pura y se prueba aparte.
 
@@ -138,6 +181,25 @@ leen `student_time_block` ni `student_time_block_exception`, ni importan el mód
 `time-blocks`. Una prueba lo fija, igual que en `academic-record` (RS-BE-28).
 
 `[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts`
+
+### RS-BE-36 — La fecha exacta de cada día del horario
+
+`GET /schedule/me/sessions` manda en `days` siete días por cada semana del ciclo, con
+`dateText` en español y sin año ("1 de Enero"). Para pedir las ocurrencias del ciclo
+visible y ubicar cada una en su día, la app necesita la fecha exacta, y sacarla de
+`dateText` la obligaba a adivinar el año y a leer los meses en español.
+
+Cada elemento de `days` gana `isoDate`: la fecha de ese día como `"YYYY-MM-DD"`, en hora de
+Lima, calculada en `schedule.service.ts` con la misma fecha de la que sale `dateText`. Vale
+`null` cuando el ciclo no tiene semanas, que es el mismo caso en que `dateText` llega `""`.
+
+- Es **aditivo**: ningún campo de la respuesta cambia de nombre, de tipo ni de valor.
+- El horario docente (`GET /schedule/teacher/sessions`) arma sus días con el mismo tipo
+  `DayInfo` y también lo trae.
+- Los bloques siguen sin mezclarse en esa respuesta (ver "Qué NO entra"): lo único que
+  cambia es que cada día dice su fecha.
+
+`[@test] ../../../test/HU35_jeff/schedule-iso-date.test.ts`
 
 ## Modelo de datos (migración `0012_time_blocks.sql`)
 
@@ -155,8 +217,10 @@ CHECK de `student_time_block`:
 - `chk_time_block_horas`: `end_time > start_time`
 - `chk_time_block_grilla`: `start_time >= '07:00' and end_time <= '22:00'`
 - `chk_time_block_fechas`: `end_date >= start_date`
-- `chk_time_block_dias`: `array_length(days_of_week, 1) between 1 and 7` y
-  `days_of_week <@ array[1,2,3,4,5,6,7]::smallint[]`
+- `chk_time_block_dias`: `coalesce(array_length(days_of_week, 1), 0) between 1 and 7` y
+  `days_of_week <@ array[1,2,3,4,5,6,7]::smallint[]`. El `coalesce` no es adorno:
+  `array_length` de un arreglo vacío (`'{}'`) es `NULL`, y un CHECK que evalúa a `NULL` se
+  da por cumplido, así que sin él un `days_of_week` vacío entraría a la tabla.
 - `chk_time_block_color`: `color_hex ~ '^#[0-9A-Fa-f]{6}$'`
 - `chk_time_block_titulo`: `length(btrim(title)) between 1 and 60`
 
@@ -181,16 +245,17 @@ y se convierte en el SQL, siguiendo el patrón que ya usa `portal-sync.repositor
 ## Contrato
 
 ```
-Todas las rutas: Bearer, roles de alumno, alumno tomado del token.
+Todas las rutas de /time-blocks: Bearer, roles de alumno, alumno tomado del token.
 
 GET /time-blocks/me
 200 → { "blocks": [ {
   "id": 12, "title": "Prácticas", "colorHex": "#F94B3F",
   "daysOfWeek": [1, 3], "startTime": "14:00", "endTime": "18:00",
   "startDate": "2026-09-01", "endDate": "2026-12-15",
-  "exceptions": [ { "date": "2026-10-08", "status": "cancelled" },
-                  { "date": "2026-10-15", "status": "moved",
-                    "startTime": "15:00", "endTime": "19:00" } ]
+  "exceptions": [ { "date": "2026-10-07", "status": "cancelled",
+                    "startTime": null, "endTime": null },
+                  { "date": "2026-10-12", "status": "moved",
+                    "startTime": "15:00", "endTime": "19:30" } ]
 } ] }
 
 POST /time-blocks/me
@@ -201,35 +266,58 @@ PATCH /time-blocks/me/:id      body: los mismos campos → 200 { "block": … }
 DELETE /time-blocks/me/:id     → 200 { "ok": true }
 
 PUT /time-blocks/me/:id/occurrences/:date
-body: { "status": "cancelled" } | { "status": "moved", "startTime": "15:00", "endTime": "19:00" }
-200 → { "exception": { "date": "2026-10-15", "status": "moved", "startTime": "15:00", "endTime": "19:00" } }
+body: { "status": "cancelled" } | { "status": "moved", "startTime": "15:00", "endTime": "19:30" }
+200 → { "exception": { "date": "2026-10-12", "status": "moved",
+                       "startTime": "15:00", "endTime": "19:30" } }
+      con "cancelled", las dos horas en null:
+      { "exception": { "date": "2026-10-07", "status": "cancelled",
+                       "startTime": null, "endTime": null } }
 
 DELETE /time-blocks/me/:id/occurrences/:date  → 200 { "ok": true }
 
-GET /time-blocks/me/occurrences?from=2026-09-21&to=2026-10-19
+GET /time-blocks/me/occurrences?from=2026-10-05&to=2026-10-18
 200 → {
-  "occurrences": [ { "blockId": 12, "title": "Prácticas", "colorHex": "#F94B3F",
-                     "date": "2026-09-21", "dayOfWeek": 1,
-                     "startTime": "14:00", "endTime": "18:00", "moved": false } ],
-  "weeks": [ { "weekStart": "2026-09-21", "hours": 8 } ]
+  "occurrences": [
+    { "blockId": 12, "title": "Prácticas", "colorHex": "#F94B3F", "date": "2026-10-05",
+      "dayOfWeek": 1, "startTime": "14:00", "endTime": "18:00", "moved": false },
+    { "blockId": 12, "title": "Prácticas", "colorHex": "#F94B3F", "date": "2026-10-12",
+      "dayOfWeek": 1, "startTime": "15:00", "endTime": "19:30", "moved": true },
+    { "blockId": 12, "title": "Prácticas", "colorHex": "#F94B3F", "date": "2026-10-14",
+      "dayOfWeek": 3, "startTime": "14:00", "endTime": "18:00", "moved": false } ],
+  "weeks": [ { "weekStart": "2026-10-05", "hours": 4 },
+             { "weekStart": "2026-10-12", "hours": 8.5 } ]
 }
+
+GET /schedule/me/sessions      (ya existe; RS-BE-36 solo agrega isoDate a cada día)
+200 → { "days": [ { "dayName": "Lunes", "dateText": "5 de Octubre",
+                    "weekText": "Semana 7 del ciclo", "isoDate": "2026-10-05" }, … ],
+        "secciones": [ …sin cambios… ] }
 ```
 
+- El ejemplo de ocurrencias sale del bloque y las excepciones de `GET /time-blocks/me`: el
+  miércoles 2026-10-07 está cancelado y no aparece, el lunes 2026-10-12 está movido. La
+  primera semana suma 4 horas y la segunda 4.5 + 4 = 8.5.
 - Las horas viajan como `"HH:MM"` y las fechas como `"YYYY-MM-DD"`, siempre en hora de Lima
   y sin zona horaria pegada: son horas de pared, no instantes.
 - Los numéricos salen como `number` JSON (`hours` puede traer decimal); un campo sin dato
-  es `null`, nunca 0.
-- Códigos de error: `TIME_BLOCK_NOT_FOUND` (404), `TIME_BLOCK_OUT_OF_GRID`,
-  `TIME_BLOCK_LIMIT_REACHED`, `TIME_BLOCK_OCCURRENCE_NOT_IN_PATTERN`,
-  `TIME_BLOCK_WINDOW_TOO_WIDE` (400), más los 401/403 del middleware.
+  es `null`, nunca 0: las horas de una excepción `cancelled`, o `isoDate` de un ciclo sin
+  semanas. El `hours: 0` de una semana sin bloques no es un dato que falta, es un total
+  conocido (RS-BE-34).
+- Códigos de error: `TIME_BLOCK_NOT_FOUND` (404, también para el bloque de otro alumno),
+  `TIME_BLOCK_OUT_OF_GRID`, `TIME_BLOCK_LIMIT_REACHED`, `TIME_BLOCK_OCCURRENCE_NOT_IN_PATTERN`,
+  `TIME_BLOCK_WINDOW_TOO_WIDE` (400); los 400 de validación de siempre (`INVALID_JSON_BODY`,
+  `INVALID_REQUEST_BODY`, `INVALID_QUERY_PARAMS`, `INVALID_ROUTE_PARAMS`); más los 401/403
+  del middleware.
 - Los ejemplos usan datos inventados. Ningún fixture de las pruebas lleva datos reales.
 
 ## Cambios en otras specs
 
-- `docs/specs/api-contracts.md`: las siete rutas nuevas.
+- `docs/specs/api-contracts.md`: las siete rutas nuevas, y `isoDate` en los días de
+  `GET /schedule/me/sessions` (RS-BE-36).
 - `docs/specs/feature-index.md`: la funcionalidad nueva.
 - `specs/features/schedule/schedule.spec.md`: una nota de que el horario del alumno ya no es
-  solo lo que baja del portal, y que los bloques propios viajan por su propia ruta.
+  solo lo que baja del portal y de que los bloques propios viajan por su propia ruta, y el
+  campo `isoDate` de `days` (RS-BE-36).
 
 ## Qué NO entra
 
@@ -257,3 +345,7 @@ GET /time-blocks/me/occurrences?from=2026-09-21&to=2026-10-19
 | 5 | Vigencia | Fechas propias, sin atarse al ciclo | Morir con el ciclo; sin fecha de fin |
 | 6 | Choque con una clase | Se avisa y se deja guardar | Impedirlo; no avisar |
 | 7 | Rango de la grilla | Se mantiene 07:00–22:00 y se rechaza lo que no entra | Estirar la grilla (aplasta las horas en pantallas chicas); rango dinámico por día |
+| 8 | Qué cuenta el tope de 20 | Todos los bloques guardados, vencidos incluidos | Solo los vigentes (un bloque vencido se sigue expandiendo en una ventana pasada, y el tope habría que revisarlo también en el `PATCH` que lo reactiva) |
+| 9 | Semanas de `weeks` | La semana entera de lunes a domingo, una por cada lunes entre `from` y `to`, con 0 si no hay nada | Solo lo que cae dentro de la ventana (la primera y la última semana saldrían cortas); omitir las semanas vacías |
+| 10 | `PATCH` desde un navegador | Agregar `PATCH` al CORS de `src/server.ts` | Pasar la edición a `PUT`; dejar la build web sin editar bloques |
+| 11 | Cómo sabe la app la fecha de cada día | `isoDate` en cada día de `GET /schedule/me/sessions` | Leerla de `dateText` en español (no trae año y se rompe en un ciclo que cruza de diciembre a enero); una ruta aparte solo para las fechas |
