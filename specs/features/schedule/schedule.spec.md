@@ -22,6 +22,8 @@ targets:
   `[@test] ../../../test/HU09_nehemias/schedule.repository.test.ts`
 - Formatea la hora de clase en `hora_inicio` y `hora_fin` (p. ej., "08:00 am") además de `inicio` y `fin` (p. ej., "08:00:00") para total compatibilidad con el frontend.
 - Identifica dinámicamente la semana académica actual correspondiente a la fecha de hoy, poblando los textos de los días con sus fechas reales en español (p. ej., "12 de Enero") y la descripción de la semana (p. ej., "Semana 2 del ciclo"). Ver BR-SCH-04 para de dónde salen esas semanas.
+- Cada día de `days` trae además `isoDate`: la misma fecha de `dateText` como `"YYYY-MM-DD"` (hora de Lima), o `null` cuando no hay semanas y `dateText` llega vacío. `dateText` no trae año; la app usa `isoDate` para pedir sus bloques propios del ciclo visible y ubicarlos en su día (`specs/features/time-blocks/time-blocks.spec.md`, RS-BE-36). Es un campo más: ninguno de los de antes cambia, y el horario docente (`GET /schedule/teacher/sessions`) también lo trae.
+  `[@test] ../../../test/HU35_jeff/schedule-iso-date.test.ts`
 - **Auth**: Bearer token (vía `authMiddleware`).
 
 ### BR-SCH-02: GET /schedule/me/assessments — Evaluation calendar
@@ -45,7 +47,7 @@ targets:
 - **Fallback en cascada**, para no lanzar cuando faltan datos:
   1. Filas de `academic_week` para el período activo (`ScheduleRepository.findAcademicWeeksForActivePeriod`).
   2. Si `academic_week` no tiene filas para ese período, se derivan semanas de 7 días a partir de las fechas propias del período (`academic_period.start_date`/`end_date`, vía `ScheduleRepository.findActivePeriodDates` + la función pura `deriveWeeksFromPeriodDates`), con la misma fórmula que `academicWeekCount` en `portal-sync.repository.ts` (`ceil(span_días / 7)`, mínimo 1, la última semana no empieza después de `end_date`).
-  3. Si no hay ningún período activo, lista vacía: cada método consumidor ya degrada a "sin info de semana" (`weekText: "Semana actual"`, `dateText: ""`, o listas vacías) en vez de lanzar.
+  3. Si no hay ningún período activo, lista vacía: cada método consumidor ya degrada a "sin info de semana" (`weekText: "Semana actual"`, `dateText: ""` e `isoDate: null`, o listas vacías) en vez de lanzar.
   `[@test] ../../../test/HU09_nehemias/schedule.repository.test.ts`
 - Antes de esta regla, `schedule.service.ts` tenía un calendario de 16 semanas hardcodeado empezando el 6 de abril de 2026 (el ciclo 2026-1), ignorando `academic_week` por completo; ya estaba desactualizado antes de esta corrección (una fecha de hoy posterior caía fuera de esas 16 semanas).
 
@@ -76,7 +78,8 @@ El horario del alumno ya no es solo lo que baja del portal: el alumno registra a
       {
         "dayName": "Lunes",
         "dateText": "12 de Enero",
-        "weekText": "Semana 2 del ciclo"
+        "weekText": "Semana 2 del ciclo",
+        "isoDate": "2026-01-12"
       }
     ],
     "secciones": [

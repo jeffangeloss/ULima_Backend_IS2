@@ -372,6 +372,7 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT):
 ### GET /schedule/me/sessions
 Retorna el horario semanal por bloques de tiempo para las secciones donde el estudiante se encuentra matriculado activamente.
 - **Auth**: Bearer token
+- **`isoDate`** (RS-BE-36, `specs/features/time-blocks/time-blocks.spec.md`): cada elemento de `days` trae la fecha de ese día como `"YYYY-MM-DD"`, en hora de Lima, la misma de la que sale `dateText`; vale `null` cuando el ciclo no tiene semanas (entonces `dateText` es `""` y `weekText` es `"Semana actual"`). `dateText` no trae año: quien necesite la fecha exacta —la app, para pedir `GET /time-blocks/me/occurrences` del ciclo visible y ubicar cada ocurrencia en su día— usa `isoDate` y no lee `dateText`. Es un campo más: ninguno de los de antes cambia, y `GET /schedule/teacher/sessions` también lo trae.
 - **Response** `200 OK`:
   ```json
   {
@@ -379,7 +380,8 @@ Retorna el horario semanal por bloques de tiempo para las secciones donde el est
       {
         "dayName": "Lunes",
         "dateText": "12 de Enero",
-        "weekText": "Semana 2 del ciclo"
+        "weekText": "Semana 2 del ciclo",
+        "isoDate": "2026-01-12"
       }
     ],
     "secciones": [
