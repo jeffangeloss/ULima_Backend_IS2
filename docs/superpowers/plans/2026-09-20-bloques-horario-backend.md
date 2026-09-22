@@ -57,6 +57,7 @@
 | `test/HU35_jeff/time-blocks.routes.test.ts` | crear | rutas, auth y códigos de error |
 | `test/HU35_jeff/chatbot-isolation-blocks.test.ts` | crear | el chatbot no toca las tablas nuevas |
 | `test/HU35_jeff/schedule-iso-date.test.ts` | crear | `isoDate` en los días del horario (RS-BE-36) |
+| `test/HU35_jeff/time-blocks.postgres.test.ts` | crear (arreglo de la revisión final, después de la Tarea 8) | la 0012 y los nueve métodos del repository contra un PostgreSQL real; solo corre con `TEST_DATABASE_URL` (base local, vacía y desechable) y sin ella se salta |
 | `docs/specs/api-contracts.md`, `docs/specs/feature-index.md`, `specs/features/schedule/schedule.spec.md` | modificar | "Cambios en otras specs" (Tareas 6 y 7) |
 | `specs/features/time-blocks/time-blocks.spec.md` | modificar | estado **APROBADA** (Tarea 1) y los `[@test]` de las Tareas 3 y 4 |
 
@@ -75,6 +76,7 @@
 | Contrato (siete rutas, tipos, errores, `isoDate`) | 4, 5, 6, 7 |
 | Cambios en otras specs | 6, 7 |
 | Migración aplicada | 8 (PARAR) |
+| Recorrido de las siete rutas contra producción | 8 (PARAR, bloque F2) |
 
 ---
 
@@ -6487,6 +6489,8 @@ Esta tarea no escribe código de producto ni pruebas del repo. Su trabajo es dem
 
 Por qué importa el orden: las siete rutas de `/time-blocks` leen o escriben `student_time_block`. Si el backend nuevo llega a producción antes que las tablas, Postgres responde `relation "student_time_block" does not exist` y el `errorHandler` lo convierte en `500 INTERNAL_SERVER_ERROR` (`src/shared/middleware/error-handler.ts:18-28`) para todo alumno que abra la pantalla nueva. A diferencia del récord, el resto de la app sigue funcionando, porque nada fuera del módulo toca esas tablas y nada las lee al arrancar. Y si la app sale antes que el backend, sus llamadas a `/time-blocks/...` reciben el 404 por defecto de Hono, un texto plano `404 Not Found` y no el `{ "error": … }` que el cliente sabe leer, y los días de `GET /schedule/me/sessions` llegan sin `isoDate` (RS-BE-36). Así que el orden es: **migración → backend → app**, que es el que exige `MIGRATIONS.md:49` ("el SQL se aplica en la BD ANTES del merge/deploy del código que lo usa").
 
+> **Nota posterior al cierre.** Después de esta tarea, la revisión final de la rama agrega `test/HU35_jeff/time-blocks.postgres.test.ts`, que aplica la 0012 y ejecuta los nueve métodos del repository y el service contra un PostgreSQL real. Solo corre con `TEST_DATABASE_URL`, y sin esa variable se salta entera, así que no mueve ninguna cifra `pass` ni `expect()`. Sí cambian tres conteos. La suite pasa a `1707 pass, 5 skip, 0 fail, 5967 expect()` en 116 archivos (`Ran 1712 tests`), `test/HU35_jeff` a 8 archivos con 221 pass y 5 skip, y la spec a 12 líneas `[@test]` hacia 8 archivos. Las salidas esperadas de los Pasos 3, 4, 5 y 9 son las del cierre sobre `1eb54e0`, antes de ese archivo, y el guardia del Paso 1, que vive fuera del repo, sigue esperando 9 líneas y 7 archivos. La misma revisión corrige el Paso 9, que ahora pide las aprobaciones antes de tocar la base (bloque 0), exporta `BUN` en el bloque A, deja la aprobación del dueño en el PR y suma el recorrido de las siete rutas contra producción (bloque F2).
+
 **Archivos:**
 - Crear: `$SCRATCH/cierre-bloques/verificar-cierre.sh` (fuera del repo, en el scratchpad; **no** se commitea)
 - Crear (salidas para el informe, también fuera del repo): `$SCRATCH/cierre-bloques/spec-sin-enlace.md`, `$SCRATCH/cierre-bloques/rojo.txt`, `$SCRATCH/cierre-bloques/verde.txt` y `$SCRATCH/cierre-bloques/suite-final.txt`
@@ -7076,20 +7080,26 @@ OK: ni README, ni MIGRATIONS, ni AGENTS, ni el journal, ni un respaldo
 
   **NO EJECUTAR: estos comandos los corre el dueño en su terminal, no el ejecutor de este plan.** Leer `.env` y aplicar la migración están prohibidos por las restricciones globales. Por eso los bloques van en `text`.
 
+  **0. Antes de tocar la base, las aprobaciones.** El dueño aprueba o cambia los trece textos del aviso del punto 7, sabiendo que esa lista no cubre todo lo que el alumno puede recibir en un 400. Los `fieldErrors` que arma Zod por su cuenta salen en inglés. Los de `title` son "String must contain at least 1 character(s)" y "String must contain at most 60 character(s)", y los de `daysOfWeek` son "Array must contain at least 1 element(s)", "Array must contain at most 7 element(s)", "Number must be greater than or equal to 1", "Number must be less than or equal to 7" y "Expected integer, received float". También salen en inglés el "Required" o el "Expected string, received number" de un campo que falta o llega con otro tipo, el "Invalid discriminator value. Expected 'cancelled' | 'moved'" de un `status` desconocido y el `message` de todos los 400 de validación del backend ("Invalid request body", "Invalid query params", "Invalid route params" e "Invalid JSON body", de `validate-dto.ts`). La app actual muestra el `message` y no los `fieldErrors`, y valida el formulario antes de enviarlo, así que en la práctica el alumno no los ve. Pasarlos a español es un cambio aparte, que toca a todo el backend. Con los textos decididos, el dueño aprueba de forma explícita la spec reconciliada y el cambio de base de datos (el enum y las dos tablas de la 0012) y deja esa aprobación escrita en la descripción del PR del bloque F. Así queda en el repo la aprobación que exige `AGENTS.md`, que hasta ahora solo consta en el chat.
+
   **A. Antes de empezar.**
 
   - Red: **ni** el wifi de la ULima, que bloquea el 5432 (`MIGRATIONS.md:14`), **ni** el hotspot del iPhone. `MIGRATIONS.md:14` todavía recomienda datos móviles, pero el 2026-09-08 se vio que con el hotspot el puerto parece abierto y aun así la sesión de Postgres muere (`read ECONNRESET` con bun, "el servidor ha cerrado la conexión inesperadamente" con `psql`). Minutos antes, en un wifi común, las mismas consultas funcionaban. Sirve un wifi común.
   - Si hay una exposición en menos de 48 horas, no se ejecuta DDL (`MIGRATIONS.md:52`).
   - Se corre desde el worktree, que es donde existe `drizzle/0012_time_blocks.sql`. El checkout principal `ULima_Backend_IS2` está en otra rama y no lo tiene. `REPO` es la ruta de ese worktree (`git worktree list` la muestra), como en "Variables de los comandos"; se define una vez en la terminal del dueño (`export REPO=…`) y vale para los bloques A a F.
+  - `BUN` no existe en la terminal del dueño, porque el de "Variables de los comandos" es el del ejecutor y vive en `/private/tmp`, que se vacía al reiniciar. El bloque lo fija en `$HOME/bunhome`, fuera de `/private/tmp`, y lo instala ahí con npm si todavía no existe. Igual que `REPO`, vale para los bloques A a F.
 
 ```text
 cd "${REPO:?}"
 git status --short
+export BUN="$HOME/bunhome/node_modules/.bin/bun"
+[ -x "$BUN" ] || npm install --prefix "$HOME/bunhome" bun
+"$BUN" --version
 export DATABASE_URL=$(grep '^DATABASE_URL=' .env | cut -d= -f2-)
 /opt/homebrew/opt/libpq/bin/psql "$DATABASE_URL" -At -c "select to_regclass('public.student_time_block'), to_regclass('public.student_time_block_exception'), to_regtype('public.time_block_exception_status');"
 ```
 
-  Esperado: `git status --short` vacío, y el `psql` imprime `||`, que son tres `NULL`: nada de esto existe todavía. Si aparece algún nombre, alguien lo creó a mano. En ese caso hay que **parar** y compararlo con la 0012 antes de aplicar, porque `CREATE TABLE IF NOT EXISTS` saltaría en silencio una tabla con otra forma.
+  Esperado: `git status --short` vacío, `"$BUN" --version` imprime una versión de bun (1.x) y el `psql` imprime `||`, que son tres `NULL`: nada de esto existe todavía. Si aparece algún nombre, alguien lo creó a mano. En ese caso hay que **parar** y compararlo con la 0012 antes de aplicar, porque `CREATE TABLE IF NOT EXISTS` saltaría en silencio una tabla con otra forma.
 
   **B. Respaldo** con el `pg_dump` de `libpq`, por ruta completa (`MIGRATIONS.md:9-13`):
 
@@ -7101,29 +7111,17 @@ ls -lh backup_pre_0012_$(date +%Y%m%d).sql
 
   Esperado: `pg_dump exit=0`, luego `1`, y un archivo de unos cientos de KB (el de la 0011 pesó 496 KB). Si el `grep` da `0`, el respaldo quedó cortado: **no sigas**. Se busca esa línea y no la última del archivo, porque el `pg_dump` 18 cierra con un `\unrestrict …` después de ella. `backup_*.sql` está en `.gitignore:53` y nunca se versiona. Si después se borra el worktree, hay que mover antes el respaldo afuera.
 
-  **C. Aplicar.** Si `command -v bun` imprime una ruta:
-
-```text
-bun run db:apply drizzle/0012_time_blocks.sql
-```
-
-  Si no imprime nada, porque bun no está en el PATH, se usa el bun del scratchpad (`$BUN`, ver Restricciones globales) con el **mismo script** que corre `db:apply` (`package.json:25`), pero invocado directo:
+  **C. Aplicar**, con el `$BUN` que exportó el bloque A y el **mismo script** que corre `db:apply` (`package.json:25`), invocado directo:
 
 ```text
 "${BUN:?}" src/db/apply-migration.ts drizzle/0012_time_blocks.sql
 ```
 
   - Se invoca directo y no como `… bun run db:apply` porque el script de `package.json` vuelve a llamar a `bun` por nombre, y que ese `bun` interno se resuelva depende del PATH de la terminal. Invocado directo, corre el mismo `src/db/apply-migration.ts` sin esa duda.
-  - `/private/tmp` se vacía al reiniciar. Si ese bun ya no existe, se instala uno fuera de `/private/tmp` y se aplica con él:
+  - Si la terminal se cerró después del bloque A, se repiten sus `export` antes de este comando. Sin `BUN`, la guarda `${BUN:?}` corta la línea antes de tocar la base.
+  - `db:apply` lee `.env` por su cuenta (`src/db/apply-migration.ts:12`). El `export` de `DATABASE_URL` del paso A es solo para `pg_dump` y `psql`.
 
-```text
-npm install --prefix "$HOME/bunhome" bun
-"$HOME/bunhome/node_modules/.bin/bun" src/db/apply-migration.ts drizzle/0012_time_blocks.sql
-```
-
-  - `db:apply` lee `.env` por su cuenta (`src/db/apply-migration.ts:12`). El `export` del paso A es solo para `pg_dump` y `psql`.
-
-  Esperado, en las dos formas:
+  Esperado:
 
 ```text
 Aplicando drizzle/0012_time_blocks.sql en una transacción...
@@ -7212,7 +7210,16 @@ git add MIGRATIONS.md && git commit -m "docs(migrations): la 0012 quedo aplicada
 git push origin feat/bloques-horario
 ```
 
-  Luego se abre el PR y se mergea a `main`. Vercel despliega `main`. Cuando termine:
+  La descripción del PR empieza con la aprobación del bloque 0, escrita por el dueño y solo si es cierta. Esta plantilla la deja lista para copiar, con la fecha del paso B y, si cambió algún texto, cuál.
+
+```markdown
+Apruebo, como dueño del proyecto, la spec `specs/features/time-blocks/time-blocks.spec.md` tal como queda en esta rama (reconciliada el 2026-09-21) y el cambio de base de datos de `drizzle/0012_time_blocks.sql` (el enum `time_block_exception_status` y las tablas `student_time_block` y `student_time_block_exception`), que apliqué el AAAA-MM-DD con respaldo previo. Apruebo también los textos que ve el alumno del aviso de la Tarea 5.
+
+- [x] Migración 0012 aplicada con respaldo, con la salida del paso D registrada en `MIGRATIONS.md`.
+- [ ] Recorrido de las siete rutas contra producción (paso F2), antes de publicar la app.
+```
+
+  Con esa descripción se abre el PR y se mergea a `main`. Vercel despliega `main`. Cuando termine:
 
 ```text
 git fetch origin && git rev-parse origin/main
@@ -7222,7 +7229,63 @@ curl -s -o /dev/null -w '%{http_code}\n' https://u-lima-backend-is-2-one.vercel.
 
   Esperado: el `commit` de `/version` coincide con el SHA de `origin/main` (`MIGRATIONS.md:104`), y el último `curl` imprime `401`. Ese 401 es el `MISSING_TOKEN` de `auth-middleware.ts:26`, que corre antes que todo y prueba que la ruta está montada. Si imprime `404`, producción sigue sirviendo el código viejo. Es `git push origin feat/bloques-horario`, nunca `git push` a secas.
 
-  **G. Y solo después del backend, la app:** el PR del frontend y el APK o la build de iOS que salga de él. Si la app nueva sale antes, sus llamadas a `/time-blocks` reciben el `404 Not Found` en texto plano y la pantalla nueva no funciona, y el horario le llega sin `isoDate`. Con build web, la edición de un bloque (`PATCH`) ya pasa el preflight: el CORS lo agregó la Tarea 5 y sale en el mismo despliegue.
+  **F2. Recorrido de las siete rutas contra producción, antes de la app.** El `curl` de F solo prueba que la ruta está montada, porque el 401 sale del `authMiddleware` antes de llegar al SQL. Ninguna prueba del repo ejecuta el SQL del repository contra Neon, que es PostgreSQL 17 con pooler. `time-blocks.routes.test.ts` usa una base falsa y `time-blocks.postgres.test.ts` solo corre contra un Postgres local. Por eso, con el backend nuevo ya desplegado, el dueño recorre las siete rutas con su propia cuenta y su token. El recorrido crea un bloque de prueba y termina borrándolo, así que no deja datos. No bloquea el merge, que ya pasó, pero sí la publicación de la app (G).
+
+  - El login sube `token_version`, así que la sesión de la app en el teléfono se cierra y hay que volver a entrar al terminar. La cuenta necesita matrícula activa, porque sin ella el login responde `403 NOT_ENROLLED`.
+  - La contraseña se lee sin eco y viaja a `jq` por el entorno, así que no queda en el historial de la terminal ni en los argumentos de ningún proceso. De la respuesta del login solo se imprime el error o la frase `token recibido`, nunca los datos del alumno.
+  - Los comandos sirven igual en zsh y en bash. `curl` imprime el cuerpo en una línea y, debajo, `HTTP` con el código.
+
+```text
+export API=https://u-lima-backend-is-2-one.vercel.app
+printf 'Código de alumno: '; read -r CODIGO
+printf 'Contraseña de ULima++: '; stty -echo; read -r CLAVE; stty echo; echo
+LOGIN=$(CODIGO="$CODIGO" CLAVE="$CLAVE" jq -n '{code: env.CODIGO, password: env.CLAVE}' | curl -s -X POST "$API/auth/login" -H 'Content-Type: application/json' --data-binary @-)
+export TOKEN=$(printf '%s' "$LOGIN" | jq -r '.token // empty')
+printf '%s' "$LOGIN" | jq -c '.error // "token recibido"'
+unset CLAVE LOGIN
+tb()  { curl -s -w '\nHTTP %{http_code}\n' -X "$1" "$API/time-blocks/me$2" -H "Authorization: Bearer $TOKEN"; }
+tbj() { curl -s -w '\nHTTP %{http_code}\n' -X "$1" "$API/time-blocks/me$2" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data-binary "$3"; }
+```
+
+  Se espera `"token recibido"`. Si sale un `{"code": …}`, el login falló y no se sigue.
+
+  Después, las rutas en este orden, una por una, mirando cada salida antes de pasar a la siguiente. Los datos son los del ejemplo del contrato de la spec, así que la respuesta de las ocurrencias se puede comparar con él.
+
+```text
+tb GET ""
+RESP=$(tbj POST "" '{"title":"Prueba de humo","colorHex":"#F94B3F","daysOfWeek":[3,1],"startTime":"14:00","endTime":"17:00","startDate":"2026-09-01","endDate":"2026-12-15"}'); echo "$RESP"
+export ID=$(printf '%s\n' "$RESP" | head -n 1 | jq -r '.block.id'); echo "ID=$ID"
+tbj PATCH "/$ID" '{"title":"Prueba de humo","colorHex":"#F94B3F","daysOfWeek":[1,3],"startTime":"14:00","endTime":"18:00","startDate":"2026-09-01","endDate":"2026-12-15"}'
+tbj PUT "/$ID/occurrences/2026-10-07" '{"status":"cancelled"}'
+tbj PUT "/$ID/occurrences/2026-10-12" '{"status":"moved","startTime":"15:00","endTime":"19:30"}'
+tb GET ""
+tb GET "/occurrences?from=2026-10-05&to=2026-10-18"
+tb DELETE "/$ID/occurrences/2026-10-12"
+tb DELETE "/$ID"
+tb DELETE "/$ID"
+tb GET ""
+unset TOKEN ID RESP CODIGO
+```
+
+  Esperado, línea por línea.
+
+  | paso | ruta | código | qué mirar en el cuerpo |
+  |:---|:---|:---|:---|
+  | 1 | `GET /time-blocks/me` | 200 | `{"blocks":[]}`. Si ya hay bloques, se anotan sus `id` y no se tocan |
+  | 2 | `POST /time-blocks/me` | 201 | `"daysOfWeek":[3,1]` en el orden en que se mandó, `"endTime":"17:00"`, `"exceptions":[]` e `ID=` con un entero positivo |
+  | 3 | `PATCH /time-blocks/me/$ID` | 200 | `"daysOfWeek":[1,3]`, `"endTime":"18:00"` y `"exceptions":[]` |
+  | 4 | `PUT …/occurrences/2026-10-07` (cancelado) | 200 | `{"exception":{"date":"2026-10-07","status":"cancelled","startTime":null,"endTime":null}}` |
+  | 5 | `PUT …/occurrences/2026-10-12` (movido) | 200 | `{"exception":{"date":"2026-10-12","status":"moved","startTime":"15:00","endTime":"19:30"}}` |
+  | 6 | `GET /time-blocks/me` | 200 | un solo bloque, con las dos excepciones en orden de fecha |
+  | 7 | `GET /time-blocks/me/occurrences` | 200 | tres ocurrencias (2026-10-05 de 14:00 a 18:00, 2026-10-12 de 15:00 a 19:30 con `"moved":true` y 2026-10-14 de 14:00 a 18:00) y `"weeks":[{"weekStart":"2026-10-05","hours":4},{"weekStart":"2026-10-12","hours":8.5}]` |
+  | 8 | `DELETE …/occurrences/2026-10-12` | 200 | `{"ok":true}` |
+  | 9 | `DELETE /time-blocks/me/$ID` | 200 | `{"ok":true}` |
+  | 10 | el mismo `DELETE` otra vez | 404 | `{"error":{"code":"TIME_BLOCK_NOT_FOUND","message":"No existe ese bloque."}}` |
+  | 11 | `GET /time-blocks/me` | 200 | `{"blocks":[]}`, igual que en el paso 1 |
+
+  La excepción cancelada del 2026-10-07 se va en cascada con su bloque, como confirma el `confdeltype = c` del paso D. Si algún paso responde `500`, o un código distinto del de la tabla, se para ahí. Con `ID` ya asignado, se corre `tb DELETE "/$ID"` para no dejar el bloque de prueba, y se trae la salida completa junto con el registro de la función en el panel de Vercel. Recién con los once pasos como en la tabla se sigue a G.
+
+  **G. Y solo después de F2, la app:** el PR del frontend y el APK o la build de iOS que salga de él. Si la app nueva sale antes, sus llamadas a `/time-blocks` reciben el `404 Not Found` en texto plano y la pantalla nueva no funciona, y el horario le llega sin `isoDate`. Con build web, la edición de un bloque (`PATCH`) ya pasa el preflight: el CORS lo agregó la Tarea 5 y sale en el mismo despliegue.
 
 - [ ] **Paso final: Commit (solo si el Paso 3 cambió la spec)**
 
