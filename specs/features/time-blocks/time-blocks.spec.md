@@ -130,6 +130,7 @@ un `PATCH` (RS-BE-31), y si ese día no tenía excepción responde igual.
 Es idempotente: repetir el mismo `PUT` deja el mismo estado (`on conflict do update`).
 
 `[@test] ../../../test/HU35_jeff/time-blocks.routes.test.ts`
+`[@test] ../../../test/HU35_jeff/time-blocks.service.test.ts`
 
 ### RS-BE-33 — Ocurrencias de una ventana
 
