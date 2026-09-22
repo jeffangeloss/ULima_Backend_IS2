@@ -56,6 +56,15 @@ targets:
 
 - `GET /schedule/me/sessions` retorna `aula`/`salon` desde `schedule_session.classroom` por sesiÃ³n y `color` desde `schedule_session.color_hex`, permitiendo aulas distintas por dÃ­a y colores hex por curso.
 
+## Bloques propios del alumno (`time-blocks`)
+
+El horario del alumno ya no es solo lo que baja del portal: el alumno registra además sus propios bloques —prácticas, trabajo, voluntariado— en el módulo `time-blocks` (`specs/features/time-blocks/time-blocks.spec.md`, RS-BE-30 a RS-BE-35). Viven en sus propias tablas (`student_time_block` y `student_time_block_exception`) y viajan por su propia ruta, `GET /time-blocks/me/occurrences`. No se mezclan con nada de lo que describe esta spec:
+
+- **No se mezclan en `GET /schedule/me/sessions`.** La app reparte una paleta de doce colores entre las `secciones` de esa respuesta; un bloque metido ahí se llevaría uno de esos colores y los cursos del portal cambiarían de color cada vez que el alumno crea o borra un bloque.
+- Un bloque no tiene sección, curso, docente ni asistencia: en `secciones` iría con campos inventados, como ya les pasa a las pseudo-secciones de asesoría del horario docente (`idSeccion: "adv-…"`, `asistenciaDisponible: false`).
+- Un bloque propio nunca escribe en `schedule_session`, `enrollment` ni `course_offering`. Por eso tampoco entra en la suma de horas que portal-sync hace sobre `schedule_session` (`recomputeOfferingHoursFromSchedule`) para fijar `course_offering.total_hours`, que `attendance-risk` usa como denominador de respaldo del porcentaje de inasistencia.
+- `GET /schedule/me/load` sigue contando evaluaciones. Las horas por semana de los bloques salen en `weeks` de `GET /time-blocks/me/occurrences` y no se suman a esa carga.
+
 ## Endpoints
 
 ### GET /schedule/me/sessions
