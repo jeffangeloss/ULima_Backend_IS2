@@ -104,6 +104,7 @@ servidor.
 `DELETE` borra el bloque y sus excepciones en cascada.
 
 `[@test] ../../../test/HU35_jeff/time-blocks.routes.test.ts`
+`[@test] ../../../test/HU35_jeff/time-blocks.repository.test.ts`
 
 ### RS-BE-32 — Excepciones: un día suelto
 
