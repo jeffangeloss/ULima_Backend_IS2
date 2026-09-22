@@ -53,6 +53,7 @@ la semana con fecha concreta; de ahí se copia el estilo, no el esquema.
 Detalle en "Modelo de datos".
 
 `[@test] ../../../test/HU35_jeff/migration-0012.test.ts`
+`[@test] ../../../test/HU35_jeff/time-blocks.postgres.test.ts`
 
 ### RS-BE-31 — La regla: crear, editar y borrar
 
@@ -105,6 +106,7 @@ servidor.
 
 `[@test] ../../../test/HU35_jeff/time-blocks.routes.test.ts`
 `[@test] ../../../test/HU35_jeff/time-blocks.repository.test.ts`
+`[@test] ../../../test/HU35_jeff/time-blocks.postgres.test.ts`
 
 ### RS-BE-32 — Excepciones: un día suelto
 
@@ -131,6 +133,7 @@ Es idempotente: repetir el mismo `PUT` deja el mismo estado (`on conflict do upd
 
 `[@test] ../../../test/HU35_jeff/time-blocks.routes.test.ts`
 `[@test] ../../../test/HU35_jeff/time-blocks.service.test.ts`
+`[@test] ../../../test/HU35_jeff/time-blocks.postgres.test.ts`
 
 ### RS-BE-33 — Ocurrencias de una ventana
 
