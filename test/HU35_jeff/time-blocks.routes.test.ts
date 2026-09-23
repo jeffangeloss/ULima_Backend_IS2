@@ -516,6 +516,45 @@ describe("errores de validacion", () => {
     });
   });
 
+  test("un rango sin ninguno de los dias marcados responde 400 en POST y en PATCH sin consultar", async () => {
+    // Martes y sabado, del miercoles 2026-09-23 al mismo miercoles: se guardaria
+    // y nunca ocurriria (RS-BE-31).
+    const sinDias = { ...BODY, daysOfWeek: [2, 6], startDate: "2026-09-23", endDate: "2026-09-23" };
+    for (const [metodo, ruta] of [["POST", "/time-blocks/me"], ["PATCH", "/time-blocks/me/12"]]) {
+      const res = await pedir(metodo, ruta, { token: tokenDe("student"), body: sinDias });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({
+        error: {
+          code: "INVALID_REQUEST_BODY",
+          details: {
+            fieldErrors: { endDate: ["Entre esas fechas no cae ninguno de los días que marcaste."] },
+          },
+        },
+      });
+      expect(delModulo()).toHaveLength(0);
+    }
+  });
+
+  test("fechas sin digitos responden 400 INVALID_REQUEST_BODY, no un 500", async () => {
+    // Sin la guarda, la regla del rango le pasaria "abc" a `addDays`, que lanza
+    // RangeError dentro del safeParse y el errorHandler lo volveria un 500.
+    const res = await pedir("POST", "/time-blocks/me", {
+      token: tokenDe("student"),
+      body: { ...BODY, daysOfWeek: [2, 6], startDate: "abc", endDate: "abd" },
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: { code: "INVALID_REQUEST_BODY" } });
+    expect(delModulo()).toHaveLength(0);
+  });
+
+  test("un rango de un solo dia que es uno de los marcados se guarda en POST y en PATCH", async () => {
+    const miercoles = { ...BODY, daysOfWeek: [3], startDate: "2026-09-23", endDate: "2026-09-23" };
+    const creado = await pedir("POST", "/time-blocks/me", { token: tokenDe("student"), body: miercoles });
+    expect(creado.status).toBe(201);
+    const editado = await pedir("PATCH", "/time-blocks/me/12", { token: tokenDe("student"), body: miercoles });
+    expect(editado.status).toBe(200);
+  });
+
   test("un body que no es JSON responde 400 INVALID_JSON_BODY", async () => {
     const res = await pedir("POST", "/time-blocks/me", {
       token: tokenDe("student"), body: "esto no es json",
