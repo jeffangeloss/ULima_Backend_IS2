@@ -221,6 +221,7 @@ export class ScheduleService {
             dayName: ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][i],
             dateText: formatDateText(currentDate),
             weekText: `Semana ${weekNum} del ciclo`,
+            isoDate: formatDateOnly(currentDate),
           });
         }
       }
@@ -230,6 +231,7 @@ export class ScheduleService {
           dayName: ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][i],
           dateText: "",
           weekText: "Semana actual",
+          isoDate: null,
         });
       }
     }
@@ -381,6 +383,7 @@ export class ScheduleService {
             dayName: ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"][i],
             dateText: formatDateText(currentDate),
             weekText: `Semana ${weekNum} del ciclo`,
+            isoDate: formatDateOnly(currentDate),
           });
         }
       }

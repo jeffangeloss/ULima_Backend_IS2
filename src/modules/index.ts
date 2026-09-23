@@ -16,6 +16,7 @@ import { attendanceRiskRoutes } from "./attendance-risk/index.js";
 import { networkingRoutes } from "./networking/index.js";
 import { portalSyncRoutes } from "./portal-sync/index.js";
 import { academicRecordRoutes } from "./academic-record/index.js";
+import { timeBlocksRoutes } from "./time-blocks/index.js";
 
 export const registerModules = (app: Hono) => {
   app.route("/auth", authRoutes);
@@ -35,4 +36,5 @@ export const registerModules = (app: Hono) => {
   app.route("/avatar", avatarRoutes);
   app.route("/portal-sync", portalSyncRoutes);
   app.route("/academic-record", academicRecordRoutes);
+  app.route("/time-blocks", timeBlocksRoutes);
 };

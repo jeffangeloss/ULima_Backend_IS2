@@ -372,6 +372,7 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT):
 ### GET /schedule/me/sessions
 Retorna el horario semanal por bloques de tiempo para las secciones donde el estudiante se encuentra matriculado activamente.
 - **Auth**: Bearer token
+- **`isoDate`** (RS-BE-36, `specs/features/time-blocks/time-blocks.spec.md`): cada elemento de `days` trae la fecha de ese día como `"YYYY-MM-DD"`, en hora de Lima, la misma de la que sale `dateText`; vale `null` cuando el ciclo no tiene semanas (entonces `dateText` es `""` y `weekText` es `"Semana actual"`). `dateText` no trae año: quien necesite la fecha exacta —la app, para pedir `GET /time-blocks/me/occurrences` del ciclo visible y ubicar cada ocurrencia en su día— usa `isoDate` y no lee `dateText`. Es un campo más: ninguno de los de antes cambia, y `GET /schedule/teacher/sessions` también lo trae.
 - **Response** `200 OK`:
   ```json
   {
@@ -379,7 +380,8 @@ Retorna el horario semanal por bloques de tiempo para las secciones donde el est
       {
         "dayName": "Lunes",
         "dateText": "12 de Enero",
-        "weekText": "Semana 2 del ciclo"
+        "weekText": "Semana 2 del ciclo",
+        "isoDate": "2026-01-12"
       }
     ],
     "secciones": [
@@ -697,3 +699,174 @@ Borra la copia del récord del alumno autenticado: `student_record_entry`, `stud
 - **No** toca `student_course_progress`: ese progreso lo necesita la malla y es de otra funcionalidad. Tampoco borra matrícula, horario ni notas oficiales.
 - Si el alumno vuelve a sincronizar y acepta de nuevo, la copia se guarda otra vez.
 - **Errors**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`
+
+## Time Blocks (bloques de horario propios)
+
+Bloques que el propio alumno registra en su horario —prácticas, trabajo, voluntariado—, con repetición semanal, excepciones por día y la suma de horas por semana. Detalle en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-30 a RS-BE-35). Viven en `student_time_block` y `student_time_block_exception` (migración `drizzle/0012_time_blocks.sql`) y **no** se mezclan en `GET /schedule/me/sessions`: van por sus propias rutas.
+
+Reglas comunes a las siete rutas:
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate` (`authMiddleware` + `requireRole(...STUDENT_ROLES)` sobre todo el módulo). Un token docente recibe `403 FORBIDDEN`.
+- **El alumno sale solo del token.** No hay parámetro de alumno ni ruta para docentes o delegados; un `studentId` que llegue en la query o en el body se ignora.
+- **Un bloque de otro alumno es un bloque que no existe**: responde `404 TIME_BLOCK_NOT_FOUND`, igual que un id que no existe, para no confirmar que ese id existe.
+- **Formatos**: las horas viajan como `"HH:MM"` y las fechas como `"YYYY-MM-DD"`, en hora de Lima y sin zona horaria pegada: son horas de pared, no instantes. Una fecha que no existe en el calendario (`2026-02-30`) o que cae fuera de **2000-01-01 a 2099-12-31** es un formato inválido. `daysOfWeek` usa la convención de `schedule_session.day_of_week`: **1 es lunes y 7 es domingo**.
+- **Tipos**: los numéricos salen como `number` JSON (`hours` puede traer decimal); un campo sin dato es `null`, nunca 0. Una excepción `cancelled` lleva `startTime` y `endTime` en `null`.
+- **Grilla**: toda hora de inicio y de fin cae entre **07:00 y 22:00**; si no, `400 TIME_BLOCK_OUT_OF_GRID`. Es el rango que la grilla del horario de la app puede pintar. La hora de fin tiene que ser estrictamente mayor que la de inicio; si no, `400 INVALID_REQUEST_BODY` con el error en `endTime` (no es un error de grilla).
+- **Chatbot**: no lee estas tablas ni importa el módulo (RS-BE-35).
+- Todos los valores de los ejemplos son inventados.
+- **Mensajes** (`error.message` de cada código): `TIME_BLOCK_LIMIT_REACHED` "Llegaste al máximo de 20 bloques guardados, contando los que ya terminaron. Borra uno viejo para crear otro.", `TIME_BLOCK_NOT_FOUND` "No existe ese bloque.", `TIME_BLOCK_OUT_OF_GRID` "El bloque tiene que empezar y terminar entre las 07:00 y las 22:00.", `TIME_BLOCK_OCCURRENCE_NOT_IN_PATTERN` "Ese día no forma parte del bloque." y `TIME_BLOCK_WINDOW_TOO_WIDE` "La ventana no puede pasar de 120 días.". Los 400 de validación llevan el `message` de siempre y el texto de cada campo en `details.fieldErrors`.
+- **Errors comunes**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`; `400` `INVALID_JSON_BODY` en `POST`, `PATCH` y `PUT` (un cuerpo que no es JSON); `400` `INVALID_ROUTE_PARAMS` en las rutas con `:id` (un `:id` que no es un entero de 1 a 2147483647, o un `:date` que no es una fecha válida).
+
+### GET /time-blocks/me
+
+Los bloques del alumno autenticado, cada uno con sus excepciones.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK`:
+  ```json
+  {
+    "blocks": [
+      {
+        "id": 12,
+        "title": "Prácticas",
+        "colorHex": "#F94B3F",
+        "daysOfWeek": [1, 3],
+        "startTime": "14:00",
+        "endTime": "18:00",
+        "startDate": "2026-09-01",
+        "endDate": "2026-12-15",
+        "exceptions": [
+          { "date": "2026-10-07", "status": "cancelled", "startTime": null, "endTime": null },
+          { "date": "2026-10-12", "status": "moved", "startTime": "15:00", "endTime": "19:30" }
+        ]
+      }
+    ]
+  }
+  ```
+- **Orden**: los bloques por `startDate`, luego por `startTime` y luego por `id`; las excepciones de cada bloque, por fecha.
+- Un alumno sin bloques recibe `{ "blocks": [] }`.
+- `exceptions` trae todas las excepciones guardadas del bloque, incluida la que quedó fuera del patrón porque después se editó la regla (ver `PATCH`).
+
+### POST /time-blocks/me
+
+Crea un bloque.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Body**:
+  ```json
+  {
+    "title": "Prácticas",
+    "colorHex": "#F94B3F",
+    "daysOfWeek": [1, 3],
+    "startTime": "14:00",
+    "endTime": "18:00",
+    "startDate": "2026-09-01",
+    "endDate": "2026-12-15"
+  }
+  ```
+  - `title`: se recorta; de 1 a 60 caracteres después de recortar.
+  - `colorHex`: `^#[0-9A-Fa-f]{6}$`.
+  - `daysOfWeek`: de 1 a 7 valores **distintos**, cada uno de 1 a 7.
+  - `startTime` y `endTime`: `HH:MM`, dentro de 07:00–22:00 y `endTime` estrictamente mayor.
+  - `startDate` y `endDate`: fechas que existen, entre 2000-01-01 y 2099-12-31, con `endDate >= startDate`.
+- **Response** `201 Created`:
+  ```json
+  {
+    "block": {
+      "id": 12,
+      "title": "Prácticas",
+      "colorHex": "#F94B3F",
+      "daysOfWeek": [1, 3],
+      "startTime": "14:00",
+      "endTime": "18:00",
+      "startDate": "2026-09-01",
+      "endDate": "2026-12-15",
+      "exceptions": []
+    }
+  }
+  ```
+- **Errors**: `400` `INVALID_REQUEST_BODY` (un campo con formato inválido, días repetidos, `endTime` no mayor que `startTime` o `endDate` anterior a `startDate`; `details.fieldErrors` nombra el campo), `400` `TIME_BLOCK_OUT_OF_GRID`, `400` `TIME_BLOCK_LIMIT_REACHED` (el alumno ya tiene **20** bloques guardados, **vencidos incluidos**: es un tope para que la expansión de una ventana no crezca sin control, no una regla de negocio, y un bloque vencido sigue expandiéndose en una ventana pasada; para crear otro hay que borrar uno).
+
+### PATCH /time-blocks/me/:id
+
+Reemplaza la regla entera del bloque `:id`: es "cambiar todas las semanas".
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Body**: los siete campos de `POST /time-blocks/me`, todos obligatorios y con las mismas reglas.
+- **Response** `200 OK`: `{ "block": … }`, con la forma de `POST` y las excepciones del bloque.
+- **Conserva las excepciones**: si el alumno mueve el patrón de 14:00 a 15:00, el día que ya había cancelado sigue cancelado. Una excepción que por el cambio queda fuera del rango o de los días del bloque sigue guardada y la expansión la ignora; se limpia con `DELETE /time-blocks/me/:id/occurrences/:date`.
+- **Desde un navegador**: es la primera ruta `PATCH` del backend, y el CORS de `src/server.ts` incluye `PATCH` en `allowMethods` para que el preflight la deje pasar. La app nativa (iOS y Android) no hace preflight.
+- **Errors**: `400` `INVALID_REQUEST_BODY`, `400` `TIME_BLOCK_OUT_OF_GRID`, `404` `TIME_BLOCK_NOT_FOUND`.
+
+### DELETE /time-blocks/me/:id
+
+Borra el bloque y, en cascada, sus excepciones.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK`: `{ "ok": true }`
+- **Errors**: `404` `TIME_BLOCK_NOT_FOUND`, también al repetir el `DELETE` de un bloque ya borrado.
+
+### PUT /time-blocks/me/:id/occurrences/:date
+
+Fija la excepción de un día suelto del bloque —ese día no va, o va con otras horas— sin tocar el patrón de las demás semanas.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Body**, uno de los dos:
+  ```json
+  { "status": "cancelled" }
+  ```
+  ```json
+  { "status": "moved", "startTime": "15:00", "endTime": "19:30" }
+  ```
+  En `moved` las dos horas son obligatorias y siguen las reglas de la grilla; en `cancelled`, si llegan horas, se ignoran.
+- `:date` tiene que caer **dentro del rango del bloque y en uno de sus días de la semana**: una excepción sobre un día que el patrón no genera no significa nada.
+- **Idempotente**: repetir el mismo `PUT` deja el mismo estado, y un `PUT` sobre una fecha que ya tenía excepción la reemplaza.
+- **Response** `200 OK`, con la misma forma que la excepción dentro de su bloque en `GET /time-blocks/me`:
+  ```json
+  {
+    "exception": {
+      "date": "2026-10-12",
+      "status": "moved",
+      "startTime": "15:00",
+      "endTime": "19:30"
+    }
+  }
+  ```
+- **Errors**: `400` `INVALID_REQUEST_BODY` (`status` desconocido, o `moved` sin horas, con horas mal formadas o con la de fin no mayor que la de inicio), `400` `TIME_BLOCK_OUT_OF_GRID`, `400` `TIME_BLOCK_OCCURRENCE_NOT_IN_PATTERN`, `404` `TIME_BLOCK_NOT_FOUND`.
+
+### DELETE /time-blocks/me/:id/occurrences/:date
+
+Quita la excepción de ese día: el día vuelve al patrón.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK`: `{ "ok": true }`
+- **Idempotente**: si ese día no tenía excepción, responde igual. No exige que `:date` esté en el patrón, para poder limpiar una excepción que quedó fuera después de un `PATCH`.
+- **Errors**: `404` `TIME_BLOCK_NOT_FOUND`.
+
+### GET /time-blocks/me/occurrences
+
+Los bloques ya concretos de una ventana de fechas: el servidor expande cada regla día por día, aplica las excepciones y suma las horas de cada semana.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Query**: `from` y `to`, **obligatorias**, en `YYYY-MM-DD`. La ventana incluye los dos extremos, `to` no puede ser anterior a `from` (`400 INVALID_QUERY_PARAMS`) y cubre como máximo **120 días** (`400 TIME_BLOCK_WINDOW_TOO_WIDE`): `from=2026-09-21&to=2027-01-18` es la ventana más ancha que empieza ese lunes.
+- **Response** `200 OK` para `?from=2026-10-05&to=2026-10-18`, con el bloque del ejemplo de `GET /time-blocks/me`:
+  ```json
+  {
+    "occurrences": [
+      { "blockId": 12, "title": "Prácticas", "colorHex": "#F94B3F",
+        "date": "2026-10-05", "dayOfWeek": 1, "startTime": "14:00", "endTime": "18:00", "moved": false },
+      { "blockId": 12, "title": "Prácticas", "colorHex": "#F94B3F",
+        "date": "2026-10-12", "dayOfWeek": 1, "startTime": "15:00", "endTime": "19:30", "moved": true },
+      { "blockId": 12, "title": "Prácticas", "colorHex": "#F94B3F",
+        "date": "2026-10-14", "dayOfWeek": 3, "startTime": "14:00", "endTime": "18:00", "moved": false }
+    ],
+    "weeks": [
+      { "weekStart": "2026-10-05", "hours": 4 },
+      { "weekStart": "2026-10-12", "hours": 8.5 }
+    ]
+  }
+  ```
+- **`occurrences`**: ordenadas por fecha, luego por hora de inicio y, si empatan, por `blockId`. Un día `cancelled` no aparece (el miércoles `2026-10-07` del ejemplo); un día `moved` aparece con sus horas nuevas y `moved: true`.
+- **`weeks`**: una entrada por cada semana de **lunes a domingo** que toca la ventana, de la de `from` a la de `to`, ordenadas por `weekStart`, que es el lunes de esa semana y puede ser anterior a `from`. `hours` es el total de la semana **entera**, aunque la ventana la corte: una ventana que empieza un miércoles suma también el lunes de esa semana, que no sale en `occurrences`. Un día cancelado no suma, un día movido suma su duración nueva, y el total va en horas decimales sin redondear (`8.5` = ocho horas y media). Una semana sin ocurrencias sale con `hours: 0`: es un total conocido, no un dato que falta. Solo cuentan los bloques propios, nunca las clases.
+- Sin ocurrencias en la ventana: `occurrences` sale vacío y cada semana que toca la ventana sale con `hours: 0`.
+- **Errors**: `400` `INVALID_QUERY_PARAMS` (falta `from` o `to`, alguna no es una fecha válida, o `to` es anterior a `from`), `400` `TIME_BLOCK_WINDOW_TOO_WIDE` (más de 120 días).

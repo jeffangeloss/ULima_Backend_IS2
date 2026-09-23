@@ -42,6 +42,14 @@ export type DayInfo = {
   dayName: string;
   dateText: string;
   weekText: string;
+  /**
+   * RS-BE-36 · La misma fecha de `dateText`, como "YYYY-MM-DD" (hora de Lima,
+   * sin zona), o `null` cuando el ciclo no tiene semanas y `dateText` llega
+   * vacío. `dateText` no trae año ("1 de Enero"): con esto la app sabe qué día
+   * exacto es cada columna sin adivinarlo, y pide los bloques propios del
+   * ciclo visible (`GET /time-blocks/me/occurrences`).
+   */
+  isoDate: string | null;
 };
 
 export type SessionsResponse = {

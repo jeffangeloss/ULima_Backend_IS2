@@ -22,6 +22,8 @@ targets:
   `[@test] ../../../test/HU09_nehemias/schedule.repository.test.ts`
 - Formatea la hora de clase en `hora_inicio` y `hora_fin` (p. ej., "08:00 am") además de `inicio` y `fin` (p. ej., "08:00:00") para total compatibilidad con el frontend.
 - Identifica dinámicamente la semana académica actual correspondiente a la fecha de hoy, poblando los textos de los días con sus fechas reales en español (p. ej., "12 de Enero") y la descripción de la semana (p. ej., "Semana 2 del ciclo"). Ver BR-SCH-04 para de dónde salen esas semanas.
+- Cada día de `days` trae además `isoDate`: la misma fecha de `dateText` como `"YYYY-MM-DD"` (hora de Lima), o `null` cuando no hay semanas y `dateText` llega vacío. `dateText` no trae año; la app usa `isoDate` para pedir sus bloques propios del ciclo visible y ubicarlos en su día (`specs/features/time-blocks/time-blocks.spec.md`, RS-BE-36). Es un campo más: ninguno de los de antes cambia, y el horario docente (`GET /schedule/teacher/sessions`) también lo trae.
+  `[@test] ../../../test/HU35_jeff/schedule-iso-date.test.ts`
 - **Auth**: Bearer token (vía `authMiddleware`).
 
 ### BR-SCH-02: GET /schedule/me/assessments — Evaluation calendar
@@ -45,7 +47,7 @@ targets:
 - **Fallback en cascada**, para no lanzar cuando faltan datos:
   1. Filas de `academic_week` para el período activo (`ScheduleRepository.findAcademicWeeksForActivePeriod`).
   2. Si `academic_week` no tiene filas para ese período, se derivan semanas de 7 días a partir de las fechas propias del período (`academic_period.start_date`/`end_date`, vía `ScheduleRepository.findActivePeriodDates` + la función pura `deriveWeeksFromPeriodDates`), con la misma fórmula que `academicWeekCount` en `portal-sync.repository.ts` (`ceil(span_días / 7)`, mínimo 1, la última semana no empieza después de `end_date`).
-  3. Si no hay ningún período activo, lista vacía: cada método consumidor ya degrada a "sin info de semana" (`weekText: "Semana actual"`, `dateText: ""`, o listas vacías) en vez de lanzar.
+  3. Si no hay ningún período activo, lista vacía: cada método consumidor ya degrada a "sin info de semana" (`weekText: "Semana actual"`, `dateText: ""` e `isoDate: null`, o listas vacías) en vez de lanzar.
   `[@test] ../../../test/HU09_nehemias/schedule.repository.test.ts`
 - Antes de esta regla, `schedule.service.ts` tenía un calendario de 16 semanas hardcodeado empezando el 6 de abril de 2026 (el ciclo 2026-1), ignorando `academic_week` por completo; ya estaba desactualizado antes de esta corrección (una fecha de hoy posterior caía fuera de esas 16 semanas).
 
@@ -55,6 +57,15 @@ targets:
 - **Auth**: Bearer token con rol `teacher` (vía `requireRole("teacher")`).
 
 - `GET /schedule/me/sessions` retorna `aula`/`salon` desde `schedule_session.classroom` por sesiÃ³n y `color` desde `schedule_session.color_hex`, permitiendo aulas distintas por dÃ­a y colores hex por curso.
+
+## Bloques propios del alumno (`time-blocks`)
+
+El horario del alumno ya no es solo lo que baja del portal: el alumno registra además sus propios bloques —prácticas, trabajo, voluntariado— en el módulo `time-blocks` (`specs/features/time-blocks/time-blocks.spec.md`, RS-BE-30 a RS-BE-35). Viven en sus propias tablas (`student_time_block` y `student_time_block_exception`) y viajan por su propia ruta, `GET /time-blocks/me/occurrences`. No se mezclan con nada de lo que describe esta spec:
+
+- **No se mezclan en `GET /schedule/me/sessions`.** La app reparte una paleta de doce colores entre las `secciones` de esa respuesta; un bloque metido ahí se llevaría uno de esos colores y los cursos del portal cambiarían de color cada vez que el alumno crea o borra un bloque.
+- Un bloque no tiene sección, curso, docente ni asistencia: en `secciones` iría con campos inventados, como ya les pasa a las pseudo-secciones de asesoría del horario docente (`idSeccion: "adv-…"`, `asistenciaDisponible: false`).
+- Un bloque propio nunca escribe en `schedule_session`, `enrollment` ni `course_offering`. Por eso tampoco entra en la suma de horas que portal-sync hace sobre `schedule_session` (`recomputeOfferingHoursFromSchedule`) para fijar `course_offering.total_hours`, que `attendance-risk` usa como denominador de respaldo del porcentaje de inasistencia.
+- `GET /schedule/me/load` sigue contando evaluaciones. Las horas por semana de los bloques salen en `weeks` de `GET /time-blocks/me/occurrences` y no se suman a esa carga.
 
 ## Endpoints
 
@@ -67,7 +78,8 @@ targets:
       {
         "dayName": "Lunes",
         "dateText": "12 de Enero",
-        "weekText": "Semana 2 del ciclo"
+        "weekText": "Semana 2 del ciclo",
+        "isoDate": "2026-01-12"
       }
     ],
     "secciones": [
