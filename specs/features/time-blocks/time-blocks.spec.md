@@ -13,8 +13,8 @@ targets:
 
 # Bloques de horario propios
 
-> Estado: **APROBADA** por el dueño del proyecto el 2026-09-22, incluido el cambio de base de datos
-> que exige `AGENTS.md`. Diseñada con él sección por sección.
+> Estado: **APROBADA** por el dueño del proyecto, incluido el cambio de base de datos que exige
+> `AGENTS.md`. Diseñada con él sección por sección. Aprobó los planes el 2026-09-22 y confirmó esta spec de forma explícita el 2026-09-23.
 > Revisada el 2026-09-21 con las decisiones de la planificación: `PATCH` en el CORS, tope de
 > 20 bloques guardados, semanas enteras en `weeks` y la fecha exacta del horario (RS-BE-36).
 > Contraparte de frontend: `ULima_Frontend_IS2/specs/features/time-blocks/time-blocks.spec.md`.
