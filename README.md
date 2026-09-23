@@ -629,7 +629,7 @@ ULima_Backend_IS2/
 │   │   ├── alerts/                   # 472 · alertas de riesgo académico y alta carga; marcado de leídas
 │   │   ├── section-management/       # 747 · delegado y subdelegado: representantes, anuncios y estadísticas
 │   │   ├── advising/                 # 1 013 · ÚNICO módulo con submódulos: teacher/ y student/, 8 archivos cada uno
-│   │   ├── chat/                     # 350 · puente a Firebase; ÚNICO módulo sin `service.ts`
+│   │   ├── chat/                     # 377 · puente a Firebase; ÚNICO módulo sin `service.ts`
 │   │   ├── chatbot/                  # 1 264 · «ULimaBot» sobre Cohere, anclado al contexto académico real
 │   │   ├── attendance-risk/          # 386 · vista docente de alumnos impedidos y en riesgo por inasistencias
 │   │   ├── networking/               # 495 · carnet de redes sociales con opt-in explícito
@@ -638,7 +638,7 @@ ULima_Backend_IS2/
 │   ├── services/                     # 4 archivos · 799 líneas · clientes de terceros
 │   │   ├── portal.client.ts          # 410 · miUlima (webaloe) y sílabos (cactus); traduce fallos a HttpError
 │   │   ├── cohere.client.ts          # 219 · chat, clasificación, rerank y título, por fetch
-│   │   ├── firebase.service.ts       # 169 · custom tokens, membresía del chat y lectura de RTDB
+│   │   ├── firebase.service.ts       # 241 · custom tokens, membresía del chat, lectura de RTDB y borrado suave de mensajes
 │   │   └── index.ts                  # 1 línea: `export {}` — barril muerto
 │   ├── shared/                       # 12 archivos · 442 líneas
 │   │   ├── middleware/               # auth-middleware.ts 101 · rate-limit.ts 242 · validate-dto.ts 34 · error-handler.ts 29
@@ -6174,10 +6174,10 @@ porcentaje `0`. Esa carpeta de tests **está sin commitear**.
 
 **Enlaces rotos entre specs y tests.** Las specs de grades apuntan a
 `test/HU07_aurelio/` y `test/HU06_aurelio/`; las carpetas reales son `HU06_sam` y
-`HU07_sam` (el alias se renombró). Las specs de chatbot, chat y advising-student
-enlazan rutas de test que no existen (`test/chatbot/…`, `test/chat.controller.test.ts`,
-`test/student-advising.logic.test.ts`). Los tests reales están en las carpetas
-`HU##_<autor>`; el renombrado no se propagó a la documentación.
+`HU07_sam` (el alias se renombró). Las specs de chatbot y advising-student enlazan
+rutas de test que no existen (`test/chatbot/…` y `test/student-advising.logic.test.ts`).
+Los tests reales están en las carpetas `HU##_<autor>`; el renombrado no se propagó a la
+documentación.
 
 **Los requisitos R1..R23 no tienen catálogo.** Los `feature-index.md` de ambos repos
 citan `R1, R2, R4, R5, R6, R9..R23, RNF6, RNF7`, pero **el documento que los define no
@@ -6914,7 +6914,7 @@ Es la única dependencia del `package.json` declarada **sin caret**:
 > anticipe: en desarrollo con Bun el mismo grafo de dependencias funciona. La regla está escrita
 > en [`KNOWLEDGE.md`](KNOWLEDGE.md)`:144-147`, en
 > [`specs/features/chat/chat.spec.md`](specs/features/chat/chat.spec.md)`:58` y en
-> [`docs/specs/api-contracts.md`](docs/specs/api-contracts.md)`:529`. Falta en `CONTRIBUTING`.
+> [`docs/specs/api-contracts.md`](docs/specs/api-contracts.md)`:558`. Falta en `CONTRIBUTING`.
 
 ### El mapa del despliegue
 

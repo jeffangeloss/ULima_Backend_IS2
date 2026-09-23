@@ -114,13 +114,13 @@ describe("studentRoleFromPosition", () => {
 describe("buildParticipant", () => {
   test("arma uid/userId desde user_id y deriva label/weight/moderator del rol", () => {
     const p = buildParticipant(
-      { user_id: 293, full_name: "JP De Prueba" }, // fila de un JP (inventada)
+      { user_id: 602, full_name: "JP De Prueba" }, // fila de un JP (inventada)
       1,                                           // sectionId
       "jp",                                        // rol
     );
     expect(p).toEqual({
-      uid: "293",                    // uid = user_id como string (para Firebase)
-      userId: 293,                   // userId numérico
+      uid: "602",                    // uid = user_id como string (para Firebase)
+      userId: 602,                   // userId numérico
       sectionId: 1,
       displayName: "JP De Prueba",   // nombre mostrado
       role: "jp",
@@ -132,13 +132,13 @@ describe("buildParticipant", () => {
 
   test("un alumno raso no es moderador y pesa 10", () => {
     const p = buildParticipant(
-      { user_id: 6, full_name: "Alumno De Prueba" },
+      { user_id: 502, full_name: "Alumno De Prueba" }, // fila de un alumno (inventada)
       1,
       "student",
     );
     expect(p.isModerator).toBe(false); // el alumno no modera
     expect(p.weight).toBe(10);         // peso mínimo
-    expect(p.uid).toBe("6");           // uid es el user_id en string
+    expect(p.uid).toBe("502");         // uid es el user_id en string
   });
 });
 
