@@ -242,7 +242,7 @@ Todo el arranque de la aplicación cabe en un archivo. Este es su contenido, en 
 | 8 | `registerModules(app)` | `server.ts:63` | Monta las 16 sub-apps, en el orden de [`src/modules/index.ts`](src/modules/index.ts):20-35. |
 | 9 | `export default app` | `server.ts:65` | Entrypoint serverless. **No arranca ningún listener.** |
 
-> **1 · No hay middleware global de autenticación.** La cadena global tiene exactamente dos eslabones: `cors` y `logger`. `authMiddleware` y `requireRole` se montan **dentro de cada `*.routes.ts`**, con `app.use("*", ...)` cuando el módulo entero es homogéneo o ruta por ruta cuando no lo es (`auth`, `official-grades`, `schedule`, `chat` y `advising/student` lo hacen por ruta). La consecuencia es literal: `GET /`, `GET /health` y `GET /version` son los únicos endpoints del backend sin JWT, y lo son porque están declarados **antes** de `registerModules(app)`.
+> **1 · No hay middleware global de autenticación.** La cadena global tiene exactamente dos eslabones: `cors` y `logger`. `authMiddleware` y `requireRole` se montan **dentro de cada `*.routes.ts`**, con `app.use("*", ...)` cuando el módulo entero es homogéneo o ruta por ruta cuando no lo es (`auth`, `official-grades`, `schedule` y `advising/student` lo hacen por ruta). La consecuencia es literal: `GET /`, `GET /health` y `GET /version` son los únicos endpoints del backend sin JWT, y lo son porque están declarados **antes** de `registerModules(app)`.
 
 > **2 · Tampoco hay rate-limit global.** Los cuatro limitadores (`chatbotRateLimit`, `portalSyncRateLimit`, `registerRateLimit` y `registerConcurrencyLimit`) se montan en tres rutas concretas: `POST /chatbot/sessions/:id/ask`, `POST /portal-sync/import` y `POST /auth/register`. Ningún otro endpoint tiene límite de tasa.
 
@@ -384,7 +384,7 @@ Registrados en [`src/modules/index.ts`](src/modules/index.ts):20-35, en este ord
 | 8 | `alerts` | `/alerts` | 8 | Alertas personales del alumno — riesgo académico y alta carga — y marcado de leídas. | `authMiddleware` + `requireRole(...STUDENT_ROLES)` |
 | 9 | `section-management` | `/section-management` | 8 | Funciones de delegado y subdelegado: representantes, anuncios del salón y estadísticas de sección. | `authMiddleware` + `requireRole(...STUDENT_ROLES)`; `delegate`/`subdelegate` en 5 de 6 rutas |
 | 10 | `advising` | `/advising` | 1 / 17 | Asesorías extra: el docente las crea y ve asistentes; el alumno las consulta y confirma RSVP. | Definida en cada submódulo |
-| 11 | `chat` | `/chat` | 7 | Chat de sección sobre Firebase: custom token con rol, peso y bandera de moderador, y borrado suave por el profesor titular. | `authMiddleware`, rol por ruta |
+| 11 | `chat` | `/chat` | 7 | Chat de sección sobre Firebase: custom token con rol, peso y bandera de moderador, y borrado suave en el que cada participante borra sus propios mensajes y el profesor titular, además, los de cualquiera. | `authMiddleware`, sin `requireRole` |
 | 12 | `chatbot` | `/chatbot` | 11 | Asistente «ULimaBot» sobre Cohere: sesiones y respuestas ancladas al contexto académico real del alumno. | `authMiddleware` + `requireRole("student","delegate","subdelegate")` |
 | 13 | `attendance-risk` | `/attendance-risk` | 7 | Vista docente de alumnos impedidos o en riesgo por inasistencias, con resumen y notificación masiva. | `authMiddleware` + `requireRole("teacher")` |
 | 14 | `networking` | `/networking` | 8 | Carnet de redes sociales con opt-in explícito: lectura y edición propia, lectura pública de otro usuario. | `authMiddleware` + `requireRole(...STUDENT_ROLES, "teacher")` |
@@ -406,7 +406,7 @@ El patrón no es uniforme, y conviene decirlo antes de que alguien abra `chat/` 
 | [`auth/password-reset.logic.ts`](src/modules/auth/password-reset.logic.ts) | 73 | Generación de OTP con `randomInt`, hash SHA-256, `validateResetToken` con `timingSafeEqual`, `maskEmail`. |
 | [`alerts/alerts.logic.ts`](src/modules/alerts/alerts.logic.ts) | 113 | Umbrales de riesgo académico y crítico, `aggregateCourseScores`, `personalAverage`, `requiredOnRemaining`. |
 | [`grades/grades.logic.ts`](src/modules/grades/grades.logic.ts) | 19 | `calcularPromedioPonderado` y `sumaDePesos`. Lleva una directiva `// Stryker disable next-line` documentando un mutante equivalente. |
-| [`chat/chat.logic.ts`](src/modules/chat/chat.logic.ts) | 83 | `roleLabel`, `roleWeight`, `isModeratorRole`, `buildParticipant`, `canIssueToken`. |
+| [`chat/chat.logic.ts`](src/modules/chat/chat.logic.ts) | 94 | `roleLabel`, `roleWeight`, `isModeratorRole`, `buildParticipant`, `canIssueToken`, `canDeleteAnyMessage`. |
 | [`schedule/schedule.logic.ts`](src/modules/schedule/schedule.logic.ts) | 233 | `academicWeekOf`, `mergeScheduleData`, `validateSchedulePayload`. Su cabecera declara la complejidad ciclomática de `mergeScheduleData`. |
 | [`schedule/teacherSchedule.logic.ts`](src/modules/schedule/teacherSchedule.logic.ts) | 223 | `resolveTeacherBlock`, `validateCourseBlockInput`, `computeGradesStatus`. |
 | [`section-management/section-statistics.logic.ts`](src/modules/section-management/section-statistics.logic.ts) | 74 | `computeSectionStatistics`: promedio del salón, porcentaje de aprobados e histograma. |
@@ -418,7 +418,7 @@ El patrón no es uniforme, y conviene decirlo antes de que alguien abra `chat/` 
 
 > **3 · `chatbot` tiene 4 archivos sueltos fuera del patrón.** Además de los 7 canónicos: [`intent-classifier.ts`](src/modules/chatbot/intent-classifier.ts) (87 líneas, `KEYWORD_MAP` con 7 intenciones), [`context-builder.ts`](src/modules/chatbot/context-builder.ts) (165, el `SYSTEM_PROMPT` de 10 reglas de «ULimaBot»), [`chat-search.ts`](src/modules/chatbot/chat-search.ts) (57, busca en los mensajes de Firebase) y [`grades-summary.ts`](src/modules/chatbot/grades-summary.ts) (89, que **reutiliza la lógica pura de otro módulo**: importa `aggregateCourseScores`, `personalAverage`, `requiredOnRemaining` y `PASSING_GRADE` desde `../alerts/alerts.logic.js`). Su `index.ts` es un IIFE en vez de constantes sueltas, inyecta **otro service** en lugar del `eventBus` — `new ChatbotService(repository, scheduleService)` (`chatbot/index.ts:10`), único caso de service que depende de service — y su controller **no delega los errores al `errorHandler`**: hace `try/catch` y devuelve 400/404/500/503 a mano (`chatbot.controller.ts:54-100`), además de filtrar prompt-injection con 5 regex.
 
-> **4 · `chat` no tiene `service.ts`.** Sus 7 archivos son routes, controller, logic, repository, schemas, types e index. El controller absorbe el rol del service: importa `db` directamente (`chat.controller.ts:1`) —violando `AGENTS.md:41`— y se construye su propio repositorio con un parámetro por defecto, `constructor(readonly repository = new ChatRepository(db)) {}` (`:8`). Su `index.ts` tiene 7 líneas y hace `new ChatController()` sin argumentos.
+> **4 · `chat` no tiene `service.ts`.** Sus 7 archivos son routes, controller, logic, repository, schemas, types e index. El controller absorbe el rol del service: importa `db` directamente (`chat.controller.ts:1`) —violando `AGENTS.md:41`— y se construye su propio repositorio con un parámetro por defecto, `constructor(readonly repository = new ChatRepository(db)) {}` (`:21`). Su `index.ts` tiene 7 líneas y hace `new ChatController()` sin argumentos.
 
 > **5 · `course-detail` guarda SQL crudo en el archivo de rutas.** [`course-detail.routes.ts`](src/modules/course-detail/course-detail.routes.ts) tiene **318 líneas**: importa `db` y `sql` (`:3-4`), define el helper `splitName` (`:10-36`), la guarda de pertenencia `exigirPertenencia` (`:60-79`) y resuelve 4 de sus 6 rutas con SQL inline en el handler, con ``db.execute(sql`…`)`` repartido por todo el archivo. Solo `/sections/:sectionId/announcements` delega al controller. El propio archivo lo admite en `:46-48`: «estas rutas usan SQL crudo (deuda reconocida en la auditoría)». Además, `GET /sections/:sectionId` se auto-invoca por HTTP (`app.request("/sections", …)`, `:161-163`) reenviando el token para volver a pasar `authMiddleware`.
 
@@ -1755,8 +1755,8 @@ En las tablas de abajo se usan estas abreviaturas:
 | **docente** | `requireRole("teacher")` |
 | **alumno + docente** | `requireRole(...STUDENT_ROLES, "teacher")` — los 4 roles |
 
-Reparto verificado: **16 endpoints solo docente** (official-grades 3, schedule 4, advising 5,
-chat 1, attendance-risk 3) y **5 solo delegado/subdelegado** (section-management).
+Reparto verificado: **15 endpoints solo docente** (official-grades 3, schedule 4, advising 5,
+attendance-risk 3) y **5 solo delegado/subdelegado** (section-management).
 
 `authMiddleware` además exige coherencia entre el rol y los claims
 (`auth-middleware.ts:49-58`, HU18): un token con `role === "teacher"` **debe** traer
@@ -2064,16 +2064,16 @@ declarados ruta por ruta:
 
 #### 11 · `/chat` — 2 endpoints (HU23)
 
-`authMiddleware` global ([`chat.routes.ts`](src/modules/chat/chat.routes.ts)`:24`). **No hay
-`requireRole` global.**
+`authMiddleware` global ([`chat.routes.ts`](src/modules/chat/chat.routes.ts)`:24`). **Ninguna
+ruta usa `requireRole`**, porque la pertenencia y la autoría las decide el controller.
 
 | Método | Endpoint | Auth | Roles | Qué hace |
 |:---|:---|:---|:---|:---|
 | POST | `/chat/token` | Bearer | cualquiera (**+ pertenencia**) | Puente JWT → Firebase: escribe el espejo `/members/{sectionId}/{uid}` en RTDB y firma un custom token con `uid = String(app_user.id)`. Devuelve `role`, `roleLabel`, `isModerator`, `weight` |
-| DELETE | `/chat/sections/:sectionId/messages/:messageId` | Bearer | docente (**+ titular**) | Borrado suave del mensaje en RTDB vía Admin SDK: marca `deleted`, `deletedBy`, `deletedByUid`, `deletedByRole`, `deletedAt` |
+| DELETE | `/chat/sections/:sectionId/messages/:messageId` | Bearer | cualquiera (**+ pertenencia y autoría**) | Borrado suave del mensaje en RTDB vía Admin SDK: marca `deleted`, `deletedBy`, `deletedByUid`, `deletedByRole`, `deletedAt`. Cada participante borra los suyos y el profesor titular, además, los de cualquiera. Un mensaje ya borrado no se reescribe |
 
 La escala de moderación
-([`chat.logic.ts`](src/modules/chat/chat.logic.ts)`:9-48`):
+([`chat.logic.ts`](src/modules/chat/chat.logic.ts)`:9-51`):
 
 | Participante | `roleLabel` | `weight` | `isModerator` |
 |:---|:---|---:|:---|
@@ -2083,11 +2083,15 @@ La escala de moderación
 | Subdelegado | Subdelegado | 60 | sí |
 | Alumno | Alumno | 10 | no |
 
-`canIssueToken` (`chat.logic.ts:79-83`) exige participante no nulo **y**
+`canIssueToken` (`chat.logic.ts:82-86`) exige participante no nulo **y**
 `participant.userId === requestUserId`: sin esa segunda condición, mandar un `sectionId` ajeno
-firmaría un token para la sala de otro. El borrado va un paso más allá y exige
-`participant.role === "teacher"` → **el JP puede moderar en la UI pero no borrar**
-(403 `CHAT_DELETE_FORBIDDEN`).
+firmaría un token para la sala de otro. El borrado repite esa guarda y añade la autoría. Cada
+participante borra sus propios mensajes, y el profesor titular (`canDeleteAnyMessage`,
+`chat.logic.ts:93-94`) borra además los de cualquiera. Para los demás, el servicio lee el
+`senderId` guardado y lo compara con el `uid` del participante antes de escribir, así que
+**el JP y los representantes moderan en la UI pero no borran mensajes ajenos**
+(403 `CHAT_DELETE_FORBIDDEN`, «Solo puedes eliminar tus propios mensajes.»). El aviso de la
+lápida lo resuelve la app con `deletedByUid`.
 
 > ⚠️ Sin las variables `FIREBASE_*`, ambos endpoints devuelven **500 `INTERNAL_SERVER_ERROR`**
 > genérico: [`firebase.service.ts`](src/services/firebase.service.ts) lanza `new Error(...)`
@@ -2329,7 +2333,7 @@ login y con **404** en los de lectura de usuario.
 | `INVALID_JSON_BODY` | 400 | El body no parsea como JSON — [`validate-dto.ts`](src/shared/middleware/validate-dto.ts)`:7` |
 | `INVALID_REQUEST_BODY` | 400 | El body no cumple el schema Zod; `details` = `flatten()` — `validate-dto.ts:12` |
 | `INVALID_QUERY_PARAMS` | 400 | Query string inválido — `validate-dto.ts:21` |
-| `INVALID_ROUTE_PARAMS` | 400 | Parámetro de ruta inválido — `validate-dto.ts:30`, y a mano en `chat.routes.ts:46` y `networking.routes.ts:26` |
+| `INVALID_ROUTE_PARAMS` | 400 | Parámetro de ruta inválido — `validate-dto.ts:30`, y a mano en `chat.routes.ts:47` y `networking.routes.ts:26` |
 | `INVALID_ALERT_ID` | 400 | `:alertId` no es numérico — `alerts.controller.ts:27` |
 | `INVALID_CAREER_ID` | 400 | `careerId` inválido en `/academic-profile/specialties` |
 | `WEAK_PASSWORD` | 400 | Contraseña nueva por debajo de `MIN_PASSWORD_LENGTH` |
@@ -2354,8 +2358,8 @@ login y con **404** en los de lectura de usuario.
 | `ANNOUNCEMENT_FORBIDDEN` | 403 | El anuncio no es del representante autenticado |
 | `NOT_SECTION_PROFESSOR` | 403 | Solo el profesor titular puede calificar; el JP no — `official-grades.service.ts:35` |
 | `RSVP_STUDENT_ONLY` | 403 | Solo alumnos confirman asistencia a una asesoría |
-| `CHAT_SECTION_FORBIDDEN` | 403 | No pertenece a la sección, o el `userId` no coincide con el participante — `chat.controller.ts:29` |
-| `CHAT_DELETE_FORBIDDEN` | 403 | No es el profesor titular de la sección — `chat.controller.ts:77` |
+| `CHAT_SECTION_FORBIDDEN` | 403 | No pertenece a la sección, o el `userId` no coincide con el participante — `chat.controller.ts:49` |
+| `CHAT_DELETE_FORBIDDEN` | 403 | No participa de la sección, el `userId` no coincide con el participante, o el mensaje es de otro y quien borra no es el profesor titular — `chat.controller.ts:18` |
 | `NETWORKING_CARD_HIDDEN` | 403 | El dueño del carnet no dio opt-in — `networking.service.ts:66` |
 | `PORTAL_IDENTITY_MISMATCH` | 403 | El código leído del portal no coincide con `app_user.code` |
 | `USER_NOT_FOUND` | 404 | Usuario inexistente en `/auth/me`, `/auth/password-reset/request-me`, academic-profile y networking |
@@ -2369,7 +2373,7 @@ login y con **404** en los de lectura de usuario.
 | `ASSESSMENT_NOT_IN_SECTION` | 404 | La evaluación del lote no pertenece a la sección que se califica |
 | `SESSION_NOT_FOUND` | 404 | Asesoría no disponible (también cuando el alumno no participa), o sesión de chatbot inexistente |
 | `ADVISING_NOT_FOUND` | 404 | Asesoría inexistente — `teacher.service.ts:95,112` |
-| `CHAT_MESSAGE_NOT_FOUND` | 404 | El mensaje no existe en RTDB — `chat.controller.ts:92` |
+| `CHAT_MESSAGE_NOT_FOUND` | 404 | El mensaje no existe en RTDB — `chat.controller.ts:100` |
 | `DUPLICATE_PRIMARY` | 409 | La especialidad principal aparece también como interés |
 | `ADVISING_OVERLAP` | 409 | Se solapa con otra asesoría del mismo docente ese día — `teacher.service.ts:69` |
 | `NO_ACTIVE_PERIOD` | 409 | No hay período académico activo — `teacher.service.ts:36` |
@@ -2610,7 +2614,7 @@ sexto ciclo», no «el curso con id `_VI_CICLO_`».
 ### El contrato documentado vs. el código
 
 [`docs/specs/api-contracts.md`](docs/specs/api-contracts.md) tiene 600 líneas y se escribió
-antes que varios de estos módulos. Estas son las **24 divergencias** que aparecieron al
+antes que varios de estos módulos. Estas son las **23 divergencias** que aparecieron al
 verificarlo línea a línea contra los `*.routes.ts`. Manda el código.
 
 | # | Punto | Dice el contrato | Hace el código |
@@ -2638,7 +2642,6 @@ verificarlo línea a línea contra los `*.routes.ts`. Manda el código.
 | 21 | `POST /grades/me/notes` | `valor: 15` — número | `z.number().min(0).max(20).nullable()`: **admite `null`** |
 | 22 | Metadata de `GET /` | «módulos disponibles» | La lista está desactualizada: omite 5 módulos montados |
 | 23 | `POST /chat/token` | «puede pedir token cualquier miembro de la sección» | Cierto, pero **no hay `requireRole`**: la pertenencia la verifica el controller con `canIssueToken`, no el router |
-| 24 | Errores de `DELETE /chat/…/messages/:messageId` | 403 `CHAT_DELETE_FORBIDDEN`, 404, 400 | Correcto, pero falta el `403 FORBIDDEN` de `requireRole("teacher")`, que dispara **antes** |
 
 Hay además una contradicción documento contra documento:
 [`docs/AUDITORIA_TECNICA.md`](docs/AUDITORIA_TECNICA.md)`:32` sigue listando un módulo
@@ -2801,7 +2804,7 @@ el módulo `attendance-risk`. Está en [Deuda técnica](#-deuda-técnica-y-lími
 | `BR-AUTH-11` | Reset de contraseña con OTP de 6 dígitos hasheado SHA-256 en `password_reset_token`, respuesta genérica anti-enumeración, y al confirmar: rehash bcrypt + `token_version + 1`. | `auth.spec.md:106` · [`src/modules/auth/password-reset.logic.ts`](src/modules/auth/password-reset.logic.ts) |
 | `BR-AUTH-12` | Rol técnico único `teacher` para profesor y JP. El JWT docente lleva `teacherId` y **nunca** `studentId`; el middleware exige el identificador que corresponde al rol. | `auth.spec.md:125` · `auth-middleware.ts:49-58` |
 | `BR-AUTH-13` | `currentCourses` se filtra por período académico activo y `currentCycle` cae al código del período activo o a `null`. Nunca a un ciclo hardcodeado. | `auth.spec.md:152` |
-| `R-CHAT-2` | Rol de chat con peso: `teacher` 100, `jp` 90, `delegate` 70, `subdelegate` 60, `student` 10. `isModerator` es todos salvo `student` y es **solo presentación**. | `chat.spec.md:29` · `chat.logic.ts:28-48` |
+| `R-CHAT-2` | Rol de chat con peso: `teacher` 100, `jp` 90, `delegate` 70, `subdelegate` 60, `student` 10. `isModerator` es todos salvo `student` y es **solo presentación**. | `chat.spec.md:31` · `chat.logic.ts:28-51` |
 | `RS-18` | La promoción a delegado durante un import **re-firma** el token con `reissueToken` sin tocar `token_version`. | `delegados-portal.spec.md:156` |
 | `RS-19` | Un `section_representative_claim` no otorga permisos por sí solo. Solo `section_representative` autoriza. | `delegados-portal.spec.md:157` |
 | *(middleware)* | `requireRole(...roles)` corre después de `authMiddleware` y responde `403 FORBIDDEN`. `STUDENT_ROLES = ["student","delegate","subdelegate"]`. | `auth-middleware.ts:92-101` |
@@ -3041,9 +3044,9 @@ eso es éxito parcial, no fallo.
 
 | ID | Regla | Dónde vive |
 |:---|:---|:---|
-| `R-CHAT-1` | `POST /chat/token` verifica el JWT propio, resuelve al solicitante como participante, escribe el espejo `/members/{sectionId}/{uid}` **antes** de firmar y devuelve un custom token de Firebase con `uid = app_user.id`. | `chat.spec.md:21` |
-| `R-CHAT-3` | PostgreSQL no se migra a Firebase: RTDB guarda **solo** mensajes y el espejo `/members`, que solo escribe el backend. | `chat.spec.md:36` |
-| `R-CHAT-4` | El borrado suave de mensajes lo autoriza **solo el profesor titular** — ni el JP ni los representantes. Errores `403 CHAT_DELETE_FORBIDDEN` y `404 CHAT_MESSAGE_NOT_FOUND`. | `chat.spec.md:39` |
+| `R-CHAT-1` | `POST /chat/token` verifica el JWT propio, resuelve al solicitante como participante, escribe el espejo `/members/{sectionId}/{uid}` **antes** de firmar y devuelve un custom token de Firebase con `uid = app_user.id`. | `chat.spec.md:23` |
+| `R-CHAT-3` | PostgreSQL no se migra a Firebase: RTDB guarda **solo** mensajes y el espejo `/members`, que solo escribe el backend. | `chat.spec.md:38` |
+| `R-CHAT-4` | En el borrado suave, cada participante borra **sus propios mensajes** y el **profesor titular**, además, los de cualquiera; el JP y los representantes no borran mensajes ajenos. El servidor comprueba la autoría con el `senderId` guardado, un mensaje ya borrado no se reescribe y el aviso de la lápida lo resuelve la app. Errores `403 CHAT_DELETE_FORBIDDEN` y `404 CHAT_MESSAGE_NOT_FOUND`. | `chat.spec.md:41` |
 | `R-NET-1` · `R-NET-2` | El carnet devuelve `{optIn, links}` del propietario, legible incluso con `optIn = false`. `PUT` reemplaza atómicamente opt-in y enlaces derivando el propietario de `JWT.sub`; `optIn: true` exige **exactamente un** enlace. | `networking.spec.md:42,55` |
 | `R-NET-3` | El enlace exige plataforma del enum, URL absoluta http(s) de 255 caracteres como máximo y **host que coincida con el dominio oficial** de la plataforma. `website` y `other` exigen `label` no vacía de 80 caracteres como máximo. | `networking.spec.md:71` |
 | `R-NET-4` | `networking_opt_in = false` **oculta** el carnet a terceros, no borra el enlace. PostgreSQL es la única fuente de verdad; no se usa `teacher.linkedin_link`. | `networking.spec.md:89` |
@@ -3133,7 +3136,7 @@ es la única fuente de verdad; la columna «Regla» dice qué la justifica.
 | Runtime | `PORT` por defecto | `3000` | `env.ts:38` | — |
 | Runtime | Región de despliegue | `iad1` | `vercel.json` | `BR-PLATFORM-10` |
 | Runtime | Timeout de función | `300` s por defecto **y** por tope | `vercel.json` sin `maxDuration` | `BR-PLATFORM-11` |
-| Runtime | Firebase Admin SDK | fijado en `12.1.0` | `package.json:33` | `chat.spec.md:51` |
+| Runtime | Firebase Admin SDK | fijado en `12.1.0` | `package.json:33` | `chat.spec.md:58` |
 
 ---
 
@@ -3291,7 +3294,7 @@ por módulo:
 | `advising/teacher` | `use("*")` | `teacher` | `advising/teacher/teacher.routes.ts:8-9` |
 | `advising/student` | por-ruta | `STUDENT_ROLES` | `advising/student/student.routes.ts:10-11,16-17,22-23` |
 | `attendance-risk` | `use("*")` | `teacher` | `attendance-risk.routes.ts:8-9` |
-| `chat` | `use("*")` | solo `DELETE …/messages/:id` → `teacher` | `chat.routes.ts:24,40` |
+| `chat` | `use("*")` | ninguno (pertenencia y autoría las decide el controller) | `chat.routes.ts:24` |
 | `chatbot` | `use("*")` | `student` · `delegate` · `subdelegate` (literales, no la constante) | `chatbot.routes.ts:10-11` |
 | `networking` | `use("*")` | `STUDENT_ROLES` + `teacher` | `networking.routes.ts:19-20` |
 | `portal-sync` | `use("*")` | `STUDENT_ROLES` | `portal-sync.routes.ts:9-10` |
@@ -3530,7 +3533,7 @@ Dos notas sobre versiones y modelos:
 
 - **`firebase-admin` está clavada en `12.1.0` sin caret** ([`package.json`](package.json) `:33`). Las v13/v14
   arrastran `jwks-rsa` → `jose` (ESM) y rompen Vercel con `ERR_REQUIRE_ESM`, porque el backend
-  es `"type": "module"`. Está documentado en `specs/features/chat/chat.spec.md:51`. Subirla
+  es `"type": "module"`. Está documentado en `specs/features/chat/chat.spec.md:58`. Subirla
   tumba producción **y la deja tumbada**: no hay deploy espejo.
 - **El cliente de Cohere migró de v1 a v2.** El rol `system` reemplazó al viejo `preamble`, y
   `command-a-03-2025` dejó de servirse en `/v1/chat`. `classify` sigue en `/v1` porque v2 no
@@ -4107,12 +4110,12 @@ reglas de RTDB puedan verlo.
 
 `POST /chat/token` lleva `authMiddleware` pero **no `requireRole`** —alumnos y docentes usan la
 misma ruta— y la autorización real la hace el controller
-([`chat.controller.ts`](src/modules/chat/chat.controller.ts) `:10-51`):
+([`chat.controller.ts`](src/modules/chat/chat.controller.ts) `:29-71`):
 
 1. **Fuente según el rol del JWT**: `role === "teacher"` → `findTeacherParticipant(teacherId, sectionId)`;
    cualquier otro → `findStudentParticipant(studentId, sectionId)`. Si falta el identificador
    correspondiente, el participante es `null` **sin tocar la base**.
-2. **`canIssueToken(participant, requestUserId)`** ([`chat.logic.ts`](src/modules/chat/chat.logic.ts) `:79-83`):
+2. **`canIssueToken(participant, requestUserId)`** ([`chat.logic.ts`](src/modules/chat/chat.logic.ts) `:82-86`):
    `participant != null && participant.userId === requestUserId`. Es un **type guard**, así que
    el compilador garantiza que después de la guarda no hay `null`. Falla →
    `403 CHAT_SECTION_FORBIDDEN`, «anti-suplantación por parámetro».
@@ -4123,7 +4126,7 @@ misma ruta— y la autorización real la hace el controller
    `{ role, sectionId, moderator, weight }`.
 
 **El espejo** se escribe con `.set()` en `members/{sectionId}/{uid}`
-([`firebase.service.ts`](src/services/firebase.service.ts) `:81-91`):
+([`firebase.service.ts`](src/services/firebase.service.ts) `:161-171`):
 
 | Campo | Valor |
 |:---|:---|
@@ -4154,11 +4157,14 @@ El rol de alumno sale de `position ?? "student"`, y la consulta ordena
 `delegate → subdelegate → resto` con `LIMIT 1`: **gana el cargo más alto**. El rol de docente se
 deriva por `CASE`: `teacher` si `sec.teacher_id` coincide, `jp` si coincide `sec.jp_id`.
 
-> **`moderator` es solo presentación.** Pinta el badge y el estilo de la burbuja. **No habilita
-> borrar mensajes**: eso es exclusivo del profesor titular (R-CHAT-4). El borrado tiene triple
-> guarda —participante no nulo, `userId` coincidente y `role === "teacher"`— y **excluye
-> explícitamente al JP**. Además es **suave**: `ref.update({ deleted: true, deletedBy, … })` deja
-> una lápida que el cliente renderiza como «eliminado por …», nunca borra el nodo.
+> **`moderator` es solo presentación.** Pinta el badge y el estilo de la burbuja y **no habilita
+> borrar mensajes ajenos**, que quedan para el profesor titular (R-CHAT-4). Cada participante
+> borra sus propios mensajes, y el borrado repite la guarda del token (participante no nulo y
+> `userId` coincidente). Si quien borra no es el titular, el servicio compara además el
+> `senderId` guardado con su `uid` antes de escribir, así que **el JP y los representantes no
+> borran mensajes ajenos**. El borrado es **suave**, porque `ref.update({ deleted: true, deletedBy,
+> deletedByUid, … })` deja una lápida y nunca borra el nodo. La app resuelve el aviso de esa
+> lápida con `deletedByUid`, y un mensaje ya borrado no se reescribe.
 
 Las reglas de RTDB viven en el repositorio de frontend (`database.rules.json`), no aquí, pero
 cierran el círculo: raíz `deny-by-default`; cada uno solo se ve a sí mismo en `/members` y solo
@@ -4384,7 +4390,7 @@ de casos; la columna «Estado» es lo que se verificó **contra el código**, no
 | Advising (docentes/JP) | `advising.spec.md` | HU18 | texto libre | [`src/modules/advising/teacher`](src/modules/advising/teacher) | `HU18_jeff` **93** | ✅ Confirmado: 5 rutas docentes |
 | Advising Student (RSVP) | `advising-student.spec.md` | HU13, HU17 | `OBS-RF-3` (de este README) | [`src/modules/advising/student`](src/modules/advising/student) | `HU13_ronald` **50** | ✅ Implementado · **no figura en `feature-index.md`** |
 | Refact Advising | `refact-advising.spec.md` | — (refactor) | — | `src/modules/advising/{teacher,student}` | verificado por estructura | ✅ Ejecutado · **no figura en `feature-index.md`** |
-| Chat en vivo por sección | `chat.spec.md` | HU23 | texto libre | [`src/modules/chat`](src/modules/chat) | `HU23_jeff` **64** | ⚠️ Implementado · reglas de RTDB pendientes de validar con Firebase Emulator |
+| Chat en vivo por sección | `chat.spec.md` | HU23 | texto libre | [`src/modules/chat`](src/modules/chat) | `HU23_jeff` **110** | ⚠️ Implementado · reglas de RTDB pendientes de validar con Firebase Emulator |
 | Carnet de networking | `networking.spec.md` | HU25 (histórico HU27) | texto libre | [`src/modules/networking`](src/modules/networking) | `HU25_mel` **34** | ⚠️ Implementado y montado · el índice dice «pendiente». Además existe `GET /networking/users/:userId`, que la spec declara **fuera de alcance** |
 | Chatbot Asistente Académico | `chatbot.spec.md` | HU-CHATBOT-01/02, HU28 | texto libre | [`src/modules/chatbot`](src/modules/chatbot) | `HU28_ronald` **35** | ⚠️ Implementado y montado (5 rutas, rate limit activo, 2 tablas) · el índice dice «pendiente» |
 | Portal Sync | `portal-sync.spec.md` | HU-SYNC-01/02, HU31 | RS-BE-1…8 | [`src/modules/portal-sync`](src/modules/portal-sync) | `HU31_jeff` **425** en 28 archivos | ⚠️ Implementado · **verificación manual end-to-end pendiente** |
@@ -4435,10 +4441,10 @@ aplica `requireRole(...)` en [`src/shared/middleware/auth-middleware.ts`](src/sh
 
 | Actor | Rol técnico | Qué puede hacer | Cómo se obtiene el rol |
 |:---|:---|:---|:---|
-| **Estudiante** | `student` | Malla y simulación, calculadora de notas personales, promedio ponderado, horario y evaluaciones, alertas, asesorías y RSVP, contactos y anuncios de su sección, chat de sección, chatbot, carnet de networking, importación desde el portal | Rol por defecto de una cuenta con perfil `student`. `mapRole()` devuelve `student` cuando `findActiveRepresentation()` no encuentra representación vigente ([`auth.repository.ts`](src/modules/auth/auth.repository.ts)`:330-351`) |
+| **Estudiante** | `student` | Malla y simulación, calculadora de notas personales, promedio ponderado, horario y evaluaciones, alertas, asesorías y RSVP, contactos y anuncios de su sección, chat de sección (con el borrado de sus propios mensajes), chatbot, carnet de networking, importación desde el portal | Rol por defecto de una cuenta con perfil `student`. `mapRole()` devuelve `student` cuando `findActiveRepresentation()` no encuentra representación vigente ([`auth.repository.ts`](src/modules/auth/auth.repository.ts)`:330-351`) |
 | **Delegado** | `delegate` | Todo lo del estudiante **más** publicar, editar y eliminar anuncios de su sección, y ver las estadísticas agregadas del salón | Fila activa en `section_representative` con `position='delegate'`, unida por `enrollment → section → course_offering → academic_period` a una matrícula `active` de un período `is_active`. **El cargo caduca con el ciclo**: sin ese join un delegado de 2026-1 lo seguiría siendo para siempre |
 | **Subdelegado** | `subdelegate` | Exactamente lo mismo que el delegado: las rutas de anuncios y estadísticas piden `requireRole("delegate","subdelegate")` | Igual, con `position='subdelegate'`. `delegate` tiene precedencia por `order by case sr.position when 'delegate' then 0 when 'subdelegate' then 1 else 2 end limit 1` |
-| **Docente — Profesor o JP** | `teacher` | Publicar y borrar asesorías extra, ver la lista de asistentes, horario docente, cargar notas oficiales (solo el titular), lista de impedidos por inasistencia y notificarlos, borrar mensajes del chat (solo el titular), carnet de networking | El `code` **no** corresponde a ningún perfil `student` y existe `teacher.user_id` apuntando a la cuenta. No se exige matrícula activa ni se consulta `section_representative` (BR-AUTH-12). El alta es administrativa, por seed aprobado ([`src/db/seed/docentes.ts`](src/db/seed/docentes.ts)); **no hay endpoint de registro** |
+| **Docente — Profesor o JP** | `teacher` | Publicar y borrar asesorías extra, ver la lista de asistentes, horario docente, cargar notas oficiales (solo el titular), lista de impedidos por inasistencia y notificarlos, borrar sus mensajes del chat (el titular, además, los de cualquiera), carnet de networking | El `code` **no** corresponde a ningún perfil `student` y existe `teacher.user_id` apuntando a la cuenta. No se exige matrícula activa ni se consulta `section_representative` (BR-AUTH-12). El alta es administrativa, por seed aprobado ([`src/db/seed/docentes.ts`](src/db/seed/docentes.ts)); **no hay endpoint de registro** |
 
 > **1 · El rol no vive en la cuenta.** `app_user` no tiene columna `role`. El rol se
 > calcula **en cada login** consultando la representación vigente (BR-AUTH-02) y se
@@ -4655,7 +4661,7 @@ carpeta de prueba en ese repo. Los tests del frontend viven en el otro repositor
 | **HU20** | Restablecer la contraseña con OTP al correo institucional | Alumno · Docente | [`src/modules/auth`](src/modules/auth) | jeff | 14 / 17 | Implementado |
 | **HU21** | Visor de sílabos PDF dentro de la app | Alumno | [`src/modules/grades`](src/modules/grades) (`silaboUrl`) | jeff | — / 43 | **Implementado sin spec** |
 | **HU22** | Ver la lista de alumnos impedidos por inasistencia | Docente | [`src/modules/attendance-risk`](src/modules/attendance-risk) | sam | 23 / 10 | **Implementado sin spec** |
-| **HU23** | Chat en vivo por sección | Alumno · Docente | [`src/modules/chat`](src/modules/chat) | jeff | 64 / 20 | Implementado; **reglas RTDB vía Emulator pendientes** |
+| **HU23** | Chat en vivo por sección | Alumno · Docente | [`src/modules/chat`](src/modules/chat) | jeff | 110 / 20 | Implementado; **reglas RTDB vía Emulator pendientes** |
 | **HU24** | Horario interactivo del docente | Docente | [`teacherSchedule.logic.ts`](src/modules/schedule/teacherSchedule.logic.ts) | nehemias | 33 / — | Implementado |
 | **HU25** | Carnet de networking opt-in con una red social | Alumno · Docente | [`src/modules/networking`](src/modules/networking) | mel | 34 / 33 | Escenario 1 implementado |
 | **HU26** | Exportar a CSV la lista de impedidos | Docente | *(sin endpoint: el CSV se arma en el cliente)* | sam | — / 7 | **Implementado sin spec** |
@@ -5715,8 +5721,8 @@ Escenario: Notificar a los alumnos afectados
 |:---|:---|
 | **Módulo** | [`src/modules/chat`](src/modules/chat) + [`src/services/firebase.service.ts`](src/services/firebase.service.ts) |
 | **Endpoints** | `POST /chat/token` · `DELETE /chat/sections/:sectionId/messages/:messageId` |
-| **Reglas** | R-CHAT-1, R-CHAT-2, R-CHAT-3, R-CHAT-4 · [`specs/features/chat/chat.spec.md`](specs/features/chat/chat.spec.md)`:21-51`. Pesos de rol: teacher 100, jp 90, delegate 70, subdelegate 60, student 10 |
-| **Pruebas** | [`test/HU23_jeff/chat_token.cajanegra.test.ts`](test/HU23_jeff/chat_token.cajanegra.test.ts), [`chat_role.unit.test.ts`](test/HU23_jeff/chat_role.unit.test.ts), [`chat_delete.cajablanca.test.ts`](test/HU23_jeff/chat_delete.cajablanca.test.ts) — 64 casos; 20 en el frontend |
+| **Reglas** | R-CHAT-1, R-CHAT-2, R-CHAT-3, R-CHAT-4 · [`specs/features/chat/chat.spec.md`](specs/features/chat/chat.spec.md)`:23-58`. Pesos de rol: teacher 100, jp 90, delegate 70, subdelegate 60, student 10 |
+| **Pruebas** | [`test/HU23_jeff/chat_token.cajanegra.test.ts`](test/HU23_jeff/chat_token.cajanegra.test.ts), [`chat_role.unit.test.ts`](test/HU23_jeff/chat_role.unit.test.ts), [`chat_delete.cajablanca.test.ts`](test/HU23_jeff/chat_delete.cajablanca.test.ts), [`chat_delete.routes.test.ts`](test/HU23_jeff/chat_delete.routes.test.ts), [`chat_soft_delete.unit.test.ts`](test/HU23_jeff/chat_soft_delete.unit.test.ts) — 110 casos; 20 en el frontend |
 
 **Criterios de aceptación**
 
@@ -5746,18 +5752,26 @@ Escenario: Derivación de peso y moderación
   Entonces su rol de chat es delegate, su peso es 70 y es moderador
   Y un alumno raso tiene rol student, peso 10 y no es moderador
 
-Escenario: Solo el profesor titular borra mensajes
-  Dado que soy el JP de la sección
-  Cuando envío el DELETE de un mensaje
-  Entonces recibo 403 CHAT_DELETE_FORBIDDEN
-  Porque el controlador exige rol de participante teacher, no jp
+Escenario: Cada participante borra sus propios mensajes
+  Dado que participo de la sección como alumno, delegado, subdelegado, JP o profesor
+  Cuando envío el DELETE de un mensaje que escribí
+  Entonces recibo 200 y el mensaje queda marcado como eliminado
+  Y el servidor comprueba la autoría con el senderId guardado, no con lo que diga el cliente
+
+Escenario: Solo el profesor titular borra mensajes ajenos
+  Dado que soy el JP, un representante o un alumno de la sección
+  Cuando envío el DELETE del mensaje de otro participante
+  Entonces recibo 403 CHAT_DELETE_FORBIDDEN con «Solo puedes eliminar tus propios mensajes.»
+  Y quien no participa de la sección recibe el mismo 403
+  Y el profesor titular, en cambio, borra el mensaje de cualquiera
 
 Escenario: Borrado suave con lápida
-  Dado que soy el profesor titular de la sección
-  Cuando borro un mensaje existente
-  Entonces el nodo NO se elimina: se marca como eliminado con quién y cuándo
-  Y el cliente muestra la lápida eliminado por el profesor
+  Dado un mensaje existente de la sección
+  Cuando su autor o el profesor titular lo borra
+  Entonces el nodo NO se elimina y queda marcado con quién lo borró y cuándo
+  Y la app resuelve el aviso de la lápida con deletedByUid
   Y si el mensaje no existe recibo 404 CHAT_MESSAGE_NOT_FOUND
+  Y si ya estaba borrado recibo 200 sin que la lápida cambie
 
 Escenario: El cliente nunca escribe la membresía
   Dado el modelo de datos del chat
@@ -5766,9 +5780,10 @@ Escenario: El cliente nunca escribe la membresía
   Y el permiso de escritura del cliente sobre un mensaje es solo de creación
 ```
 
-> ⚠️ El flag `isModerator` es **solo presentación**. No habilita borrar: eso lo decide
-> R-CHAT-4, que exige ser el titular. Un delegado se ve como moderador y recibe 403 si
-> intenta borrar.
+> ⚠️ El flag `isModerator` es **solo presentación** y no habilita borrar mensajes ajenos.
+> R-CHAT-4 deja que cada participante borre los suyos y reserva los de cualquiera al profesor
+> titular, así que un delegado se ve como moderador y aun así recibe 403 si intenta borrar el
+> mensaje de otro.
 
 ---
 
@@ -6309,7 +6324,7 @@ vez por **capa arquitectónica**: `parsers.*` (6 archivos), `repository.*` (8), 
 | [`test/HU18_jeff/`](test/HU18_jeff/) | HU18 · Publicar asesoría como docente | jeff | 3 | negra + lógica pura ×2 | `teacher.logic` completo (9 funciones) y las 13 funciones de `src/db/seed/asesorias.logic`. 93 casos |
 | [`test/HU20_jeff/`](test/HU20_jeff/) | HU20 · Restablecer contraseña con OTP | jeff | 1 | lógica pura con recorrido de estados | `generateOtp`, `hashOtp`, `validateResetToken`, `validateNewPassword`, `maskEmail` |
 | [`test/HU22_sam/`](test/HU22_sam/) | HU22 · Lista de impedidos | sam | 2 | negra + `.unitarias` | Límite 25 % ciclos 1-5 / 35 % ciclo 6+, comparación estricta, `total <= 0 ⇒ "normal"`, redondeo a 2 decimales |
-| [`test/HU23_jeff/`](test/HU23_jeff/) | HU23 · Chat grupal por sección | jeff | 3 | blanca + negra + `.unit` | Jerarquía `teacher 100 > jp 90 > delegate 70 > subdelegate 60 > student 10`; 6 caminos de borrado suave y 8 de token Firebase, incluido el caso anti-suplantación |
+| [`test/HU23_jeff/`](test/HU23_jeff/) | HU23 · Chat grupal por sección | jeff | 5 | blanca + negra + `.unit` ×2 + ruta | Jerarquía `teacher 100 > jp 90 > delegate 70 > subdelegate 60 > student 10`; 8 caminos del borrado propio y del titular, la lápida idempotente del servicio, la ruta `DELETE` sin `requireRole` y 8 caminos de token Firebase, incluido el caso anti-suplantación |
 | [`test/HU24_nehemias/`](test/HU24_nehemias/) | HU24 · Horario interactivo del docente | nehemias | 1 | mixto, `CC=10`, 6 campos | `resolveTeacherBlock`, `validateCourseBlockInput`, `computeGradesStatus` |
 | [`test/HU25_mel/`](test/HU25_mel/) | HU25 · Carnet de networking opt-in | mel | 4 | blanca `V(G)=5` + negra + lógica + servicio | `updateMine` y `urlBelongsToPlatform`, que exige dominio oficial o subdominio real y **rechaza hosts que solo contienen el nombre** |
 | [`test/HU28_ronald/`](test/HU28_ronald/) | HU28 · Chatbot ULimaBot | ronald | 5 | negra de 14 campos + 4 por componente | `context-builder`, `intent-classifier`, `chat-search`, `ChatbotService.ask` con `mock.module` de Cohere. Regla BR-CB-06 |
@@ -6427,7 +6442,7 @@ es por **capa**.
 | Capa | Sin cobertura | Detalle |
 |:---|:---|:---|
 | Controllers | 14 de 16 | Solo `chat.controller.ts` (HU23) y `advising/student/student.controller.ts` (HU13) tienen pruebas |
-| Routes | 14 de 16 | Solo `chat.routes.ts` por su `deleteParamsSchema`, y `course-detail.routes.ts` cargada dinámicamente en `course-detail.contacts-claim.test.ts` |
+| Routes | 14 de 16 | Solo `chat.routes.ts` (por su `deleteParamsSchema` y por `chat_delete.routes.test.ts`, que la monta completa) y `course-detail.routes.ts` cargada dinámicamente en `course-detail.contacts-claim.test.ts` |
 | Middleware | 3 de 5 | `auth-middleware.ts`, `validate-dto.ts` y `middleware/index.ts` sin pruebas directas. `error-handler.ts` y `rate-limit.ts` sí se ejercitan, montados sobre la app real en pruebas de HU31 y HU33 (`registro.rate-limit.test.ts` cubre los dos limitadores del registro; los del chatbot y portal-sync siguen sin prueba propia) |
 | Eventos | 5 de 5 | Los tres observers, `event-bus.ts` y `event-types.ts`: cero |
 | Servicios completos | 6 | `schedule.service.ts`, `advising/teacher/teacher.service.ts` y `teacher.repository.ts`, `curriculum.repository.ts`, `chatbot.repository.ts`, `official-grades.schemas.ts` |
@@ -6514,7 +6529,7 @@ que ves en la columna «Por defecto».
 | `PASSWORD_RESET_MAX_PER_HOUR` | No | `3` | Máximo de OTP de restablecimiento por usuario por hora. Si el parseo no da entero positivo, **cae a 3 en vez de fallar** |
 | `FIREBASE_PROJECT_ID` | No | `""` | Proyecto Firebase del chat (HU23) |
 | `FIREBASE_CLIENT_EMAIL` | No | `""` | Cuenta de servicio de Firebase Admin. Validada como correo, con escape explícito a cadena vacía |
-| `FIREBASE_PRIVATE_KEY` | No | `""` | Clave privada de la cuenta de servicio. Llega con `\n` literales y `firebase.service.ts:36` los normaliza |
+| `FIREBASE_PRIVATE_KEY` | No | `""` | Clave privada de la cuenta de servicio. Llega con `\n` literales y `firebase.service.ts:116` los normaliza |
 | `FIREBASE_DATABASE_URL` | No | `""` | URL de Realtime Database. Validada como URL, con el mismo escape a `""` |
 | `CLOUDINARY_CLOUD_NAME` | No | `""` | **Cloud name de la cuenta** — no el nombre de una API key. Es el segmento que va en la URL de entrega `https://res.cloudinary.com/<cloudName>/image/upload/…` que arma [`avatar.logic.ts:68`](src/modules/avatar/avatar.logic.ts), y viaja al cliente en la respuesta de la firma ([`avatar.service.ts:33`](src/modules/avatar/avatar.service.ts)) |
 | `CLOUDINARY_API_KEY` | No | `""` | Clave **pública** de la cuenta. También viaja al cliente (`avatar.service.ts:34`): la app la manda en el `POST` directo a Cloudinary junto con `timestamp`, `public_id` y `signature`. El backend no toca los bytes porque Vercel corta los cuerpos en 4.5 MB y una foto de cámara los pasa |
@@ -6860,9 +6875,9 @@ default, pero varias tienen un default que **no sirve en producción**.
 | `RESEND_API_KEY` | 🟠 **Sí** | En producción se loguea un `console.error` y **el correo de restablecimiento no se envía** |
 | `RESEND_FROM` | Opcional | Default `ULima+ <notificaciones@mail.grupo5app.lat>`. Prohibido usar un local-part `no-reply`: es señal de spam para Gmail |
 | `RESEND_REPLY_TO` | Opcional | Sin ella no se agrega la cabecera `Reply-To` |
-| `FIREBASE_PROJECT_ID` | 🟡 Solo para chat | `firebase.service.ts:28` corta la inicialización y el chat (HU23) queda inerte |
+| `FIREBASE_PROJECT_ID` | 🟡 Solo para chat | `firebase.service.ts:108` corta la inicialización y el chat (HU23) queda inerte |
 | `FIREBASE_CLIENT_EMAIL` | 🟡 Solo para chat | Ídem |
-| `FIREBASE_PRIVATE_KEY` | 🟡 Solo para chat | Ídem. Viaja con `\n` literales; `firebase.service.ts:36` los normaliza |
+| `FIREBASE_PRIVATE_KEY` | 🟡 Solo para chat | Ídem. Viaja con `\n` literales; `firebase.service.ts:116` los normaliza |
 | `FIREBASE_DATABASE_URL` | 🟡 Solo para chat | Sin ella no hay Realtime Database donde escribir mensajes |
 | `JWT_EXPIRES_IN` | Opcional | Default `86400` s (24 h). Se devuelve al cliente en `expiresIn` |
 | `PASSWORD_RESET_MAX_PER_HOUR` | Opcional | Default `3` OTP por usuario por hora |
@@ -6898,7 +6913,7 @@ Es la única dependencia del `package.json` declarada **sin caret**:
 > él `jose@6` al `bun.lock`—, **producción se cae y queda caída**, sin una prueba local que lo
 > anticipe: en desarrollo con Bun el mismo grafo de dependencias funciona. La regla está escrita
 > en [`KNOWLEDGE.md`](KNOWLEDGE.md)`:144-147`, en
-> [`specs/features/chat/chat.spec.md`](specs/features/chat/chat.spec.md)`:51` y en
+> [`specs/features/chat/chat.spec.md`](specs/features/chat/chat.spec.md)`:58` y en
 > [`docs/specs/api-contracts.md`](docs/specs/api-contracts.md)`:529`. Falta en `CONTRIBUTING`.
 
 ### El mapa del despliegue

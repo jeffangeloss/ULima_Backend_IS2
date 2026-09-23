@@ -101,32 +101,32 @@ const fakeRepo = (over: Partial<ChatRepository>): ChatRepository =>
 
 // Participantes de la sección 1 (nombres inventados).
 const teacher: ChatParticipant = buildParticipant(
-  { user_id: 601, full_name: "Ibarra Luna, Marta" },
+  { user_id: 601, full_name: "Docente De Prueba" },
   1,
   "teacher",
 );
 const jp: ChatParticipant = buildParticipant(
-  { user_id: 602, full_name: "Nunez Soto, Diego" },
+  { user_id: 602, full_name: "JP De Prueba" },
   1,
   "jp",
 );
 const student: ChatParticipant = buildParticipant(
-  { user_id: 501, full_name: "Torres Pino, Lucia" },
+  { user_id: 501, full_name: "Alumna De Prueba" },
   1,
   "student",
 );
 const otroAlumno: ChatParticipant = buildParticipant(
-  { user_id: 502, full_name: "Vargas Leon, Mateo" },
+  { user_id: 502, full_name: "Otro Alumno De Prueba" },
   1,
   "student",
 );
 const delegate: ChatParticipant = buildParticipant(
-  { user_id: 503, full_name: "Campos Rey, Sofia" },
+  { user_id: 503, full_name: "Delegada De Prueba" },
   1,
   "delegate",
 );
 const subdelegate: ChatParticipant = buildParticipant(
-  { user_id: 504, full_name: "Salas Mori, Andres" },
+  { user_id: 504, full_name: "Subdelegado De Prueba" },
   1,
   "subdelegate",
 );
@@ -159,7 +159,7 @@ const mensajeDe = (autor: ChatParticipant): Mensaje => ({
 
 const LAPIDA_PREVIA = {
   deleted: true,
-  deletedBy: "Vargas Leon, Mateo",
+  deletedBy: "Otro Alumno De Prueba",
   deletedByUid: "502",
   deletedByRole: "student",
   deletedAt: 1_750_000_000_000,
@@ -180,12 +180,12 @@ beforeEach(() => {
   mirrored = [];
   softDeletes = [];
   mensajes = new Map<string, Mensaje>([
-    ["-Nlucia", mensajeDe(student)],
-    ["-Nmateo", mensajeDe(otroAlumno)],
-    ["-Nsofia", mensajeDe(delegate)],
-    ["-Nandres", mensajeDe(subdelegate)],
-    ["-Ndiego", mensajeDe(jp)],
-    ["-Nmarta", mensajeDe(teacher)],
+    ["-Nalumna", mensajeDe(student)],
+    ["-Notroalumno", mensajeDe(otroAlumno)],
+    ["-Ndelegada", mensajeDe(delegate)],
+    ["-Nsubdelegado", mensajeDe(subdelegate)],
+    ["-Njp", mensajeDe(jp)],
+    ["-Ndocente", mensajeDe(teacher)],
     ["-Nborrado", { ...mensajeDe(otroAlumno), ...LAPIDA_PREVIA }],
   ]);
 });
@@ -236,11 +236,11 @@ const sigueVivo = (messageId: string) => {
 describe("ChatController.deleteMessage — cada participante borra lo suyo (P1)", () => {
   test("alumno borra su propio mensaje ⇒ 200 y lápida con sus datos", async () => {
     const c = new ChatController(repoSeccion());
-    const res = await c.deleteMessage(comoAlumno(student, 51, "-Nlucia"));
-    expect(res).toEqual({ deleted: true, messageId: "-Nlucia", deletedBy: "Torres Pino, Lucia" });
-    expect(mensajes.get("-Nlucia")).toMatchObject({
+    const res = await c.deleteMessage(comoAlumno(student, 51, "-Nalumna"));
+    expect(res).toEqual({ deleted: true, messageId: "-Nalumna", deletedBy: "Alumna De Prueba" });
+    expect(mensajes.get("-Nalumna")).toMatchObject({
       deleted: true,
-      deletedBy: "Torres Pino, Lucia",
+      deletedBy: "Alumna De Prueba",
       deletedByUid: "501",
       deletedByRole: "student",
       deletedAt: 1_800_000_000_000,
@@ -253,81 +253,81 @@ describe("ChatController.deleteMessage — cada participante borra lo suyo (P1)"
 
   test("delegado borra su propio mensaje ⇒ 200", async () => {
     const c = new ChatController(repoSeccion());
-    const res = await c.deleteMessage(comoAlumno(delegate, 53, "-Nsofia"));
-    expect(res.deletedBy).toBe("Campos Rey, Sofia");
-    expect(mensajes.get("-Nsofia")?.deletedByRole).toBe("delegate");
+    const res = await c.deleteMessage(comoAlumno(delegate, 53, "-Ndelegada"));
+    expect(res.deletedBy).toBe("Delegada De Prueba");
+    expect(mensajes.get("-Ndelegada")?.deletedByRole).toBe("delegate");
     expect(softDeletes[0]!.options).toEqual({ requireSenderUid: "503" });
   });
 
   test("subdelegado borra su propio mensaje ⇒ 200", async () => {
     const c = new ChatController(repoSeccion());
-    const res = await c.deleteMessage(comoAlumno(subdelegate, 54, "-Nandres"));
+    const res = await c.deleteMessage(comoAlumno(subdelegate, 54, "-Nsubdelegado"));
     expect(res.deleted).toBe(true);
-    expect(mensajes.get("-Nandres")?.deletedByRole).toBe("subdelegate");
+    expect(mensajes.get("-Nsubdelegado")?.deletedByRole).toBe("subdelegate");
   });
 
   test("JP borra su propio mensaje ⇒ 200", async () => {
     const c = new ChatController(repoSeccion());
-    const res = await c.deleteMessage(comoDocente(jp, 62, "-Ndiego"));
-    expect(res.deletedBy).toBe("Nunez Soto, Diego");
-    expect(mensajes.get("-Ndiego")).toMatchObject({ deleted: true, deletedByUid: "602", deletedByRole: "jp" });
+    const res = await c.deleteMessage(comoDocente(jp, 62, "-Njp"));
+    expect(res.deletedBy).toBe("JP De Prueba");
+    expect(mensajes.get("-Njp")).toMatchObject({ deleted: true, deletedByUid: "602", deletedByRole: "jp" });
     expect(softDeletes[0]!.options).toEqual({ requireSenderUid: "602" });
   });
 
   test("profesor titular borra su propio mensaje ⇒ 200", async () => {
     const c = new ChatController(repoSeccion());
-    const res = await c.deleteMessage(comoDocente(teacher, 61, "-Nmarta"));
-    expect(res.deletedBy).toBe("Ibarra Luna, Marta");
-    expect(mensajes.get("-Nmarta")?.deleted).toBe(true);
+    const res = await c.deleteMessage(comoDocente(teacher, 61, "-Ndocente"));
+    expect(res.deletedBy).toBe("Docente De Prueba");
+    expect(mensajes.get("-Ndocente")?.deleted).toBe(true);
   });
 });
 
 describe("ChatController.deleteMessage — nadie salvo el titular borra lo ajeno (P2)", () => {
   test("alumno sobre el mensaje de otro alumno ⇒ 403 con el mensaje nuevo y no escribe", async () => {
     const c = new ChatController(repoSeccion());
-    await expectDeleteForbidden(() => c.deleteMessage(comoAlumno(student, 51, "-Nmateo")));
-    sigueVivo("-Nmateo");
+    await expectDeleteForbidden(() => c.deleteMessage(comoAlumno(student, 51, "-Notroalumno")));
+    sigueVivo("-Notroalumno");
   });
 
   test("alumno sobre el mensaje del profesor ⇒ 403", async () => {
     const c = new ChatController(repoSeccion());
-    await expectDeleteForbidden(() => c.deleteMessage(comoAlumno(student, 51, "-Nmarta")));
-    sigueVivo("-Nmarta");
+    await expectDeleteForbidden(() => c.deleteMessage(comoAlumno(student, 51, "-Ndocente")));
+    sigueVivo("-Ndocente");
   });
 
   test("delegado (moderador) sobre el mensaje de un alumno ⇒ 403: moderar no habilita borrar lo ajeno", async () => {
     const c = new ChatController(repoSeccion());
-    await expectDeleteForbidden(() => c.deleteMessage(comoAlumno(delegate, 53, "-Nlucia")));
-    sigueVivo("-Nlucia");
+    await expectDeleteForbidden(() => c.deleteMessage(comoAlumno(delegate, 53, "-Nalumna")));
+    sigueVivo("-Nalumna");
   });
 
   test("subdelegado sobre el mensaje de un alumno ⇒ 403", async () => {
     const c = new ChatController(repoSeccion());
-    await expectDeleteForbidden(() => c.deleteMessage(comoAlumno(subdelegate, 54, "-Nlucia")));
-    sigueVivo("-Nlucia");
+    await expectDeleteForbidden(() => c.deleteMessage(comoAlumno(subdelegate, 54, "-Nalumna")));
+    sigueVivo("-Nalumna");
   });
 
   test("JP sobre el mensaje de un alumno ⇒ 403 (solo el titular borra lo ajeno)", async () => {
     const c = new ChatController(repoSeccion());
-    await expectDeleteForbidden(() => c.deleteMessage(comoDocente(jp, 62, "-Nlucia")));
-    sigueVivo("-Nlucia");
+    await expectDeleteForbidden(() => c.deleteMessage(comoDocente(jp, 62, "-Nalumna")));
+    sigueVivo("-Nalumna");
   });
 
   test("JP sobre el mensaje del profesor titular ⇒ 403", async () => {
     const c = new ChatController(repoSeccion());
-    await expectDeleteForbidden(() => c.deleteMessage(comoDocente(jp, 62, "-Nmarta")));
-    sigueVivo("-Nmarta");
+    await expectDeleteForbidden(() => c.deleteMessage(comoDocente(jp, 62, "-Ndocente")));
+    sigueVivo("-Ndocente");
   });
 });
 
 describe("ChatController.deleteMessage — el profesor titular borra cualquiera (P3)", () => {
   test("profesor titular borra el mensaje de un alumno ⇒ 200 y lápida con sus datos", async () => {
     const c = new ChatController(repoSeccion());
-    const res = await c.deleteMessage(comoDocente(teacher, 61, "-Nlucia"));
-    expect(res).toEqual({ deleted: true, messageId: "-Nlucia", deletedBy: "Ibarra Luna, Marta" });
-    expect(mensajes.get("-Nlucia")).toMatchObject({
+    const res = await c.deleteMessage(comoDocente(teacher, 61, "-Nalumna"));
+    expect(res).toEqual({ deleted: true, messageId: "-Nalumna", deletedBy: "Docente De Prueba" });
+    expect(mensajes.get("-Nalumna")).toMatchObject({
       deleted: true,
-      deletedBy: "Ibarra Luna, Marta",
+      deletedBy: "Docente De Prueba",
       deletedByUid: "601",
       deletedByRole: "teacher",
     });
@@ -337,30 +337,30 @@ describe("ChatController.deleteMessage — el profesor titular borra cualquiera 
 
   test("profesor titular borra el mensaje del JP y el de un delegado ⇒ 200", async () => {
     const c = new ChatController(repoSeccion());
-    await c.deleteMessage(comoDocente(teacher, 61, "-Ndiego"));
-    await c.deleteMessage(comoDocente(teacher, 61, "-Nsofia"));
-    expect(mensajes.get("-Ndiego")?.deleted).toBe(true);
-    expect(mensajes.get("-Nsofia")?.deleted).toBe(true);
+    await c.deleteMessage(comoDocente(teacher, 61, "-Njp"));
+    await c.deleteMessage(comoDocente(teacher, 61, "-Ndelegada"));
+    expect(mensajes.get("-Njp")?.deleted).toBe(true);
+    expect(mensajes.get("-Ndelegada")?.deleted).toBe(true);
   });
 });
 
 describe("ChatController.deleteMessage — quién es el solicitante (P4-P6)", () => {
   test("alumno que no participa de la sección (repo null) ⇒ 403 y no toca Firebase", async () => {
     const c = new ChatController(repoSeccion());
-    await expectDeleteForbidden(() => c.deleteMessage({ ...comoAlumno(student, 51, "-Nlucia"), sectionId: 2 }));
+    await expectDeleteForbidden(() => c.deleteMessage({ ...comoAlumno(student, 51, "-Nalumna"), sectionId: 2 }));
     expect(softDeletes).toHaveLength(0);
   });
 
   test("docente que no dicta la sección (repo null) ⇒ 403 y no toca Firebase", async () => {
     const c = new ChatController(repoSeccion());
-    await expectDeleteForbidden(() => c.deleteMessage(comoDocente(teacher, 99, "-Nlucia")));
+    await expectDeleteForbidden(() => c.deleteMessage(comoDocente(teacher, 99, "-Nalumna")));
     expect(softDeletes).toHaveLength(0);
   });
 
   test("token de alumno sin studentId ⇒ 403", async () => {
     const c = new ChatController(repoSeccion());
     await expectDeleteForbidden(() =>
-      c.deleteMessage({ sectionId: 1, messageId: "-Nlucia", userId: 501, role: "student" }),
+      c.deleteMessage({ sectionId: 1, messageId: "-Nalumna", userId: 501, role: "student" }),
     );
     expect(softDeletes).toHaveLength(0);
   });
@@ -368,7 +368,7 @@ describe("ChatController.deleteMessage — quién es el solicitante (P4-P6)", ()
   test("token de docente sin teacherId ⇒ 403", async () => {
     const c = new ChatController(repoSeccion());
     await expectDeleteForbidden(() =>
-      c.deleteMessage({ sectionId: 1, messageId: "-Nlucia", userId: 601, role: "teacher" }),
+      c.deleteMessage({ sectionId: 1, messageId: "-Nalumna", userId: 601, role: "teacher" }),
     );
     expect(softDeletes).toHaveLength(0);
   });
@@ -376,20 +376,20 @@ describe("ChatController.deleteMessage — quién es el solicitante (P4-P6)", ()
   test("rol teacher en el JWT resuelve por teacherId aunque traiga studentId", async () => {
     const c = new ChatController(repoSeccion());
     await expectDeleteForbidden(() =>
-      c.deleteMessage({ sectionId: 1, messageId: "-Nlucia", userId: 501, role: "teacher", studentId: 51 }),
+      c.deleteMessage({ sectionId: 1, messageId: "-Nalumna", userId: 501, role: "teacher", studentId: 51 }),
     );
-    sigueVivo("-Nlucia");
+    sigueVivo("-Nalumna");
   });
 
   test("userId del JWT distinto al del participante ⇒ 403 (anti-suplantación)", async () => {
     const c = new ChatController(repoSeccion());
     await expectDeleteForbidden(() =>
-      c.deleteMessage({ ...comoAlumno(student, 51, "-Nlucia"), userId: 999 }),
+      c.deleteMessage({ ...comoAlumno(student, 51, "-Nalumna"), userId: 999 }),
     );
     await expectDeleteForbidden(() =>
-      c.deleteMessage({ ...comoDocente(teacher, 61, "-Nlucia"), userId: 999 }),
+      c.deleteMessage({ ...comoDocente(teacher, 61, "-Nalumna"), userId: 999 }),
     );
-    sigueVivo("-Nlucia");
+    sigueVivo("-Nalumna");
     expect(softDeletes).toHaveLength(0);
   });
 });
@@ -408,14 +408,14 @@ describe("ChatController.deleteMessage — mensaje inexistente o ya borrado (P7-
   test("su autor borra otra vez un mensaje ya borrado ⇒ 200 y la lápida no cambia", async () => {
     const c = new ChatController(repoSeccion());
     const res = await c.deleteMessage(comoAlumno(otroAlumno, 52, "-Nborrado"));
-    expect(res).toEqual({ deleted: true, messageId: "-Nborrado", deletedBy: "Vargas Leon, Mateo" });
+    expect(res).toEqual({ deleted: true, messageId: "-Nborrado", deletedBy: "Otro Alumno De Prueba" });
     expect(mensajes.get("-Nborrado")).toMatchObject(LAPIDA_PREVIA);
   });
 
   test("el profesor titular sobre un mensaje ya borrado ⇒ 200, responde el deletedBy original y no reescribe", async () => {
     const c = new ChatController(repoSeccion());
     const res = await c.deleteMessage(comoDocente(teacher, 61, "-Nborrado"));
-    expect(res).toEqual({ deleted: true, messageId: "-Nborrado", deletedBy: "Vargas Leon, Mateo" });
+    expect(res).toEqual({ deleted: true, messageId: "-Nborrado", deletedBy: "Otro Alumno De Prueba" });
     expect(mensajes.get("-Nborrado")).toMatchObject(LAPIDA_PREVIA);
   });
 

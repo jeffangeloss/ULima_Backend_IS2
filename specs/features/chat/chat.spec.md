@@ -24,16 +24,16 @@ Decisión de arquitectura (trade-off) y caveats completos en el issue padre #123
 El backend verifica el JWT propio (`authMiddleware`), resuelve al solicitante como participante de la sección y firma un **custom token** de Firebase (`uid = app_user.id`) con claims `{ role, sectionId, moderator, weight }`.
 - El rol del JWT decide la fuente: `teacher` ⇒ `findTeacherParticipant` (por `section.teacher_id`/`jp_id`); cualquier otro ⇒ `findStudentParticipant` (por `enrollment` activo + `section_representative`).
 - Un solicitante sin participante en la sección, o cuyo `userId` del JWT no coincide con el del participante, recibe `403 CHAT_SECTION_FORBIDDEN` (anti-suplantación por parámetro).
-  `[@test] ../../../test/chat.controller.test.ts` (docente sin teacherId, docente no-dictante, alumno sin studentId, userId ≠ participante, no escribe espejo al rechazar)
+  `[@test] ../../../test/HU23_jeff/chat_delete.cajablanca.test.ts` (docente sin teacherId, docente no-dictante, alumno sin studentId, userId ≠ participante, no escribe espejo al rechazar)
 - Al autorizar, el backend escribe el espejo `/members/{sectionId}/{uid}` en RTDB **antes** de firmar el token, y devuelve `{ token, uid, displayName, role, roleLabel, isModerator, weight }`.
-  `[@test] ../../../test/chat.controller.test.ts` (profesor válido, alumno raso, delegado)
+  `[@test] ../../../test/HU23_jeff/chat_delete.cajablanca.test.ts` (profesor válido, alumno raso, delegado)
 
 ### R-CHAT-2 — Derivación de rol/peso/moderador
 El rol de chat determina etiqueta, peso y si es moderador (badge/estilo de la burbuja):
 - `teacher`=100, `jp`=90, `delegate`=70, `subdelegate`=60, `student`=10; moderador = todos salvo `student`.
 - Un alumno se mapea a `delegate`/`subdelegate` según su `position` activa en `section_representative`, o `student` si no es representante.
 - `moderator` es solo presentación (etiqueta de rol en la burbuja); **NO** habilita borrar mensajes ajenos (ver R-CHAT-4).
-  `[@test] ../../../test/chat.logic.test.ts` (roleLabel, roleWeight, isModeratorRole, studentRoleFromPosition, buildParticipant, canIssueToken)
+  `[@test] ../../../test/HU23_jeff/chat_role.unit.test.ts` (roleLabel, roleWeight, isModeratorRole, studentRoleFromPosition, buildParticipant, canIssueToken)
 
 ### R-CHAT-3 — Postgres no se migra; el cliente nunca escribe membresía
 Firebase RTDB guarda solo mensajes + el espejo `/members`. El backend es el ÚNICO que escribe `/members` (el cliente lo tiene denegado por reglas). Sin Cloud Functions (plan Spark).
