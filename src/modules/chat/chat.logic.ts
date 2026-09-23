@@ -40,7 +40,10 @@ export const roleWeight = (role: ChatParticipantRole): number => {
   }
 };
 
-/** Un moderador puede borrar cualquier mensaje; el alumno raso solo el suyo. */
+/**
+ * Moderador = etiqueta de presentación (badge/estilo de la burbuja). No da
+ * permiso para borrar mensajes ajenos; eso lo decide `canDeleteAnyMessage`.
+ */
 export const isModeratorRole = (role: ChatParticipantRole): boolean =>
   role === "teacher" ||
   role === "jp" ||
@@ -81,3 +84,11 @@ export const canIssueToken = (
   requestUserId: number,
 ): participant is ChatParticipant =>
   participant != null && participant.userId === requestUserId;
+
+/**
+ * R-CHAT-4: ¿puede este rol borrar mensajes AJENOS? Solo el profesor titular.
+ * Todo participante (incluidos JP y representantes) borra sus propios mensajes;
+ * esa autoría la comprueba el servidor con el `senderId` guardado.
+ */
+export const canDeleteAnyMessage = (role: ChatParticipantRole): boolean =>
+  role === "teacher";

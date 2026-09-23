@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildParticipant,
+  canDeleteAnyMessage,
   canIssueToken,
   isModeratorRole,
   roleLabel,
@@ -29,6 +30,7 @@ import type {
  *   - studentRoleFromPosition(): null -> "student"; delegate/subdelegate se preservan.
  *   - buildParticipant()      : arma uid/userId/label/weight/moderator desde la fila.
  *   - canIssueToken()         : autoriza SOLO si el participante existe Y el userId coincide (anti-suplantación).
+ *   - canDeleteAnyMessage()   : solo el profesor titular borra mensajes ajenos (R-CHAT-4).
  */
 
 // Los 5 roles válidos del chat, para recorrerlos en los tests que aplican a todos.
@@ -83,7 +85,19 @@ describe("isModeratorRole", () => {
     expect(isModeratorRole("jp")).toBe(true);          // modera
     expect(isModeratorRole("delegate")).toBe(true);    // modera
     expect(isModeratorRole("subdelegate")).toBe(true); // modera
-    expect(isModeratorRole("student")).toBe(false);    // el alumno raso NO modera (solo borra lo suyo)
+    expect(isModeratorRole("student")).toBe(false);    // el alumno raso NO modera
+  });
+});
+
+describe("canDeleteAnyMessage (R-CHAT-4)", () => {
+  test("solo el profesor titular borra mensajes ajenos", () => {
+    expect(canDeleteAnyMessage("teacher")).toBe(true);
+  });
+
+  test("JP, delegado, subdelegado y alumno solo borran los suyos, aunque moderen", () => {
+    for (const role of ["jp", "delegate", "subdelegate", "student"] as const) {
+      expect(canDeleteAnyMessage(role)).toBe(false);
+    }
   });
 });
 

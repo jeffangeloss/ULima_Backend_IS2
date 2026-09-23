@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { authMiddleware, requireRole } from "../../shared/middleware/auth-middleware.js";
+import { authMiddleware } from "../../shared/middleware/auth-middleware.js";
 import { validateJson } from "../../shared/middleware/validate-dto.js";
 import { HttpError } from "../../shared/errors/http-error.js";
 import type { ChatController } from "./chat.controller.js";
@@ -35,9 +35,10 @@ export const createChatRoutes = (controller: ChatController) => {
     }));
   });
 
-  // HU23: eliminar (borrado suave) un mensaje. Solo docentes; el controller
-  // valida además que sea el PROFESOR titular de esa sección.
-  app.delete("/sections/:sectionId/messages/:messageId", requireRole("teacher"), async (c) => {
+  // HU23 / R-CHAT-4: eliminar (borrado suave) un mensaje. Entra cualquier rol
+  // autenticado; el controller resuelve al participante desde el JWT (igual que
+  // /token) y solo deja borrar lo propio, salvo al profesor titular.
+  app.delete("/sections/:sectionId/messages/:messageId", async (c) => {
     const parsed = deleteParamsSchema.safeParse({
       sectionId: c.req.param("sectionId"),
       messageId: c.req.param("messageId"),
@@ -50,7 +51,9 @@ export const createChatRoutes = (controller: ChatController) => {
       sectionId: parsed.data.sectionId,
       messageId: parsed.data.messageId,
       userId: c.get("userId"),
+      studentId: c.get("studentId"),
       teacherId: c.get("teacherId"),
+      role: c.get("role"),
     }));
   });
 
