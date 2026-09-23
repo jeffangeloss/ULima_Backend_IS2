@@ -3,11 +3,11 @@
  * (`package.json:40`).
  *
  * Acá vive solo lo que se decide mirando la petición: el formato de cada campo
- * y las reglas que cruzan dos campos de la misma petición (horas, fechas, días
- * repetidos, orden de la ventana), que la spec pone bajo "Validación con Zod"
- * sin código propio. Las reglas de negocio —grilla, tope de bloques,
- * pertenencia, patrón y ancho de la ventana— viven en el service, con los
- * códigos de error que fija la spec.
+ * y las reglas que cruzan campos de la misma petición (horas, fechas, días
+ * repetidos, días que caen en el rango, orden de la ventana), que la spec pone
+ * bajo "Validación con Zod" sin código propio. Las reglas de negocio —grilla,
+ * tope de bloques, pertenencia, patrón y ancho de la ventana— viven en el
+ * service, con los códigos de error que fija la spec.
  *
  * El regex de la hora se declara una vez, en `HORA`, y lo usan los cuatro
  * campos de hora. Sale de `teacher.schemas.ts:6-7`, el esquema de escritura
@@ -16,7 +16,7 @@
  * repository.
  */
 import { z } from "zod";
-import { addDays } from "./time-blocks.logic.js";
+import { addDays, dayOfWeekOf } from "./time-blocks.logic.js";
 
 /** Forma "YYYY-MM-DD". Solo la forma: si la fecha existe lo mira `fecha`. */
 const FORMA_DE_FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -49,28 +49,51 @@ const MAX_ID = 2147483647;
  * explotar el `safeParse` en vez de devolver `success: false`. Con la forma ya
  * comprobada, comparar el texto contra el rango es comparar fechas.
  */
-const fecha = z
-  .string()
-  .refine(
-    (valor) =>
-      FORMA_DE_FECHA.test(valor) &&
-      valor >= PRIMERA_FECHA &&
-      valor <= ULTIMA_FECHA &&
-      addDays(valor, 0) === valor,
-    "Fecha inválida (YYYY-MM-DD).",
-  );
+const esFecha = (valor: string): boolean =>
+  FORMA_DE_FECHA.test(valor) &&
+  valor >= PRIMERA_FECHA &&
+  valor <= ULTIMA_FECHA &&
+  addDays(valor, 0) === valor;
+
+const fecha = z.string().refine(esFecha, "Fecha inválida (YYYY-MM-DD).");
+
+/** De 1 (lunes) a 7 (domingo), entre uno y siete. Que no se repitan lo mira un
+ *  `refine` del cuerpo, con su propio mensaje. */
+const diasDeLaSemana = z.array(z.number().int().min(1).max(7)).min(1).max(7);
+
+/**
+ * Entre `desde` y `hasta`, bordes incluidos, cae al menos una fecha de alguno
+ * de los días marcados (RS-BE-31). Si no, el bloque se guardaría y nunca
+ * ocurriría: `expandOccurrences` no generaría ninguna fecha y la grilla no lo
+ * pintaría. La cuenta es la de la expansión —`dayOfWeekOf` sobre cada fecha
+ * contra el `Set` de los días—, así que "válido" es "tiene al menos una
+ * ocurrencia".
+ *
+ * Siete días seguidos pasan por los siete días de la semana, así que un rango
+ * así siempre cumple; uno más corto se recorre, con seis fechas como mucho.
+ * Quien llama le pasa fechas que ya cumplen `esFecha` (2000–2099) y en orden,
+ * así que comparar el texto es comparar fechas.
+ */
+const caeAlgunDiaMarcado = (dias: readonly number[], desde: string, hasta: string): boolean => {
+  if (addDays(desde, 6) <= hasta) return true;
+  const marcados = new Set(dias);
+  for (let dia = desde; dia <= hasta; dia = addDays(dia, 1)) {
+    if (marcados.has(dayOfWeekOf(dia))) return true;
+  }
+  return false;
+};
 
 export const timeBlockBodySchema = z
   .object({
     title: z.string().trim().min(1).max(60),
     colorHex: z.string().regex(/^#[0-9A-Fa-f]{6}$/, "Color inválido."),
-    daysOfWeek: z.array(z.number().int().min(1).max(7)).min(1).max(7),
+    daysOfWeek: diasDeLaSemana,
     startTime: z.string().regex(HORA, "Hora de inicio inválida (HH:MM)."),
     endTime: z.string().regex(HORA, "Hora de fin inválida (HH:MM)."),
     startDate: fecha,
     endDate: fecha,
   })
-  // Las tres reglas de RS-BE-31 que cruzan dos campos del mismo body. Van acá
+  // Las reglas de RS-BE-31 que cruzan campos del mismo body. Van acá
   // y no en el service porque la spec las pone bajo "Validación con Zod" sin
   // código propio: su error es del formulario —400 INVALID_REQUEST_BODY, el que
   // ya lanza `validateJson`—. TIME_BLOCK_OUT_OF_GRID es solo de la grilla.
@@ -87,7 +110,28 @@ export const timeBlockBodySchema = z
   .refine((body) => new Set(body.daysOfWeek).size === body.daysOfWeek.length, {
     message: "Los días de la semana no se pueden repetir.",
     path: ["daysOfWeek"],
-  });
+  })
+  // La cuarta regla que cruza campos: el rango tiene que traer alguno de los
+  // días marcados. Solo se mira cuando lo que lee ya pasó su forma y las fechas
+  // están en orden, y eso lo comprueba ella misma: en Zod 3 un campo que falla
+  // un chequeo deja el objeto "dirty", no "aborted", y los `refine` del objeto
+  // corren igual. Sin la guarda, una fecha que no existe o unos días fuera de
+  // 1–7 sumarían un error falso, una fecha sin dígitos haría lanzar a `addDays`
+  // (RangeError, un 500) y con las fechas al revés saldrían dos errores en vez
+  // de uno. El error va en `endDate`, junto al de las fechas al revés: lo que
+  // corrige al alumno es estirar "Hasta".
+  .refine(
+    (body) =>
+      !esFecha(body.startDate) ||
+      !esFecha(body.endDate) ||
+      !diasDeLaSemana.safeParse(body.daysOfWeek).success ||
+      body.endDate < body.startDate ||
+      caeAlgunDiaMarcado(body.daysOfWeek, body.startDate, body.endDate),
+    {
+      message: "Entre esas fechas no cae ninguno de los días que marcaste.",
+      path: ["endDate"],
+    },
+  );
 
 /** El cuerpo ya validado. Es estructuralmente `TimeBlockInput`, así que el
  *  controller (Tarea 5) se lo pasa al service tal cual; `tsc` lo comprueba ahí,

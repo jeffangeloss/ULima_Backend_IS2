@@ -17,6 +17,7 @@ targets:
 > `AGENTS.md`. Diseñada con él sección por sección. Aprobó los planes el 2026-09-22 y confirmó esta spec de forma explícita el 2026-09-23.
 > Revisada el 2026-09-21 con las decisiones de la planificación: `PATCH` en el CORS, tope de
 > 20 bloques guardados, semanas enteras en `weeks` y la fecha exacta del horario (RS-BE-36).
+> Ajustada el 2026-09-23 con el arreglo del bloque sin días reales y la lista Mis bloques, aprobado por el dueño ese día.
 > Contraparte de frontend: `ULima_Frontend_IS2/specs/features/time-blocks/time-blocks.spec.md`.
 
 ## El problema
@@ -63,8 +64,8 @@ parámetro de alumno ni ruta para docentes o delegados. Un bloque de otro alumno
 igual que uno que no existe (`TIME_BLOCK_NOT_FOUND`, 404), para no confirmar que ese id existe.
 
 Validación con Zod. Las reglas de una sola fila se repiten además como CHECK en la base
-(ver "Modelo de datos"); el rango de años y el tope de bloques los hace cumplir solo el
-servidor.
+(ver "Modelo de datos"); el rango de años, que el rango de fechas traiga alguno de los días
+marcados y el tope de bloques los hace cumplir solo el servidor.
 
 - `title`: 1 a 60 caracteres, sin espacios al borde.
 - `colorHex`: `^#[0-9A-Fa-f]{6}$`.
@@ -81,9 +82,23 @@ servidor.
   de años no es de negocio: Postgres acepta fechas mucho más lejanas, pero pasado el
   9999-12-31 una fecha ya no cabe en `YYYY-MM-DD` y la expansión de RS-BE-33 se rompería.
   Un horario de prácticas no necesita otro siglo.
+- El rango [`startDate`, `endDate`] tiene que contener **al menos una fecha cuyo día de la
+  semana esté en `daysOfWeek`**. Si no la contiene, el servidor responde
+  `400 INVALID_REQUEST_BODY` con el mensaje "Entre esas fechas no cae ninguno de los días
+  que marcaste." en `details.fieldErrors.endDate`, el mismo texto que muestra la app. La
+  regla existe porque un bloque así se guarda pero nunca ocurre. Con martes y sábado del
+  miércoles 2026-09-23 al mismo miércoles, la expansión de RS-BE-33 no genera ninguna fecha,
+  la grilla no pinta el bloque y, sin una lista aparte, la app no tiene desde dónde editarlo
+  ni borrarlo. Vale para `POST` y para `PATCH`, que comparten el esquema. La cuenta es la
+  misma que usa la expansión para decidir si una fecha cae en el patrón (`dayOfWeekOf` de
+  `time-blocks.logic.ts`), así que un bloque válido tiene al menos una ocurrencia, y un rango
+  de siete días o más siempre cumple. La regla solo se evalúa cuando las fechas y los días
+  ya cumplen su propia validación y `endDate >= startDate`, de modo que una fecha inválida,
+  unos días fuera de 1 a 7 o unas fechas al revés producen su propio error y no suman este.
 - Un campo con mal formato, o una regla que cruza dos campos (horas invertidas, fechas al
-  revés, días repetidos), es un `400 INVALID_REQUEST_BODY` con el campo en
-  `details.fieldErrors`, sin código propio: `TIME_BLOCK_OUT_OF_GRID` es solo de la grilla.
+  revés, días repetidos, un rango sin ninguno de los días marcados), es un
+  `400 INVALID_REQUEST_BODY` con el campo en `details.fieldErrors`, sin código propio:
+  `TIME_BLOCK_OUT_OF_GRID` es solo de la grilla.
 - Máximo **20 bloques guardados** por alumno, **vencidos incluidos**
   (`TIME_BLOCK_LIMIT_REACHED`). No es una regla de negocio: es un tope para que una ventana
   de ocurrencias no crezca sin control. Cuenta todos los guardados y no solo los vigentes
@@ -105,6 +120,7 @@ servidor.
 `DELETE` borra el bloque y sus excepciones en cascada.
 
 `[@test] ../../../test/HU35_jeff/time-blocks.routes.test.ts`
+`[@test] ../../../test/HU35_jeff/time-blocks.service.test.ts`
 `[@test] ../../../test/HU35_jeff/time-blocks.repository.test.ts`
 `[@test] ../../../test/HU35_jeff/time-blocks.postgres.test.ts`
 

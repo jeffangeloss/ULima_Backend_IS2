@@ -12,6 +12,7 @@ import {
   windowQuerySchema,
 } from "../../src/modules/time-blocks/time-blocks.schemas.js";
 import type { TimeBlockBody } from "../../src/modules/time-blocks/time-blocks.schemas.js";
+import { addDays, expandOccurrences } from "../../src/modules/time-blocks/time-blocks.logic.js";
 import type { TimeBlocksRepository } from "../../src/modules/time-blocks/time-blocks.repository.js";
 import type {
   TimeBlockException,
@@ -277,6 +278,119 @@ describe("timeBlockBodySchema (RS-BE-31)", () => {
         "La fecha de fin no puede ser anterior a la de inicio.",
       ]);
     }
+  });
+
+  test("un rango sin ninguno de los dias marcados se rechaza, con el error en endDate", () => {
+    // El bloque que se guardaba y nunca ocurria: martes y sabado, del miercoles
+    // 2026-09-23 al mismo miercoles. Ninguna ocurrencia, nada que pintar.
+    const r = timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [2, 6], startDate: "2026-09-23", endDate: "2026-09-23",
+    });
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.flatten().fieldErrors).toEqual({
+        endDate: ["Entre esas fechas no cae ninguno de los días que marcaste."],
+      });
+      expect(r.error.flatten().formErrors).toEqual([]);
+    }
+  });
+
+  test("un rango corto pasa si contiene uno de los dias marcados", () => {
+    expect(timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [3], startDate: "2026-09-23", endDate: "2026-09-23",
+    }).success).toBe(true);
+    // Del sabado 26 al lunes 28 el domingo del medio cuenta; el miercoles no esta.
+    expect(timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [7], startDate: "2026-09-26", endDate: "2026-09-28",
+    }).success).toBe(true);
+    expect(timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [3], startDate: "2026-09-26", endDate: "2026-09-28",
+    }).success).toBe(false);
+  });
+
+  test("siete dias seguidos contienen cualquier dia de la semana; seis pueden no hacerlo", () => {
+    for (let dia = 1; dia <= 7; dia++) {
+      expect(timeBlockBodySchema.safeParse({
+        ...BODY_VALIDO, daysOfWeek: [dia], startDate: "2026-09-23", endDate: "2026-09-29",
+      }).success).toBe(true);
+    }
+    // Del miercoles 23 al lunes 28 falta el martes.
+    expect(timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [2], startDate: "2026-09-23", endDate: "2026-09-28",
+    }).success).toBe(false);
+  });
+
+  test("con una fecha invalida o las fechas al reves no suma el error del rango sin dias", () => {
+    // "2026-09-31" no existe; `addDays` lo leeria como el jueves 1 de octubre,
+    // y del jueves 1 al viernes 2 no hay martes: sin la guarda saldria un
+    // segundo error, falso, en endDate.
+    const invalida = timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [2], startDate: "2026-09-31", endDate: "2026-10-02",
+    });
+    expect(invalida.success).toBe(false);
+    if (!invalida.success) {
+      expect(invalida.error.flatten().fieldErrors).toEqual({ startDate: ["Fecha inválida (YYYY-MM-DD)."] });
+    }
+    // Del jueves 24 al miercoles 23: el recorrido no tiene ninguna fecha, pero
+    // el error es el de las fechas al reves y solo ese.
+    const alReves = timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [2, 6], startDate: "2026-09-24", endDate: "2026-09-23",
+    });
+    expect(alReves.success).toBe(false);
+    if (!alReves.success) {
+      expect(alReves.error.flatten().fieldErrors).toEqual({
+        endDate: ["La fecha de fin no puede ser anterior a la de inicio."],
+      });
+    }
+  });
+
+  test("si las fechas o los dias no pasaron su forma, la regla del rango se calla y no lanza", () => {
+    // En Zod 3 el `refine` del objeto corre aunque un campo haya fallado su
+    // chequeo (el objeto queda "dirty", no "aborted"). La regla tiene que mirar
+    // sola que lo que lee esta bien: si no, suma un error falso o, con una
+    // fecha sin digitos, `addDays` lanza RangeError dentro del safeParse.
+    const casos: Array<[Record<string, unknown>, string[]]> = [
+      [{ daysOfWeek: [2, 6], startDate: "abc", endDate: "abd" }, ["startDate", "endDate"]],
+      // Solo el fin no existe: del martes 29 al "31" el recorrido pasa por el
+      // martes y el miercoles, sin lunes.
+      [{ daysOfWeek: [1], startDate: "2026-09-29", endDate: "2026-09-31" }, ["endDate"]],
+      [{ daysOfWeek: [8], startDate: "2026-09-23", endDate: "2026-09-23" }, ["daysOfWeek"]],
+      [{ daysOfWeek: [], startDate: "2026-09-23", endDate: "2026-09-23" }, ["daysOfWeek"]],
+    ];
+    for (const [cambios, campos] of casos) {
+      const r = timeBlockBodySchema.safeParse({ ...BODY_VALIDO, ...cambios });
+      expect(r.success).toBe(false);
+      if (!r.success) {
+        const errores = r.error.flatten().fieldErrors;
+        expect(Object.keys(errores).sort()).toEqual([...campos].sort());
+        expect(errores.endDate ?? []).not.toContain(
+          "Entre esas fechas no cae ninguno de los días que marcaste.",
+        );
+      }
+    }
+  });
+
+  test("valido es lo mismo que tener al menos una ocurrencia en expandOccurrences", () => {
+    // Cada inicio de una semana (del lunes 2026-09-21 al domingo 27), cada
+    // largo de 1 a 8 dias y cada combinacion de dias: el esquema acepta
+    // exactamente los rangos en que la expansion genera algo.
+    const desajustes: string[] = [];
+    for (let inicio = 0; inicio < 7; inicio++) {
+      const desde = addDays("2026-09-21", inicio);
+      for (let largo = 0; largo < 8; largo++) {
+        const hasta = addDays(desde, largo);
+        for (let mascara = 1; mascara < 128; mascara++) {
+          const dias = [1, 2, 3, 4, 5, 6, 7].filter((d) => (mascara & (1 << (d - 1))) !== 0);
+          const regla = { ...PRACTICAS, daysOfWeek: dias, startDate: desde, endDate: hasta };
+          const ocurre = expandOccurrences([regla], [], desde, hasta).length > 0;
+          const valido = timeBlockBodySchema.safeParse({
+            ...BODY_VALIDO, daysOfWeek: dias, startDate: desde, endDate: hasta,
+          }).success;
+          if (valido !== ocurre) desajustes.push(`${desde}..${hasta} [${dias}]`);
+        }
+      }
+    }
+    expect(desajustes).toEqual([]);
   });
 
   test("el esquema NO valida la grilla: eso es del service", () => {

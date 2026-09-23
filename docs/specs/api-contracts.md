@@ -714,7 +714,7 @@ Reglas comunes a las siete rutas:
 - **Grilla**: toda hora de inicio y de fin cae entre **07:00 y 22:00**; si no, `400 TIME_BLOCK_OUT_OF_GRID`. Es el rango que la grilla del horario de la app puede pintar. La hora de fin tiene que ser estrictamente mayor que la de inicio; si no, `400 INVALID_REQUEST_BODY` con el error en `endTime` (no es un error de grilla).
 - **Chatbot**: no lee estas tablas ni importa el módulo (RS-BE-35).
 - Todos los valores de los ejemplos son inventados.
-- **Mensajes** (`error.message` de cada código): `TIME_BLOCK_LIMIT_REACHED` "Llegaste al máximo de 20 bloques guardados, contando los que ya terminaron. Borra uno viejo para crear otro.", `TIME_BLOCK_NOT_FOUND` "No existe ese bloque.", `TIME_BLOCK_OUT_OF_GRID` "El bloque tiene que empezar y terminar entre las 07:00 y las 22:00.", `TIME_BLOCK_OCCURRENCE_NOT_IN_PATTERN` "Ese día no forma parte del bloque." y `TIME_BLOCK_WINDOW_TOO_WIDE` "La ventana no puede pasar de 120 días.". Los 400 de validación llevan el `message` de siempre y el texto de cada campo en `details.fieldErrors`.
+- **Mensajes** (`error.message` de cada código): `TIME_BLOCK_LIMIT_REACHED` "Llegaste al máximo de 20 bloques guardados, contando los que ya terminaron. Borra uno viejo para crear otro.", `TIME_BLOCK_NOT_FOUND` "No existe ese bloque.", `TIME_BLOCK_OUT_OF_GRID` "El bloque tiene que empezar y terminar entre las 07:00 y las 22:00.", `TIME_BLOCK_OCCURRENCE_NOT_IN_PATTERN` "Ese día no forma parte del bloque." y `TIME_BLOCK_WINDOW_TOO_WIDE` "La ventana no puede pasar de 120 días.". Los 400 de validación llevan el `message` de siempre y el texto de cada campo en `details.fieldErrors`; entre ellos, el de un rango de fechas sin ninguno de los días marcados es "Entre esas fechas no cae ninguno de los días que marcaste." (en `endDate`, el mismo texto que muestra la app).
 - **Errors comunes**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`; `400` `INVALID_JSON_BODY` en `POST`, `PATCH` y `PUT` (un cuerpo que no es JSON); `400` `INVALID_ROUTE_PARAMS` en las rutas con `:id` (un `:id` que no es un entero de 1 a 2147483647, o un `:date` que no es una fecha válida).
 
 ### GET /time-blocks/me
@@ -769,6 +769,7 @@ Crea un bloque.
   - `daysOfWeek`: de 1 a 7 valores **distintos**, cada uno de 1 a 7.
   - `startTime` y `endTime`: `HH:MM`, dentro de 07:00–22:00 y `endTime` estrictamente mayor.
   - `startDate` y `endDate`: fechas que existen, entre 2000-01-01 y 2099-12-31, con `endDate >= startDate`.
+  - Entre `startDate` y `endDate`, bordes incluidos, tiene que caer **al menos una fecha cuyo día de la semana esté en `daysOfWeek`**. Si no cae ninguna, la respuesta es `400 INVALID_REQUEST_BODY` con "Entre esas fechas no cae ninguno de los días que marcaste." en `details.fieldErrors.endDate`. Un bloque así se guardaría pero nunca ocurriría, porque `GET /time-blocks/me/occurrences` no lo devolvería en ninguna ventana y la app no lo pintaría. Un rango de siete días o más siempre cumple. Una fecha inválida, unos días fuera de 1 a 7 o un `endDate` anterior a `startDate` producen su propio error y no suman este.
 - **Response** `201 Created`:
   ```json
   {
@@ -785,18 +786,18 @@ Crea un bloque.
     }
   }
   ```
-- **Errors**: `400` `INVALID_REQUEST_BODY` (un campo con formato inválido, días repetidos, `endTime` no mayor que `startTime` o `endDate` anterior a `startDate`; `details.fieldErrors` nombra el campo), `400` `TIME_BLOCK_OUT_OF_GRID`, `400` `TIME_BLOCK_LIMIT_REACHED` (el alumno ya tiene **20** bloques guardados, **vencidos incluidos**: es un tope para que la expansión de una ventana no crezca sin control, no una regla de negocio, y un bloque vencido sigue expandiéndose en una ventana pasada; para crear otro hay que borrar uno).
+- **Errors**: `400` `INVALID_REQUEST_BODY` (un campo con formato inválido, días repetidos, `endTime` no mayor que `startTime`, `endDate` anterior a `startDate` o un rango sin ninguno de los días marcados; `details.fieldErrors` nombra el campo), `400` `TIME_BLOCK_OUT_OF_GRID`, `400` `TIME_BLOCK_LIMIT_REACHED` (el alumno ya tiene **20** bloques guardados, **vencidos incluidos**: es un tope para que la expansión de una ventana no crezca sin control, no una regla de negocio, y un bloque vencido sigue expandiéndose en una ventana pasada; para crear otro hay que borrar uno).
 
 ### PATCH /time-blocks/me/:id
 
 Reemplaza la regla entera del bloque `:id`: es "cambiar todas las semanas".
 
 - **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
-- **Body**: los siete campos de `POST /time-blocks/me`, todos obligatorios y con las mismas reglas.
+- **Body**: los siete campos de `POST /time-blocks/me`, todos obligatorios y con las mismas reglas, incluida la de que entre `startDate` y `endDate` caiga al menos uno de los días marcados.
 - **Response** `200 OK`: `{ "block": … }`, con la forma de `POST` y las excepciones del bloque.
 - **Conserva las excepciones**: si el alumno mueve el patrón de 14:00 a 15:00, el día que ya había cancelado sigue cancelado. Una excepción que por el cambio queda fuera del rango o de los días del bloque sigue guardada y la expansión la ignora; se limpia con `DELETE /time-blocks/me/:id/occurrences/:date`.
 - **Desde un navegador**: es la primera ruta `PATCH` del backend, y el CORS de `src/server.ts` incluye `PATCH` en `allowMethods` para que el preflight la deje pasar. La app nativa (iOS y Android) no hace preflight.
-- **Errors**: `400` `INVALID_REQUEST_BODY`, `400` `TIME_BLOCK_OUT_OF_GRID`, `404` `TIME_BLOCK_NOT_FOUND`.
+- **Errors**: `400` `INVALID_REQUEST_BODY` (los mismos casos que en `POST`, también un rango sin ninguno de los días marcados), `400` `TIME_BLOCK_OUT_OF_GRID`, `404` `TIME_BLOCK_NOT_FOUND`.
 
 ### DELETE /time-blocks/me/:id
 
