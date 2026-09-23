@@ -119,7 +119,9 @@ export const timeBlockBodySchema = z
   // 1–7 sumarían un error falso, una fecha sin dígitos haría lanzar a `addDays`
   // (RangeError, un 500) y con las fechas al revés saldrían dos errores en vez
   // de uno. El error va en `endDate`, junto al de las fechas al revés: lo que
-  // corrige al alumno es estirar "Hasta".
+  // corrige al alumno es estirar "Hasta". Los días repetidos no la frenan, a
+  // propósito (RS-BE-31): la cuenta usa un `Set`, [2, 2] cuenta como [2], y los
+  // dos errores son ciertos.
   .refine(
     (body) =>
       !esFecha(body.startDate) ||

@@ -769,7 +769,7 @@ Crea un bloque.
   - `daysOfWeek`: de 1 a 7 valores **distintos**, cada uno de 1 a 7.
   - `startTime` y `endTime`: `HH:MM`, dentro de 07:00–22:00 y `endTime` estrictamente mayor.
   - `startDate` y `endDate`: fechas que existen, entre 2000-01-01 y 2099-12-31, con `endDate >= startDate`.
-  - Entre `startDate` y `endDate`, bordes incluidos, tiene que caer **al menos una fecha cuyo día de la semana esté en `daysOfWeek`**. Si no cae ninguna, la respuesta es `400 INVALID_REQUEST_BODY` con "Entre esas fechas no cae ninguno de los días que marcaste." en `details.fieldErrors.endDate`. Un bloque así se guardaría pero nunca ocurriría, porque `GET /time-blocks/me/occurrences` no lo devolvería en ninguna ventana y la app no lo pintaría. Un rango de siete días o más siempre cumple. Una fecha inválida, unos días fuera de 1 a 7 o un `endDate` anterior a `startDate` producen su propio error y no suman este.
+  - Entre `startDate` y `endDate`, bordes incluidos, tiene que caer **al menos una fecha cuyo día de la semana esté en `daysOfWeek`**. Si no cae ninguna, la respuesta es `400 INVALID_REQUEST_BODY` con "Entre esas fechas no cae ninguno de los días que marcaste." en `details.fieldErrors.endDate`. Un bloque así se guardaría pero nunca ocurriría, porque `GET /time-blocks/me/occurrences` no lo devolvería en ninguna ventana y la app no lo pintaría. Un rango de siete días o más siempre cumple. Una fecha inválida, unos días fuera de 1 a 7 o un `endDate` anterior a `startDate` producen su propio error y no suman este. Unos días repetidos sí lo suman, porque la cuenta no depende de ellos, así que `[2, 2]` en un rango sin ningún martes devuelve los dos errores, uno en `daysOfWeek` y otro en `endDate`.
 - **Response** `201 Created`:
   ```json
   {

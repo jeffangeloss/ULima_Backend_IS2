@@ -92,9 +92,13 @@ marcados y el tope de bloques los hace cumplir solo el servidor.
   ni borrarlo. Vale para `POST` y para `PATCH`, que comparten el esquema. La cuenta es la
   misma que usa la expansión para decidir si una fecha cae en el patrón (`dayOfWeekOf` de
   `time-blocks.logic.ts`), así que un bloque válido tiene al menos una ocurrencia, y un rango
-  de siete días o más siempre cumple. La regla solo se evalúa cuando las fechas y los días
-  ya cumplen su propia validación y `endDate >= startDate`, de modo que una fecha inválida,
-  unos días fuera de 1 a 7 o unas fechas al revés producen su propio error y no suman este.
+  de siete días o más siempre cumple. La regla solo se evalúa cuando las dos fechas son
+  válidas, `daysOfWeek` trae de 1 a 7 valores enteros entre 1 y 7 y `endDate >= startDate`,
+  de modo que una fecha inválida, unos días que no cumplen esta forma o unas fechas al revés
+  producen su propio error y no suman este. Unos días repetidos, en cambio, no la frenan,
+  porque la cuenta mira el conjunto de días y `[2, 2]` cuenta igual que `[2]`. Así, un
+  cuerpo con `[2, 2]` del miércoles 2026-09-23 al mismo miércoles recibe dos errores ciertos,
+  el de los días repetidos en `daysOfWeek` y este en `endDate`.
 - Un campo con mal formato, o una regla que cruza dos campos (horas invertidas, fechas al
   revés, días repetidos, un rango sin ninguno de los días marcados), es un
   `400 INVALID_REQUEST_BODY` con el campo en `details.fieldErrors`, sin código propio:

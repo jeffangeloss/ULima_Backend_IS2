@@ -370,6 +370,31 @@ describe("timeBlockBodySchema (RS-BE-31)", () => {
     }
   });
 
+  test("unos dias repetidos no callan la regla del rango, porque la cuenta no depende de ellos", () => {
+    // [2, 2] cuenta igual que [2]: del miercoles 23 al mismo miercoles no cae
+    // ningun martes. Los dos errores son ciertos y cada uno va en su campo.
+    const sinMartes = timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [2, 2], startDate: "2026-09-23", endDate: "2026-09-23",
+    });
+    expect(sinMartes.success).toBe(false);
+    if (!sinMartes.success) {
+      expect(sinMartes.error.flatten().fieldErrors).toEqual({
+        daysOfWeek: ["Los días de la semana no se pueden repetir."],
+        endDate: ["Entre esas fechas no cae ninguno de los días que marcaste."],
+      });
+    }
+    // Con el martes 22 dentro del rango solo queda el de los dias repetidos.
+    const conMartes = timeBlockBodySchema.safeParse({
+      ...BODY_VALIDO, daysOfWeek: [2, 2], startDate: "2026-09-22", endDate: "2026-09-23",
+    });
+    expect(conMartes.success).toBe(false);
+    if (!conMartes.success) {
+      expect(conMartes.error.flatten().fieldErrors).toEqual({
+        daysOfWeek: ["Los días de la semana no se pueden repetir."],
+      });
+    }
+  });
+
   test("valido es lo mismo que tener al menos una ocurrencia en expandOccurrences", () => {
     // Cada inicio de una semana (del lunes 2026-09-21 al domingo 27), cada
     // largo de 1 a 8 dias y cada combinacion de dias: el esquema acepta
