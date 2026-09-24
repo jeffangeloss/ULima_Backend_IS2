@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildParticipant,
+  canDeleteAnyMessage,
   canIssueToken,
   isModeratorRole,
   roleLabel,
@@ -29,6 +30,7 @@ import type {
  *   - studentRoleFromPosition(): null -> "student"; delegate/subdelegate se preservan.
  *   - buildParticipant()      : arma uid/userId/label/weight/moderator desde la fila.
  *   - canIssueToken()         : autoriza SOLO si el participante existe Y el userId coincide (anti-suplantación).
+ *   - canDeleteAnyMessage()   : solo el profesor titular borra mensajes ajenos (R-CHAT-4).
  */
 
 // Los 5 roles válidos del chat, para recorrerlos en los tests que aplican a todos.
@@ -83,7 +85,19 @@ describe("isModeratorRole", () => {
     expect(isModeratorRole("jp")).toBe(true);          // modera
     expect(isModeratorRole("delegate")).toBe(true);    // modera
     expect(isModeratorRole("subdelegate")).toBe(true); // modera
-    expect(isModeratorRole("student")).toBe(false);    // el alumno raso NO modera (solo borra lo suyo)
+    expect(isModeratorRole("student")).toBe(false);    // el alumno raso NO modera
+  });
+});
+
+describe("canDeleteAnyMessage (R-CHAT-4)", () => {
+  test("solo el profesor titular borra mensajes ajenos", () => {
+    expect(canDeleteAnyMessage("teacher")).toBe(true);
+  });
+
+  test("JP, delegado, subdelegado y alumno solo borran los suyos, aunque moderen", () => {
+    for (const role of ["jp", "delegate", "subdelegate", "student"] as const) {
+      expect(canDeleteAnyMessage(role)).toBe(false);
+    }
   });
 });
 
@@ -100,15 +114,15 @@ describe("studentRoleFromPosition", () => {
 describe("buildParticipant", () => {
   test("arma uid/userId desde user_id y deriva label/weight/moderator del rol", () => {
     const p = buildParticipant(
-      { user_id: 293, full_name: "Lo Li, Aron" }, // fila (JP de la demo)
-      1,                                          // sectionId
-      "jp",                                       // rol
+      { user_id: 602, full_name: "JP De Prueba" }, // fila de un JP (inventada)
+      1,                                           // sectionId
+      "jp",                                        // rol
     );
     expect(p).toEqual({
-      uid: "293",                    // uid = user_id como string (para Firebase)
-      userId: 293,                   // userId numérico
+      uid: "602",                    // uid = user_id como string (para Firebase)
+      userId: 602,                   // userId numérico
       sectionId: 1,
-      displayName: "Lo Li, Aron",    // nombre mostrado
+      displayName: "JP De Prueba",   // nombre mostrado
       role: "jp",
       roleLabel: "Jefe de Práctica", // derivado de roleLabel(rol)
       isModerator: true,             // derivado de isModeratorRole(rol)
@@ -118,13 +132,13 @@ describe("buildParticipant", () => {
 
   test("un alumno raso no es moderador y pesa 10", () => {
     const p = buildParticipant(
-      { user_id: 6, full_name: "Sanchez, Jefferson" },
+      { user_id: 502, full_name: "Alumno De Prueba" }, // fila de un alumno (inventada)
       1,
       "student",
     );
     expect(p.isModerator).toBe(false); // el alumno no modera
     expect(p.weight).toBe(10);         // peso mínimo
-    expect(p.uid).toBe("6");           // uid es el user_id en string
+    expect(p.uid).toBe("502");         // uid es el user_id en string
   });
 });
 

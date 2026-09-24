@@ -4,6 +4,86 @@ import { getDatabase } from "firebase-admin/database";
 import { config } from "../config/app-config.js";
 import type { ChatParticipant } from "../modules/chat/chat.types.js";
 
+/** Datos de quien borra que se guardan en la lápida del mensaje (R-CHAT-4). */
+export type ChatTombstone = { deletedBy: string; deletedByUid: string; deletedByRole: string };
+
+export type ChatSoftDeleteOptions = {
+  /**
+   * Si viene, solo se borra cuando el `senderId` guardado en el mensaje es
+   * exactamente este uid (el solicitante no es el profesor titular).
+   */
+  requireSenderUid?: string;
+};
+
+export type ChatSoftDeleteResult = {
+  /** El mensaje existe en RTDB. */
+  existed: boolean;
+  /** Se exigió remitente y el mensaje es de otro: no se escribió nada. */
+  forbidden: boolean;
+  /** El mensaje ya tenía `deleted === true`: no se reescribió la lápida. */
+  alreadyDeleted: boolean;
+  /** `deletedBy` que ya guardaba el mensaje, solo cuando `alreadyDeleted`. */
+  deletedBy?: string;
+};
+
+/** Lo mínimo de `Reference` de firebase-admin que usa el borrado suave. */
+export type ChatMessageRef = {
+  get(): Promise<{ exists(): boolean; val(): unknown }>;
+  update(values: Record<string, unknown>): Promise<unknown>;
+};
+
+/**
+ * R-CHAT-4: núcleo del borrado suave sobre la referencia de UN mensaje. Lee el
+ * mensaje antes de escribir y, en este orden: si no existe (o el valor no es
+ * un objeto de mensaje), no escribe; si se exige remitente y el `senderId` no
+ * es ese uid, no escribe (forbidden); si ya tiene `deleted === true`, no
+ * reescribe la lápida (idempotente). Solo en otro caso escribe la lápida con
+ * `update`, que conserva el resto del mensaje.
+ */
+export const softDeleteMessageRef = async (
+  ref: ChatMessageRef,
+  patch: ChatTombstone,
+  options: ChatSoftDeleteOptions = {},
+  now: () => number = Date.now,
+): Promise<ChatSoftDeleteResult> => {
+  const snapshot = await ref.get();
+  const value: unknown = snapshot.exists() ? snapshot.val() : null;
+  // Un mensaje es siempre un objeto. Un valor suelto sale de un `messageId` con
+  // `/` (Hono decodifica %2F) que apunta a un campo: no es un mensaje.
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return { existed: false, forbidden: false, alreadyDeleted: false };
+  }
+
+  const message = value as {
+    senderId?: unknown;
+    deleted?: unknown;
+    deletedBy?: unknown;
+  };
+  const alreadyDeleted = message.deleted === true;
+
+  if (options.requireSenderUid !== undefined && message.senderId !== options.requireSenderUid) {
+    return { existed: true, forbidden: true, alreadyDeleted };
+  }
+
+  if (alreadyDeleted) {
+    return {
+      existed: true,
+      forbidden: false,
+      alreadyDeleted: true,
+      ...(typeof message.deletedBy === "string" ? { deletedBy: message.deletedBy } : {}),
+    };
+  }
+
+  await ref.update({
+    deleted: true,
+    deletedBy: patch.deletedBy,
+    deletedByUid: patch.deletedByUid,
+    deletedByRole: patch.deletedByRole,
+    deletedAt: now(),
+  });
+  return { existed: true, forbidden: false, alreadyDeleted: false };
+};
+
 class FirebaseService {
   private static instance: FirebaseService;
   private initialized = false;
@@ -131,14 +211,16 @@ class FirebaseService {
   }
 
   /**
-   * HU23: soft delete a chat message by marking it instead of removing it.
-   * The backend already validates authorization before calling this method.
+   * HU23 / R-CHAT-4: borrado suave de un mensaje (lápida en vez de borrar el
+   * nodo). El controller ya resolvió quién pide; con `requireSenderUid` esta
+   * capa comprueba además la autoría contra el `senderId` guardado.
    */
   public async softDeleteChatMessage(
     sectionId: number,
     messageId: string,
-    patch: { deletedBy: string; deletedByUid: string; deletedByRole: string },
-  ): Promise<{ existed: boolean }> {
+    patch: ChatTombstone,
+    options: ChatSoftDeleteOptions = {},
+  ): Promise<ChatSoftDeleteResult> {
     if (!this.initialized) {
       throw new Error("Firebase Admin SDK is not initialized.");
     }
@@ -148,17 +230,7 @@ class FirebaseService {
 
     try {
       const ref = getDatabase().ref(`sections/${sectionId}/messages/${messageId}`);
-      const snapshot = await ref.get();
-      if (!snapshot.exists()) return { existed: false };
-
-      await ref.update({
-        deleted: true,
-        deletedBy: patch.deletedBy,
-        deletedByUid: patch.deletedByUid,
-        deletedByRole: patch.deletedByRole,
-        deletedAt: Date.now(),
-      });
-      return { existed: true };
+      return await softDeleteMessageRef(ref, patch, options);
     } catch (error) {
       console.error("Error soft-deleting chat message:", error);
       throw new Error("Failed to delete chat message");
