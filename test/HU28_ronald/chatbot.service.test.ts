@@ -63,7 +63,7 @@ const fakeRepo = {
   touchSession: async () => {},
   getMessages: async () => [],
   getStudentInfo: async () => ({
-    fullName: "HURTADO LAGO RONALD ALFREDO",
+    fullName: "LUCIA INVENTADA PAREDES",
     careerName: "Ing de Sistemas",
     currentLevel: 8,
   }),
@@ -94,6 +94,28 @@ const fakeRepo = {
     fuentesConsultadas.push("classmates");
     return [{ fullName: COMPANERA_NO_REPRESENTANTE, role: "Alumno" }];
   },
+  // Delegados por sección (BR-CB-16), ya resueltos como los devuelve el
+  // repositorio. Es el caso del bug reportado: la alumna lleva dos cursos con
+  // delegados distintos. PLANEAMIENTO ESTRATEGICO tiene delegado y subdelegado
+  // reales; SEGURIDAD DE SISTEMAS no tiene representante activo y su delegada
+  // sale del claim del portal. Nombres inventados.
+  getSectionRepresentatives: async () => {
+    fuentesConsultadas.push("delegates");
+    return [
+      {
+        courseName: "PLANEAMIENTO ESTRATEGICO",
+        sectionCode: "802",
+        delegate: { fullName: "BRUNO INVENTADO SOTO", isSelf: false },
+        subdelegate: { fullName: "CARLA INVENTADA DIAZ", isSelf: false },
+      },
+      {
+        courseName: "SEGURIDAD DE SISTEMAS",
+        sectionCode: "801",
+        delegate: { fullName: "ANA FICTICIA ROJAS", isSelf: false },
+        subdelegate: null,
+      },
+    ];
+  },
   getOfficialGrades: async () => {
     fuentesConsultadas.push("grades");
     return [];
@@ -113,46 +135,64 @@ const stubSearchChat = async (question: string, _sections: unknown) => {
     {
       sectionName: "INGENIERÍA DE SOFTWARE II (856)",
       messages: [
-        { senderName: "Profesor", body: "Si se puede usar apuntes", createdAt: 1 },
+        { body: "Si se puede usar apuntes", date: "2026-07-10 18:30" },
       ],
     },
   ];
 };
 
+/** El último turno `user` de lo que recibió Cohere: el mensaje de datos. */
+const ultimoMensajeDeDatos = (): string => {
+  const envio = JSON.parse(enviosACohere[enviosACohere.length - 1]) as {
+    messages: Array<{ role: string; content: string }>;
+  };
+  return envio.messages[envio.messages.length - 1].content;
+};
+
 const { ChatbotService } = await import("../../src/modules/chatbot/chatbot.service.js");
 
-describe("ChatbotService.ask - el chat se consulta SIEMPRE", () => {
+describe("ChatbotService.ask - el chat solo con chat o announcements (BR-CB-06 y BR-CB-23)", () => {
   beforeEach(() => {
     saveMessageCalls.length = 0;
     searchChatCalls.length = 0;
+    enviosACohere.length = 0;
   });
 
-  test("pregunta que NO tiene keyword de chat (solo 'examen') -> igual consulta el chat", async () => {
+  const preguntar = async (question: string) => {
     const service = new ChatbotService(fakeRepo, fakeScheduleService, stubSearchChat);
-    await service.ask("s1", 2, {
-      question: "se pueden usar apuntes? escritos a mano en el examen de SoftWare II?",
-    });
+    await service.ask("s1", 2, { question });
+  };
 
-    expect(searchChatCalls.length).toBe(1);
-    expect(searchChatCalls[0].question).toContain("apuntes");
+  test("pregunta de notas sin palabras de chat ni de avisos ('examen') -> NO consulta el chat", async () => {
+    await preguntar("se pueden usar apuntes? escritos a mano en el examen de SoftWare II?");
+    expect(searchChatCalls.length).toBe(0);
+    expect(ultimoMensajeDeDatos()).not.toContain("MENSAJES DEL CHAT DE LA SECCION");
   });
 
-  test("pregunta con keyword de chat explicito -> consulta el chat", async () => {
-    const service = new ChatbotService(fakeRepo, fakeScheduleService, stubSearchChat);
-    await service.ask("s1", 2, {
-      question: "dijeron algo del examen en el grupo?",
-    });
-
-    expect(searchChatCalls.length).toBe(1);
+  test("pregunta sobre horario -> NO consulta el chat", async () => {
+    await preguntar("que clases tengo el lunes?");
+    expect(searchChatCalls.length).toBe(0);
   });
 
-  test("pregunta sobre horario -> el chat tambien se consulta", async () => {
-    const service = new ChatbotService(fakeRepo, fakeScheduleService, stubSearchChat);
-    await service.ask("s1", 2, {
-      question: "que clases tengo el lunes?",
-    });
+  test("pregunta de delegados -> NO consulta el chat", async () => {
+    await preguntar("¿Quiénes son los delegados de Seguridad de Sistemas?");
+    expect(searchChatCalls.length).toBe(0);
+  });
 
+  test("pregunta con palabra de chat -> consulta el chat y lo manda sin remitente", async () => {
+    await preguntar("dijeron algo del examen en el grupo?");
     expect(searchChatCalls.length).toBe(1);
+    const mensaje = ultimoMensajeDeDatos();
+    expect(mensaje).toContain("MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):");
+    expect(mensaje).toContain("Si se puede usar apuntes");
+    expect(mensaje).toContain("2026-07-10 18:30");
+    expect(mensaje).not.toContain("senderName");
+  });
+
+  test("pregunta de avisos -> consulta el chat", async () => {
+    await preguntar("¿Hay algún comunicado de mis cursos?");
+    expect(searchChatCalls.length).toBe(1);
+    expect(ultimoMensajeDeDatos()).toContain("MENSAJES DEL CHAT DE LA SECCION");
   });
 });
 
@@ -174,8 +214,8 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
     expect(llamadasClassify).toBe(0);
   });
 
-  // `delegates` reemplaza a `classmates`, que ya no carga datos (BR-CB-04 y BR-CB-17).
-  // Hasta que BR-CB-16 conecte los delegados por sección, `delegates` no carga nada.
+  // `delegates` reemplaza a `classmates`, que ya no carga datos (BR-CB-04 y BR-CB-17),
+  // y carga los delegados por sección (BR-CB-16).
   const preguntasDeDelegados = [
     "¿Quiénes son los delegados de Seguridad de Sistemas?",
     "¿Quién es el delegado de Cálculo I?",
@@ -188,6 +228,11 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
     test(`«${pregunta}» no consulta la lista plana de compañeros (BR-CB-17)`, async () => {
       await preguntar(pregunta);
       expect(fuentesConsultadas).not.toContain("classmates");
+    });
+
+    test(`«${pregunta}» consulta los delegados por sección (BR-CB-16)`, async () => {
+      await preguntar(pregunta);
+      expect(fuentesConsultadas).toContain("delegates");
     });
 
     test(`«${pregunta}» no manda a Cohere el bloque de compañeros ni el nombre de una compañera (BR-CB-17)`, async () => {
@@ -217,6 +262,12 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
     expect(fuentesConsultadas).toEqual(["schedule"]);
   });
 
+  test("una pregunta que no activa delegates no consulta los delegados", async () => {
+    await preguntar("¿Qué nota saqué en el parcial?");
+    await preguntar("que clases tengo el lunes?");
+    expect(fuentesConsultadas).not.toContain("delegates");
+  });
+
   test("«¿Qué nota saqué en el parcial?» consulta solo las notas", async () => {
     await preguntar("¿Qué nota saqué en el parcial?");
     expect(fuentesConsultadas).toEqual(["grades"]);
@@ -225,5 +276,60 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
   test("sin palabras clave consulta horario, notas y malla", async () => {
     await preguntar("hola, ¿cómo estás?");
     expect([...fuentesConsultadas].sort()).toEqual(["curriculum", "grades", "schedule"]);
+  });
+});
+
+describe("ChatbotService.ask - el bug reportado: cada curso con sus delegados (BR-CB-16 y BR-CB-24)", () => {
+  beforeEach(() => {
+    fuentesConsultadas.length = 0;
+    enviosACohere.length = 0;
+  });
+
+  const preguntar = async (question: string) => {
+    const service = new ChatbotService(fakeRepo, fakeScheduleService, stubSearchChat);
+    await service.ask("s1", 2, { question });
+  };
+
+  const TITULO = "DELEGADOS DE TUS SECCIONES (solo delegado y subdelegado, por curso y seccion):";
+  const LINEA_PLANEAMIENTO =
+    "- PLANEAMIENTO ESTRATEGICO (seccion 802): delegado BRUNO INVENTADO SOTO; subdelegado CARLA INVENTADA DIAZ.";
+  const LINEA_SEGURIDAD =
+    "- SEGURIDAD DE SISTEMAS (seccion 801): delegado ANA FICTICIA ROJAS; sin subdelegado registrado.";
+
+  test("«¿Quiénes son los delegados de Seguridad de Sistemas?» manda un bloque con una línea por sección, cada una con los suyos", async () => {
+    await preguntar("¿Quiénes son los delegados de Seguridad de Sistemas?");
+    const lineas = ultimoMensajeDeDatos().split("\n");
+
+    const inicio = lineas.indexOf(TITULO);
+    expect(inicio).toBeGreaterThanOrEqual(0);
+    expect(lineas.filter((l) => l === TITULO).length).toBe(1);
+    expect(lineas.slice(inicio + 1, inicio + 3)).toEqual([LINEA_PLANEAMIENTO, LINEA_SEGURIDAD]);
+  });
+
+  test("la línea de SEGURIDAD DE SISTEMAS no trae a los representantes de PLANEAMIENTO ESTRATEGICO", async () => {
+    await preguntar("¿Quiénes son los delegados de Seguridad de Sistemas?");
+    const lineaSeguridad = ultimoMensajeDeDatos()
+      .split("\n")
+      .find((l) => l.startsWith("- SEGURIDAD DE SISTEMAS"));
+    expect(lineaSeguridad).toBeDefined();
+    expect(lineaSeguridad).not.toContain("BRUNO INVENTADO SOTO");
+    expect(lineaSeguridad).not.toContain("CARLA INVENTADA DIAZ");
+  });
+
+  test("ningún nombre de representante viaja sin su curso y su sección", async () => {
+    await preguntar("¿y el subdelegado?");
+    const mensaje = ultimoMensajeDeDatos();
+    for (const nombre of ["BRUNO INVENTADO SOTO", "CARLA INVENTADA DIAZ", "ANA FICTICIA ROJAS"]) {
+      const lineasConNombre = mensaje.split("\n").filter((l) => l.includes(nombre));
+      expect(lineasConNombre.length).toBe(1);
+      expect(lineasConNombre[0]).toMatch(/^- [A-Z ]+ \(seccion \d+\): /);
+    }
+  });
+
+  test("una pregunta de notas no manda el bloque de delegados", async () => {
+    await preguntar("¿Qué nota saqué en el parcial?");
+    const mensaje = ultimoMensajeDeDatos();
+    expect(mensaje).not.toContain(TITULO);
+    expect(mensaje).not.toContain("ANA FICTICIA ROJAS");
   });
 });

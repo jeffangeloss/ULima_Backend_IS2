@@ -1,4 +1,10 @@
-import type { ChatbotIntent, ChatbotMessageRow, OfficialCourseGrades } from "./chatbot.types.js";
+import type {
+  ChatbotIntent,
+  ChatbotMessageRow,
+  OfficialCourseGrades,
+  SectionRepresentativePerson,
+  SectionRepresentativesData,
+} from "./chatbot.types.js";
 import { PASSING_GRADE } from "../alerts/alerts.logic.js";
 
 const SYSTEM_PROMPT = `Eres ULimaBot, un asistente academico personal para estudiantes de la
@@ -42,6 +48,20 @@ REGLAS:
     Se claro: cuanto necesita en promedio en lo que falta, o si ya aprobo, o si
     ya no es posible aprobar.`;
 
+// Títulos de BR-CB-24 para los bloques que toca el ajuste del 2026-09-25.
+const DELEGATES_TITLE = "DELEGADOS DE TUS SECCIONES (solo delegado y subdelegado, por curso y seccion):";
+const CHAT_TITLE = "MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):";
+
+/** Una sola línea: ningún salto de línea de un dato abre una línea propia en el mensaje. */
+const singleLine = (text: string): string => text.replace(/\s+/g, " ").trim();
+
+/** «delegado NOMBRE», «delegado tu (NOMBRE)» o «sin delegado registrado» (BR-CB-16 y BR-CB-24). */
+function describeRepresentative(position: "delegado" | "subdelegado", person: SectionRepresentativePerson | null): string {
+  const name = person ? singleLine(person.fullName) : "";
+  if (!person || name === "") return `sin ${position} registrado`;
+  return person.isSelf ? `${position} tu (${name})` : `${position} ${name}`;
+}
+
 export interface DateContext {
   today: string;
   currentWeekNumber?: number;
@@ -62,6 +82,7 @@ export function buildContext(params: {
   curriculumData?: unknown;
   alertsData?: unknown;
   announcementsData?: unknown;
+  delegatesData?: SectionRepresentativesData[] | null;
   chatSearchResults?: unknown;
   officialGrades?: OfficialCourseGrades[] | null;
   localGrades?: unknown;
@@ -117,6 +138,18 @@ export function buildContext(params: {
     blocks.push(JSON.stringify(params.announcementsData, null, 2));
   }
 
+  // BR-CB-16 y BR-CB-24 (bloque 7): una línea por sección, con el curso y la
+  // sección de cada cargo. Es lo único de otras personas que llega al modelo.
+  if (params.intents.includes("delegates") && params.delegatesData && params.delegatesData.length > 0) {
+    blocks.push(`\n${DELEGATES_TITLE}`);
+    for (const s of params.delegatesData) {
+      blocks.push(
+        `- ${singleLine(s.courseName)} (seccion ${singleLine(s.sectionCode)}): ` +
+          `${describeRepresentative("delegado", s.delegate)}; ${describeRepresentative("subdelegado", s.subdelegate)}.`,
+      );
+    }
+  }
+
   if (params.intents.includes("grades") && params.officialGrades && params.officialGrades.length > 0) {
     blocks.push(`\nNOTAS OFICIALES DEL ALUMNO (fuente de la verdad, registradas por el docente):`);
     for (const c of params.officialGrades) {
@@ -144,8 +177,11 @@ export function buildContext(params: {
     blocks.push(JSON.stringify(params.localGrades, null, 2));
   }
 
-  if (params.chatSearchResults) {
-    blocks.push(`\nMENSAJES DEL CHAT DE LA SECCION:`);
+  // BR-CB-23 y BR-CB-24 (bloque 11): solo con `chat` o `announcements`. Los
+  // mensajes van sin remitente y el JSON escapa sus saltos de línea y comillas.
+  const chatActive = params.intents.includes("chat") || params.intents.includes("announcements");
+  if (chatActive && params.chatSearchResults) {
+    blocks.push(`\n${CHAT_TITLE}`);
     blocks.push(JSON.stringify(params.chatSearchResults, null, 2));
   }
 

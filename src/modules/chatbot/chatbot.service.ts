@@ -55,11 +55,16 @@ export class ChatbotService {
 
     const dateContext = await this.computeDateContext();
 
+    // BR-CB-23: el chat de la sección solo se lee con preguntas sobre el chat o
+    // los avisos.
+    const readsChat = intents.includes("chat") || intents.includes("announcements");
+
     const [
       scheduleData,
       curriculumData,
       alertsData,
       announcementsData,
+      delegatesData,
       chatSearchResults,
       officialGradesRows,
     ] = await Promise.all([
@@ -67,10 +72,10 @@ export class ChatbotService {
       intents.includes("curriculum") ? this.getCurriculumData(studentId) : Promise.resolve(null),
       intents.includes("alerts") ? this.getAlertsData(studentId) : Promise.resolve(null),
       intents.includes("announcements") ? this.getAnnouncementsData(studentId) : Promise.resolve(null),
-      // `delegates` todavía no carga datos. La lista plana de compañeros ya no se
-      // consulta (BR-CB-04 y BR-CB-17), y los delegados por sección llegan con
-      // BR-CB-16.
-      this.getChatResults(studentId, input.question),
+      // BR-CB-16: delegado y subdelegado por curso y sección. Reemplaza a la lista
+      // plana de compañeros, que ya no existe (BR-CB-17).
+      intents.includes("delegates") ? this.repository.getSectionRepresentatives(studentId) : Promise.resolve(null),
+      readsChat ? this.getChatResults(studentId, input.question) : Promise.resolve(null),
       // Notas OFICIALES (fuente de la verdad): matrícula real del período activo.
       intents.includes("grades") ? this.repository.getOfficialGrades(studentId) : Promise.resolve(null),
     ]);
@@ -88,6 +93,7 @@ export class ChatbotService {
       curriculumData,
       alertsData,
       announcementsData,
+      delegatesData,
       chatSearchResults,
       officialGrades,
       localGrades: input.localGrades,

@@ -5,16 +5,16 @@ import type { ChatbotIntent, ChatbotMessageRow } from "../../src/modules/chatbot
 // ============================================================================
 // CAJA NEGRA — buildContext() del chatbot ULimaBot (HU28, itsRon4ld)
 // ----------------------------------------------------------------------------
-// Funcionalidad con 14 campos de entrada (> 4):
+// Funcionalidad con 15 campos de entrada (> 4):
 //   studentName, careerName, currentLevel, history, intents, dateContext,
 //   scheduleData, curriculumData, alertsData, announcementsData,
-//   chatSearchResults, officialGrades, localGrades, question.
+//   delegatesData, chatSearchResults, officialGrades, localGrades, question.
 //
 // Se prueba por PARTICION DE EQUIVALENCIA y VALORES LIMITE sin conocer la
 // implementacion, observando solo el texto del contexto que arma la funcion.
 // Regla de negocio central: un bloque de datos aparece solo si su intent esta
-// presente Y su dato no es vacio. chatSearchResults es la excepcion (siempre
-// que exista). Ver context-builder.ts.
+// presente Y su dato no es vacio. chatSearchResults sale con el intent 'chat'
+// o 'announcements' (BR-CB-23, ajuste del 2026-09-25). Ver context-builder.ts.
 // ============================================================================
 
 const baseDate = { today: "2026-07-13" };
@@ -111,11 +111,24 @@ describe("[CAJA NEGRA] buildContext — bloques por intent + dato (schedule, cur
   });
 });
 
-describe("[CAJA NEGRA] buildContext — chatSearchResults (excepcion: no depende de intent)", () => {
-  test("CV6 chatSearchResults presente SIN intent: SIEMPRE se incluye el bloque de chat", () => {
-    const { message } = make({ intents: [], chatSearchResults: [{ autor: "Pia", texto: "hola grupo" }] });
+describe("[CAJA NEGRA] buildContext — chatSearchResults (intent 'chat' o 'announcements', BR-CB-23)", () => {
+  const chat = [{ sectionName: "CURSO INVENTADO (801)", messages: [{ body: "hola grupo", date: "2026-07-13 10:00" }] }];
+
+  test("CV6 chatSearchResults presente con intent 'chat': se incluye el bloque de chat", () => {
+    const { message } = make({ intents: ["chat"], chatSearchResults: chat });
     expect(message).toContain("MENSAJES DEL CHAT DE LA SECCION");
     expect(message).toContain("hola grupo");
+  });
+
+  test("CV6b chatSearchResults presente con intent 'announcements': se incluye el bloque de chat", () => {
+    const { message } = make({ intents: ["announcements"], chatSearchResults: chat });
+    expect(message).toContain("hola grupo");
+  });
+
+  test("CNV4b chatSearchResults presente SIN intent de chat ni de avisos: el bloque se OMITE", () => {
+    const { message } = make({ intents: ["grades"], chatSearchResults: chat });
+    expect(message).not.toContain("MENSAJES DEL CHAT");
+    expect(message).not.toContain("hola grupo");
   });
 
   test("CNV4 chatSearchResults ausente: el bloque de chat se OMITE", () => {

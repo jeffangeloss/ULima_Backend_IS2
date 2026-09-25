@@ -9,13 +9,6 @@ export type ChatbotIntent =
   | "own_blocks"
   | "chat";
 
-export interface ChatMessage {
-  id: string;
-  senderName: string;
-  body: string;
-  createdAt: number;
-}
-
 export interface ChatbotSessionRow {
   id: string;
   studentId: number;
@@ -67,9 +60,25 @@ export interface AnnouncementData {
   publishedAt: Date;
 }
 
-export interface ClassmateData {
+/**
+ * Delegado o subdelegado de una sección (BR-CB-16). `isSelf` marca que es el
+ * alumno que pregunta, por su `student.id` o por el código del claim del portal.
+ */
+export interface SectionRepresentativePerson {
   fullName: string;
-  role: string;
+  isSelf: boolean;
+}
+
+/**
+ * Una sección activa del alumno con su delegado y su subdelegado (BR-CB-16).
+ * `null` = ese cargo no tiene a nadie registrado, ni en la app ni en el portal.
+ * No lleva códigos, correos ni el origen del dato.
+ */
+export interface SectionRepresentativesData {
+  courseName: string;
+  sectionCode: string;
+  delegate: SectionRepresentativePerson | null;
+  subdelegate: SectionRepresentativePerson | null;
 }
 
 /** Fila cruda de notas OFICIALES (student_score) por evaluación del período activo. */
