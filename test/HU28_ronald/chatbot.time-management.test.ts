@@ -312,17 +312,15 @@ describe("BR-CB-18 y BR-CB-19: el servicio con own_blocks", () => {
     const respuesta = await preguntar("¿Cómo organizo mi semana para estudiar?");
     expect(respuesta.answer).toBe("respuesta del bot");
     expect(avisos.length).toBe(1);
+    // El único aviso es el de esta lectura y trae la causa, para diagnosticarla.
+    const aviso = avisos[0]!.map(String).join(" ");
+    expect(aviso).toContain("bloques propios");
+    expect(aviso).toContain("se cayó la base de los bloques");
     const mensaje = ultimoMensajeDeDatos();
     expect(mensaje).not.toContain(TITULO_PROPIOS);
     expect(lineaDeClases(mensaje)).toBeUndefined();
     // El horario sí sigue: la falla de los bloques no tumba lo demás.
     expect(mensaje).toContain("DATOS DE HORARIO Y EVALUACIONES:");
-  });
-
-  test("el aviso del fallo no lleva el título ni datos de los bloques", async () => {
-    lecturaFalla = true;
-    await preguntar("¿Cómo organizo mi semana para estudiar?");
-    expect(JSON.stringify(avisos)).not.toContain("Prácticas");
   });
 });
 

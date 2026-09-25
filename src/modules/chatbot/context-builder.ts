@@ -100,12 +100,14 @@ function dayNameOf(date: string): string {
 const formatHours = (hours: number): string => `${hours} h`;
 
 /**
- * El título es texto libre del alumno (BR-CB-18): cada tramo de espacios en
- * blanco, saltos de línea incluidos, pasa a un espacio; se recortan los bordes
- * y las comillas dobles pasan a simples. Las tildes y la eñe se conservan. Así
- * el título no puede abrir una línea propia ni cerrar sus comillas.
+ * El título es texto libre del alumno (BR-CB-18): primero `singleLine` (cada
+ * tramo de espacios en blanco, saltos de línea incluidos, pasa a un espacio y
+ * se recortan los bordes) y después las comillas dobles pasan a simples. Las
+ * tildes y la eñe se conservan. Así el título no puede abrir una línea propia
+ * ni cerrar sus comillas. Reusa `singleLine` para que un cambio en esa
+ * limpieza alcance también al título.
  */
-const cleanBlockTitle = (title: string): string => title.replace(/\s+/g, " ").trim().replace(/"/g, "'");
+const cleanBlockTitle = (title: string): string => singleLine(title).replace(/"/g, "'");
 
 /** "14:00" o "14:00:00" → 840; null si no es una hora. */
 function minutesOfTime(value: unknown): number | null {
