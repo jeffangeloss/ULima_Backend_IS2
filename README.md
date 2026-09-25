@@ -2123,8 +2123,12 @@ Dominios soportados desde el 2026-09-25: `grades`, `schedule`, `curriculum`, `al
 > `DATOS DEL ALUMNO` y cierra con `FIN DE LOS DATOS` (BR-CB-24), y la pregunta va después del
 > cierre, fuera del bloque. Con la decisión 13 del dueño, del mismo día, el guardia suma dos
 > patrones sin distinguir mayúsculas, una línea que empieza con `DATOS DEL ALUMNO` y una línea
-> que es solo `FIN DE LOS DATOS`, así que una pregunta ya no puede escribir un segundo bloque de
-> datos. Una pregunta genuina que empieza con «datos del alumno» también recibe el 400, y
+> que es solo `FIN DE LOS DATOS`, así que una pregunta ya no puede escribir esas dos líneas tal
+> como las arma el mensaje de datos. Una variante con otro espacio entre las palabras, con un
+> carácter invisible delante o con un separador de línea que JavaScript no reconoce con la bandera
+> `m` pasa el guardia, y la anotación de BR-CB-10 en
+> [`chatbot.spec.md`](specs/features/chatbot/chatbot.spec.md)`:658-662` lista esos separadores.
+> Una pregunta genuina que empieza con «datos del alumno» también recibe el 400, y
 > [`chatbot.injection-guard.test.ts`](test/HU28_ronald/chatbot.injection-guard.test.ts) fija los
 > siete patrones (BR-CB-10).
 
