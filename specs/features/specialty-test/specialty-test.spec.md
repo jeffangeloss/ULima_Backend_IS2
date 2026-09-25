@@ -804,10 +804,11 @@ regla y los detalles están allí.
 ## Decisiones abiertas
 
 El dueño las aprueba todas el 2026-09-25 en la página de revisión, cada una en la opción que
-la spec adopta por defecto, y ninguna cambia. Los dos cambios de esa aprobación, los íconos y
-la cabecera del asistente, son de la spec del frontend y quedan en las decisiones 8 y 9. Cada
-punto conserva la alternativa que se descarta, y la numeración no cambia, porque la citan las
-otras specs.
+la spec adopta por defecto, salvo la 2, que queda sin uso, y ninguna cambia. Los dos cambios de
+esa aprobación, los íconos y la cabecera del asistente, recaen en las decisiones abiertas 2 y 14
+de la spec del frontend y no en las de esta, y quedan aquí en las decisiones 8 y 9. Cada punto
+conserva la alternativa que se descarta, y la numeración no cambia, porque la citan las otras
+specs.
 
 1. **Las tres dudas del revisor que la página de los cambios no marca (decisión 3).** *Aprobada
    por el dueño el 2026-09-25.* La línea `low` de Ulises sale cuando la afinidad de la ganadora
