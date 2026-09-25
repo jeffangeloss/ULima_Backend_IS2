@@ -166,6 +166,27 @@ const buscarEnElChat = (question: string, sections: Array<{ sectionId: number; c
     { id: "c1", senderName: COMPANERO, body: "El parcial es el lunes 28?", createdAt: Date.UTC(2026, 8, 25, 2, 15) },
   ]);
 
+// Los bloques propios de la alumna (RS-BE-35): solo trae lo suyo, nunca el
+// nombre de un compañero.
+const leerBloquesPropios = async (_studentId: number, _today: string) => ({
+  window: { from: "2026-09-21", to: "2026-10-04" },
+  blocks: [
+    {
+      title: "Prácticas en empresa",
+      daysOfWeek: [1, 3],
+      startTime: "14:00",
+      endTime: "18:00",
+      startDate: "2026-09-01",
+      endDate: "2026-12-15",
+      exceptions: [],
+    },
+  ],
+  weeks: [
+    { weekStart: "2026-09-21", hours: 8 },
+    { weekStart: "2026-09-28", hours: 8 },
+  ],
+});
+
 const { ChatbotService } = await import("../../src/modules/chatbot/chatbot.service.js");
 
 const PREGUNTAS = [
@@ -178,6 +199,8 @@ const PREGUNTAS = [
   "¿Hay algún comunicado de mis cursos?",
   "¿Qué nota saqué en el parcial?",
   "¿Cuántos créditos llevo?",
+  // own_blocks (BR-CB-18 y BR-CB-19): los bloques propios tampoco lo traen.
+  "¿Cómo organizo mi semana con mis prácticas?",
   "hola, ¿cómo estás?",
 ];
 
@@ -188,7 +211,7 @@ describe("BR-CB-17: el nombre de un compañero que no es representante no llega 
   });
 
   const preguntar = async (question: string) => {
-    const servicio = new ChatbotService(repositorioFalso, servicioDeHorario, buscarEnElChat);
+    const servicio = new ChatbotService(repositorioFalso, servicioDeHorario, leerBloquesPropios, buscarEnElChat);
     await servicio.ask("s1", 42, { question });
   };
 

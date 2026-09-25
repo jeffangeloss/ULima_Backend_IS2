@@ -129,6 +129,20 @@ const fakeScheduleService = {
   getAssessments: async () => ({ assessments: [] }),
 } as any;
 
+// La función de RS-BE-35 que el servicio recibe por constructor (BR-CB-18).
+// Anota su uso en las fuentes consultadas y devuelve un resumen sin bloques.
+const fakeReadOwnBlocks = async (_studentId: number, _today: string) => {
+  fuentesConsultadas.push("own_blocks");
+  return {
+    window: { from: "2026-07-06", to: "2026-07-19" },
+    blocks: [],
+    weeks: [
+      { weekStart: "2026-07-06", hours: 0 },
+      { weekStart: "2026-07-13", hours: 0 },
+    ],
+  };
+};
+
 const stubSearchChat = async (question: string, _sections: unknown) => {
   searchChatCalls.push({ question });
   return [
@@ -159,7 +173,7 @@ describe("ChatbotService.ask - el chat solo con chat o announcements (BR-CB-06 y
   });
 
   const preguntar = async (question: string) => {
-    const service = new ChatbotService(fakeRepo, fakeScheduleService, stubSearchChat);
+    const service = new ChatbotService(fakeRepo, fakeScheduleService, fakeReadOwnBlocks, stubSearchChat);
     await service.ask("s1", 2, { question });
   };
 
@@ -204,7 +218,7 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
   });
 
   const preguntar = async (question: string) => {
-    const service = new ChatbotService(fakeRepo, fakeScheduleService, stubSearchChat);
+    const service = new ChatbotService(fakeRepo, fakeScheduleService, fakeReadOwnBlocks, stubSearchChat);
     await service.ask("s1", 2, { question });
   };
 
@@ -257,9 +271,9 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
     expect(fuentesConsultadas).toContain("schedule");
   });
 
-  test("«¿Qué bloque libre me queda?» carga el horario solo por el arrastre de own_blocks", async () => {
+  test("«¿Qué bloque libre me queda?» carga los bloques propios y el horario, que own_blocks arrastra", async () => {
     await preguntar("¿Qué bloque libre me queda?");
-    expect(fuentesConsultadas).toEqual(["schedule"]);
+    expect([...fuentesConsultadas].sort()).toEqual(["own_blocks", "schedule"]);
   });
 
   test("una pregunta que no activa delegates no consulta los delegados", async () => {
@@ -286,7 +300,7 @@ describe("ChatbotService.ask - el bug reportado: cada curso con sus delegados (B
   });
 
   const preguntar = async (question: string) => {
-    const service = new ChatbotService(fakeRepo, fakeScheduleService, stubSearchChat);
+    const service = new ChatbotService(fakeRepo, fakeScheduleService, fakeReadOwnBlocks, stubSearchChat);
     await service.ask("s1", 2, { question });
   };
 

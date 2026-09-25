@@ -1,6 +1,9 @@
 import { cohereClient } from "../../services/cohere.client.js";
 import { todayISO } from "../../shared/clock.js";
 import type { ScheduleService } from "../schedule/index.js";
+// RS-BE-35: de `time-blocks` solo la función acotada y su tipo, y aquí solo
+// como tipos. El valor lo inyecta `chatbot/index.ts` por constructor.
+import type { OwnTimeBlocksSummary, readOwnTimeBlocksForAssistant } from "../time-blocks/index.js";
 import { ChatbotRepository } from "./chatbot.repository.js";
 import { classifyByKeywords } from "./intent-classifier.js";
 import { buildContext, type DateContext } from "./context-builder.js";
@@ -15,6 +18,9 @@ export class ChatbotService {
   constructor(
     private readonly repository: ChatbotRepository,
     private readonly scheduleService: ScheduleService,
+    // BR-CB-18: la lectura de los bloques propios del alumno, la única puerta
+    // del chatbot a `time-blocks` (RS-BE-35).
+    private readonly readOwnTimeBlocks: typeof readOwnTimeBlocksForAssistant,
     // Inyectable para tests (default: la función real). Evita tener que mockear
     // el módulo chat-search.js globalmente, que en Bun se filtra entre archivos.
     private readonly searchChat: typeof searchChatMessages = searchChatMessages,
@@ -65,6 +71,7 @@ export class ChatbotService {
       alertsData,
       announcementsData,
       delegatesData,
+      ownBlocks,
       chatSearchResults,
       officialGradesRows,
     ] = await Promise.all([
@@ -75,6 +82,9 @@ export class ChatbotService {
       // BR-CB-16: delegado y subdelegado por curso y sección. Reemplaza a la lista
       // plana de compañeros, que ya no existe (BR-CB-17).
       intents.includes("delegates") ? this.repository.getSectionRepresentatives(studentId) : Promise.resolve(null),
+      // BR-CB-18: los bloques propios del alumno del token, con la fecha de hoy
+      // de BR-CB-13. El clasificador ya agregó `schedule` (BR-CB-04).
+      intents.includes("own_blocks") ? this.getOwnBlocks(studentId, dateContext.today) : Promise.resolve(null),
       readsChat ? this.getChatResults(studentId, input.question) : Promise.resolve(null),
       // Notas OFICIALES (fuente de la verdad): matrícula real del período activo.
       intents.includes("grades") ? this.repository.getOfficialGrades(studentId) : Promise.resolve(null),
@@ -94,6 +104,7 @@ export class ChatbotService {
       alertsData,
       announcementsData,
       delegatesData,
+      ownBlocks,
       chatSearchResults,
       officialGrades,
       localGrades: input.localGrades,
@@ -172,6 +183,20 @@ export class ChatbotService {
 
   private async getAnnouncementsData(studentId: number) {
     return this.repository.getAnnouncements(studentId);
+  }
+
+  /**
+   * BR-CB-18 y BR-CB-12: si la lectura falla, se registra con `console.warn` y
+   * la respuesta sigue sin el bloque de bloques propios, como con el chat.
+   */
+  private async getOwnBlocks(studentId: number, today: string): Promise<OwnTimeBlocksSummary | null> {
+    try {
+      return await this.readOwnTimeBlocks(studentId, today);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.warn("No se pudieron leer los bloques propios del alumno:", detail);
+      return null;
+    }
   }
 
   private async getChatResults(studentId: number, question: string) {
