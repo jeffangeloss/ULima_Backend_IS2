@@ -173,7 +173,7 @@ Especialidades filtradas por carrera. Si `careerId` se omite, usa la carrera del
     ]
   }
   ```
-- **Solo lo oficial** *(propuesta del 2026-09-25, BR-AP-07 de `academic-profile.spec.md`, pendiente de aprobación)*. Con `careerId` y sin él, la lista trae solo las especialidades con `is_active = true`, que en Ingeniería de Sistemas son los cuatro diplomas oficiales. `is_active` sigue en cada elemento, ahora siempre `true`, y `display_order` se numera después del filtro. Los datos de `specialty` no cambian.
+- **Solo lo oficial** *(aprobada por el dueño el 2026-09-25, BR-AP-07 de `academic-profile.spec.md`, pendiente de implementar)*. Con `careerId` y sin él, la lista trae solo las especialidades con `is_active = true`, que en Ingeniería de Sistemas son los cuatro diplomas oficiales. `is_active` sigue en cada elemento, ahora siempre `true`, y `display_order` se numera después del filtro. Los datos de `specialty` no cambian.
 
 ### PUT /academic-profile/me/specialties
 
@@ -199,7 +199,7 @@ Reemplaza las especialidades activas del estudiante autenticado. Escribe en `stu
   }
   ```
 - **Errors**: `400` `INVALID_BODY`, `404` `SPECIALTY_NOT_FOUND`, `409` `DUPLICATE_PRIMARY`
-- **Solo lo oficial y reemplazo atómico** *(propuesta del 2026-09-25, BR-AP-07 y BR-AP-08, pendiente de aprobación)*. `404 SPECIALTY_NOT_FOUND` también para una especialidad que existe pero tiene `is_active = false`, con el mismo mensaje que una de otra carrera. El desactivado, los `upsert` y la marca de `specialty_setup_completed` corren en una sola transacción. La forma de la ruta no cambia.
+- **Solo lo oficial y reemplazo atómico** *(aprobada por el dueño el 2026-09-25, BR-AP-07 y BR-AP-08, pendiente de implementar)*. `404 SPECIALTY_NOT_FOUND` también para una especialidad que existe pero tiene `is_active = false`, con el mismo mensaje que una de otra carrera. El desactivado, los `upsert` y la marca de `specialty_setup_completed` corren en una sola transacción. La forma de la ruta no cambia.
 
 Notas:
 
@@ -883,9 +883,9 @@ Los bloques ya concretos de una ventana de fechas: el servidor expande cada regl
 - Sin ocurrencias en la ventana: `occurrences` sale vacío y cada semana que toca la ventana sale con `hours: 0`.
 - **Errors**: `400` `INVALID_QUERY_PARAMS` (falta `from` o `to`, alguna no es una fecha válida, o `to` es anterior a `from`), `400` `TIME_BLOCK_WINDOW_TOO_WIDE` (más de 120 días).
 
-## Specialty Test (test de especialidad), PROPUESTO y pendiente de aprobación
+## Specialty Test (test de especialidad), APROBADO el 2026-09-25 y pendiente de implementar
 
-Test que conduce Ulises y que recomienda uno de los cuatro diplomas oficiales. El backend sirve el contenido versionado, calcula el puntaje con la fórmula del contenido, decide los desempates, pide a Cohere el motivo con respaldo de plantillas y guarda solo el último resultado del alumno. Detalle en `specs/features/specialty-test/specialty-test.spec.md` (RS-BE-37 a RS-BE-47). El resultado vive en `student_specialty_test_result` (migración `drizzle/0014_specialty_test_result.sql`, cambio de BD pendiente de la aprobación del dueño).
+Test que conduce Ulises y que recomienda uno de los cuatro diplomas oficiales. El backend sirve el contenido versionado, calcula el puntaje con la fórmula del contenido, decide los desempates, pide a Cohere el motivo con respaldo de plantillas y guarda solo el último resultado del alumno. Detalle en `specs/features/specialty-test/specialty-test.spec.md` (RS-BE-37 a RS-BE-47). El resultado vive en `student_specialty_test_result` (migración `drizzle/0014_specialty_test_result.sql`, cambio de BD aprobado por el dueño el 2026-09-25, que se aplica en producción en el despliegue con el respaldo y su permiso explícito). El contenido vigente es la versión `2026-09-25.4`, con un ícono de Lucide por tarea.
 
 Las tres rutas comparten estas reglas.
 
@@ -904,7 +904,7 @@ Contenido de la versión vigente, con lo necesario para conducir el test sin red
 - **Response** `200 OK` (recortado):
   ```json
   {
-    "version": "2026-09-25.3",
+    "version": "2026-09-25.4",
     "specialties": [
       {
         "key": "sw", "specialtyId": 1, "name": "Ingeniería de Software",
@@ -935,17 +935,21 @@ Contenido de la versión vigente, con lo necesario para conducir el test sin red
       { "id": "q01", "n": 1, "type": "duel", "prompt": "¿Cuál harías con más ganas?",
         "top": { "id": "q01.top", "specialty": "sw",
                  "text": "Programar la app con la que una bodega recibe pedidos del barrio",
-                 "illustration": "Celular con la app de una bodega abierta, …" },
-        "bottom": { "id": "q01.bottom", "specialty": "si", "text": "…", "illustration": "…" },
+                 "illustration": "Celular con la app de una bodega abierta, …",
+                 "icon": "shopping-cart" },
+        "bottom": { "id": "q01.bottom", "specialty": "si", "text": "…", "illustration": "…",
+                    "icon": "shelving-unit" },
         "reaction": "Arrancamos por el barrio. …" },
       { "id": "q04", "n": 4, "type": "scale", "prompt": "¿Cuánto te gustaría hacer esto?",
-        "task": { "id": "q04.task", "specialty": "ti", "text": "…", "illustration": "…" },
+        "task": { "id": "q04.task", "specialty": "ti", "text": "…", "illustration": "…",
+                  "icon": "drumstick" },
         "blockClose": "Primer tramo listo. Van 4 de 14." }
     ]
   }
   ```
-- **Qué no viaja**: el nombre del ícono en Flutter (`icon.flutter`), resúmenes y electivos de cada tarea, pesos, umbral, plantillas del motivo, líneas de Ulises del resultado salvo la de espera (`ulises.loading`), líneas del desempate, desempates, ejemplos, balance y fuentes. Son del cálculo y del motivo, que hace el servidor.
-- **`icon`**: el nombre del ícono en Lucide (`icon.lucide` del contenido, por ejemplo `code-xml`). `totalCredits` son los créditos del diploma.
+- **Qué no viaja**: el nombre del ícono en Flutter (`icon.flutter`) de las especialidades y de las tareas, resúmenes y electivos de cada tarea, pesos, umbral, plantillas del motivo, líneas de Ulises del resultado salvo la de espera (`ulises.loading`), líneas del desempate, desempates, ejemplos, balance y fuentes. Son del cálculo y del motivo, que hace el servidor.
+- **`icon`**: en cada especialidad y en cada tarea, el nombre del ícono en Lucide, en kebab-case (`icon.lucide` del contenido, por ejemplo `code-xml` para Software y `shopping-cart` para `q01.top`). La app lo traduce con un mapa cerrado de nombres y pinta un ícono neutro si no lo conoce. Ninguna tarea usa el ícono de una especialidad y ningún nombre se repite entre las tareas. `totalCredits` son los créditos del diploma.
+- **`illustration`**: la descripción de la ilustración de cada tarea sigue en la respuesta, aunque la app pinta el ícono y no la muestra.
 - **`specialty` de cada tarea**: viaja porque la app enciende la tarjeta tocada con el color de su especialidad. La app no la muestra antes del toque y Ulises no nombra especialidades durante el test.
 - **Errors**: los comunes.
 
@@ -957,7 +961,7 @@ Evaluación sin estado. Recibe todas las respuestas dadas hasta ese momento y de
 - **Body** (hasta 4 KiB):
   ```json
   {
-    "version": "2026-09-25.3",
+    "version": "2026-09-25.4",
     "answers": {
       "q01": "bottom", "q02": "bottom", "q03": "both", "q04": "nada", "q05": "top",
       "q06": "top", "q07": "top", "q08": "bastante", "q09": "top", "q10": "top",
@@ -974,8 +978,10 @@ Evaluación sin estado. Recibe todas las respuestas dadas hasta ese momento y de
     "status": "tiebreak",
     "tiebreak": {
       "id": "tb-si-vj-2", "order": 2, "prompt": "¿Cuál harías con más ganas?",
-      "top": { "id": "tb-si-vj-2.top", "specialty": "vj", "text": "…", "illustration": "…" },
-      "bottom": { "id": "tb-si-vj-2.bottom", "specialty": "si", "text": "…", "illustration": "…" }
+      "top": { "id": "tb-si-vj-2.top", "specialty": "vj", "text": "…", "illustration": "…",
+               "icon": "split" },
+      "bottom": { "id": "tb-si-vj-2.bottom", "specialty": "si", "text": "…", "illustration": "…",
+                  "icon": "pill-bottle" }
     },
     "ulisesLine": "Sigue reñido. Una última y listo."
   }
@@ -985,7 +991,7 @@ Evaluación sin estado. Recibe todas las respuestas dadas hasta ese momento y de
   {
     "status": "result",
     "result": {
-      "version": "2026-09-25.3",
+      "version": "2026-09-25.4",
       "completedAt": "2026-09-25T20:15:00.000Z",
       "tie": false,
       "ranking": [
@@ -1022,7 +1028,7 @@ Evaluación sin estado. Recibe todas las respuestas dadas hasta ese momento y de
   ```json
   {
     "result": {
-      "version": "2026-09-25.3",
+      "version": "2026-09-25.4",
       "isCurrentVersion": true,
       "completedAt": "2026-09-25T20:15:00.000Z",
       "tie": false,

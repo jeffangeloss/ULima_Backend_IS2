@@ -7,10 +7,11 @@ targets:
 
 # Academic Profile
 
-> **Enmienda propuesta el 2026-09-25 por `specs/features/specialty-test/specialty-test.spec.md`,
-> pendiente de la aprobación explícita del dueño.** Agrega BR-AP-07 (solo las especialidades
-> oficiales, decisión 6 del dueño) y BR-AP-08 (reemplazo atómico, decisión abierta 14 de esa
-> spec), y marca los cambios en BR-AP-03 y BR-AP-04. Hasta la aprobación rige el texto sin
+> **Enmienda propuesta el 2026-09-25 por `specs/features/specialty-test/specialty-test.spec.md`
+> y aprobada por el dueño el 2026-09-25 con esa spec, pendiente de implementar.** Agrega
+> BR-AP-07 (solo las especialidades oficiales, decisión 6 del dueño) y BR-AP-08 (reemplazo
+> atómico, decisión abierta 14 de esa spec), y marca los cambios en BR-AP-03 y BR-AP-04.
+> Hasta que la implementación llegue a producción, el backend desplegado sigue el texto sin
 > enmendar.
 
 ## User Stories
@@ -38,7 +39,7 @@ targets:
 - Retorna especialidades filtradas por `careerId` (query param).
 - Si `careerId` no se envía, retorna especialidades de la carrera del estudiante autenticado.
 - **Auth**: Bearer token.
-- **Enmendado por `specialty-test.spec.md` (BR-AP-07, propuesta del 2026-09-25).** Con
+- **Enmendado por `specialty-test.spec.md` (BR-AP-07, aprobada por el dueño el 2026-09-25).** Con
   `careerId` y sin él, la lista trae solo las especialidades con `is_active = true`.
 
 ### BR-AP-04: PUT /academic-profile/me/specialties — Replace specialties
@@ -51,10 +52,10 @@ targets:
 - Nuevas combinaciones → se insertan.
 - Si `primarySpecialtyId` es `null` y el estudiante tenía una primary activa, esa primary se desactiva.
 - Siempre marca `student.specialty_setup_completed = true`, incluso si `primarySpecialtyId` es `null` y `interestSpecialtyIds` está vacío.
-- **Enmendado por `specialty-test.spec.md` (BR-AP-07 y BR-AP-08, propuesta del 2026-09-25).**
-  Cada id, principal o de interés, tiene que ser una especialidad con `is_active = true` de la
-  carrera del alumno; si no, `404 SPECIALTY_NOT_FOUND`. El reemplazo entero corre en una sola
-  transacción.
+- **Enmendado por `specialty-test.spec.md` (BR-AP-07 y BR-AP-08, aprobadas por el dueño el
+  2026-09-25).** Cada id, principal o de interés, tiene que ser una especialidad con
+  `is_active = true` de la carrera del alumno; si no, `404 SPECIALTY_NOT_FOUND`. El reemplazo
+  entero corre en una sola transacción.
 
 ### BR-AP-05: Specialty setup completion
 - `student.specialty_setup_completed` indica que el estudiante ya pasó por el wizard de especialidades.
@@ -64,7 +65,7 @@ targets:
 - El estudiante autenticado solo puede leer/modificar su propio perfil y sus propias especialidades.
 - No existe un endpoint para ver/modificar perfiles de otros estudiantes.
 
-### BR-AP-07: Solo las especialidades oficiales (propuesta del 2026-09-25, decisión 6 del dueño)
+### BR-AP-07: Solo las especialidades oficiales (2026-09-25, decisión 6 del dueño, aprobada ese día)
 
 - Solo se muestran y se pueden elegir los cuatro diplomas oficiales de Ingeniería de Sistemas,
   que son Ingeniería de Software, Tecnologías de la Información, Sistemas de Información y
@@ -90,7 +91,7 @@ targets:
   y ese caso lo cubre la spec del frontend.
 - `[@test] ../../../test/HU36_jeff/academic-profile-official.test.ts` *(pendiente)*
 
-### BR-AP-08: Reemplazo atómico (propuesta del 2026-09-25, decisión abierta 14 de `specialty-test.spec.md`)
+### BR-AP-08: Reemplazo atómico (2026-09-25, decisión abierta 14 de `specialty-test.spec.md`, aprobada por el dueño ese día)
 
 - Hoy `updateSpecialties` desactiva todas las especialidades del alumno y después inserta una
   por una, fuera de una transacción (`academic-profile.service.ts:72-86`). Un fallo a mitad
@@ -201,7 +202,7 @@ Retorna especialidades. Si `careerId` no se envía, usa la carrera del estudiant
 - **Errors**:
   - `401` `MISSING_TOKEN` / `INVALID_TOKEN`
   - `400` `INVALID_CAREER_ID`: Si `careerId` se envía pero no es un número positivo
-- **BR-AP-07 (propuesta del 2026-09-25).** Solo trae especialidades con `is_active = true`.
+- **BR-AP-07 (aprobada por el dueño el 2026-09-25).** Solo trae especialidades con `is_active = true`.
 
 ### PUT /academic-profile/me/specialties
 
@@ -235,7 +236,7 @@ Reemplaza las especialidades activas del estudiante autenticado.
   - `400` `INVALID_BODY`: Body no pasa validación Zod
   - `404` `SPECIALTY_NOT_FOUND`: Algún `specialtyId` no existe en la tabla `specialty`
   - `409` `DUPLICATE_PRIMARY`: Se intenta tener más de una primary activa (violación del unique index)
-- **BR-AP-07 y BR-AP-08 (propuesta del 2026-09-25).** `404 SPECIALTY_NOT_FOUND` también para
+- **BR-AP-07 y BR-AP-08 (aprobadas por el dueño el 2026-09-25).** `404 SPECIALTY_NOT_FOUND` también para
   una especialidad inactiva o de otra carrera, y el reemplazo corre en una sola transacción.
 
 ## Types
