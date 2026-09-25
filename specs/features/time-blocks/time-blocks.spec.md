@@ -204,7 +204,8 @@ También es función pura y se prueba aparte.
 
 ### RS-BE-35 — El chatbot lee solo los bloques del propio alumno, por una función acotada
 
-> *Ajustada el 2026-09-25 por decisión del dueño de ese día, aprobada por él el 2026-09-25.*
+> *Ajustada el 2026-09-25 por decisión del dueño de ese día, aprobada por él el 2026-09-25 e
+> implementada en la rama `fix/chatbot-delegados-bloques`.*
 > Revierte, para los bloques, la versión aprobada el 2026-09-23, que se titulaba «Nada de esto lo
 > ve el chatbot». El récord académico sigue aislado (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -266,8 +267,8 @@ viajan a Cohere cuando la pregunta los pide.
   de la ventana y del patrón, y las mismas horas semanales que `GET /time-blocks/me/occurrences`
   para esas dos semanas.
 
-`[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts` *(existe; se ajusta)*
-`[@test] ../../../test/HU35_jeff/time-blocks-assistant-summary.test.ts` *(por escribir)*
+`[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts` *(existe; ajustada a esta regla)*
+`[@test] ../../../test/HU35_jeff/time-blocks-assistant-summary.test.ts` *(existe)*
 
 ### RS-BE-36 — La fecha exacta de cada día del horario
 

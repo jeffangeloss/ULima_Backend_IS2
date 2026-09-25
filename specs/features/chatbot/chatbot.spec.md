@@ -16,7 +16,8 @@ targets:
 Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje natural sobre su informacion academica y recibe respuestas directas basadas exclusivamente en sus datos reales. El backend actua como proxy seguro entre el frontend y Cohere, orquestando la recoleccion de datos, la clasificacion de intencion, ~~la busqueda semantica en chat~~ la lectura del chat de seccion *(sin Rerank ni remitentes desde el ajuste del 2026-09-25, BR-CB-06 y BR-CB-23)* y la generacion de respuestas.
 
 > Estado: **ajustada el 2026-09-25** con las decisiones del dueño de ese día sobre delegados,
-> bloques propios e historial, **aprobada por el dueño el 2026-09-25**. Cambian BR-CB-02,
+> bloques propios e historial, **aprobada por el dueño el 2026-09-25 e implementada** en la rama
+> `fix/chatbot-delegados-bloques`. Cambian BR-CB-02,
 > BR-CB-03, BR-CB-04, BR-CB-05, BR-CB-06, BR-CB-07, BR-CB-09 y BR-CB-12, y se agregan BR-CB-16
 > a BR-CB-24. Tres puntos son propuestas derivadas que el dueño confirma al aprobar, BR-CB-23
 > (de la decisión 1), el total de horas de clase de BR-CB-19 (de la decisión 2) y la condición
@@ -40,6 +41,12 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > BR-CB-12 y BR-CB-20 a BR-CB-22. Alinea además con la aprobación del dueño las etiquetas de estado
 > que seguían diciendo «pendiente de aprobación», aquí y en RS-BE-35 de `time-blocks`, sin cambiar
 > ningún requisito.
+> El cierre de la Tarea 5 implementa el prompt de BR-CB-09 y el formato de BR-CB-24, suma los casos
+> de error de BR-CB-12 a `chatbot.service.test.ts` y deja cada `[@test]` apuntando a un archivo que
+> existe. La implementación no cumple por sí sola las condiciones del despliegue. Antes del merge
+> siguen pendientes la aplicación de la `0013` con la aprobación de BD, el conteo, el respaldo y la
+> aprobación de «Primera purga en producción» (BR-CB-22) y el borrado único de BR-CB-22b, que
+> `MIGRATIONS.md` registra como pendientes.
 > Contraparte en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-35, ajustada el mismo
 > día). El récord académico sigue fuera del chatbot (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -212,8 +219,8 @@ mensajes previos y, si falla su generación o su guardado, deja la respuesta y e
   | «¿Estoy en riesgo académico?» | `alerts` |
   | «¿Cuántos créditos llevo?» | `curriculum` |
 
-`[@test] ../../../test/HU28_ronald/chatbot.intent-classifier.test.ts` *(existe; se ajusta a los
-dominios nuevos, a la normalización, al arrastre de `own_blocks` a `schedule` y a los ejemplos)*
+`[@test] ../../../test/HU28_ronald/chatbot.intent-classifier.test.ts` *(existe; fija los dominios
+nuevos, la normalización, el arrastre de `own_blocks` a `schedule` y los ejemplos)*
 
 ### BR-CB-05: Recoleccion de datos por intencion
 
@@ -235,8 +242,8 @@ corren en paralelo con `Promise.all`, como hoy (`chatbot.service.ts:58-75`).
 | `own_blocks` | Módulo `time-blocks`, por una función acotada | Bloques propios del alumno que pregunta y sus horas de la semana (BR-CB-18 y RS-BE-35 de `time-blocks`) |
 | `chat` o `announcements` | Firebase RTDB | Mensajes recientes de `sections/{sectionId}/messages`, sin remitente (BR-CB-06 y BR-CB-23). Ya no corre en toda pregunta. |
 
-`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; se ajusta, porque su
-bloque «el chat se consulta SIEMPRE» pasa a exigir lo contrario)*
+`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; fija qué fuentes consulta
+cada dominio, y su bloque del chat exige lo contrario de «el chat se consulta SIEMPRE»)*
 
 ### BR-CB-06: Lectura del chat de la seccion
 
@@ -265,9 +272,9 @@ bloque «el chat se consulta SIEMPRE» pasa a exigir lo contrario)*
 - ~~Los mensajes se incluyen en el contexto bajo el titulo `MENSAJES DEL CHAT DE LA SECCION`, en formato JSON con `senderName`, `body` y `createdAt`. El LLM debe responder en lenguaje natural (no IDs tecnicos), citando remitentes por nombre.~~ *Reemplazado el 2026-09-25.* Los mensajes van bajo `MENSAJES DEL CHAT DE LA SECCION`, agrupados por curso y sección, **sin remitente**, solo con su texto y su fecha en hora de Lima (BR-CB-23). El modelo no atribuye ningún mensaje a nadie (regla 13 de BR-CB-09).
 - Si una seccion no tiene mensajes, se omite. Si Firebase RTDB no esta disponible para una seccion, se hace `console.warn` y se continua con la siguiente seccion (no se bloquea la respuesta para otros intents).
 
-`[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; se ajusta a la
-normalización, al orden del respaldo, a los artículos y preposiciones que no emparejan y a los
-mensajes sin remitente y con `date` en hora de Lima, BR-CB-23)*
+`[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; fija la normalización,
+el orden del respaldo, los artículos y preposiciones que no emparejan y los mensajes sin remitente
+y con `date` en hora de Lima, BR-CB-23)*
 
 ### BR-CB-07: Ventana de contexto
 
@@ -290,8 +297,10 @@ mensajes sin remitente y con `date` en hora de Lima, BR-CB-23)*
   base hasta la retención del ciclo (BR-CB-22) y se siguen mostrando en
   `GET /chatbot/sessions/:id`.
 
-`[@test] ../../../test/HU28_ronald/chatbot.context-builder.test.ts` *(existe; se ajusta, porque
-el mensaje de datos ya no trae el historial)*
+`[@test] ../../../test/HU28_ronald/chatbot.history-turns.test.ts` *(existe; ningún turno previo
+aparece dentro del mensaje de datos y, con 30 mensajes guardados, solo viajan los 10 últimos)*
+`[@test] ../../../test/HU28_ronald/context.cajanegra.test.ts` *(existe; con cualquier dominio, el
+mensaje de datos no trae el bloque de historial, y un `history` de más no llega a él)*
 
 ### BR-CB-08: Notas locales
 
@@ -396,11 +405,11 @@ REGLAS:
     y no atribuyas un mensaje a ninguna persona.
 ```
 
-`[@test] ../../../test/HU28_ronald/chatbot.system-prompt.test.ts` *(por escribir; fija que el
-prompt trae la excepción de delegados, que la regla 4 nombra «sin delegado registrado» y «sin
-subdelegado registrado» y ya no prohíbe dar los mensajes del chat que permite la regla 13, que
-declara que los turnos previos no son fuente, que trae las reglas 11 a 13, y que ya no contiene
-«NO respondas preguntas sobre otros alumnos»)*
+`[@test] ../../../test/HU28_ronald/chatbot.system-prompt.test.ts` *(existe; compara el preamble
+con el bloque de arriba carácter por carácter y fija que el prompt trae la excepción de delegados,
+que la regla 4 nombra «sin delegado registrado» y «sin subdelegado registrado» y ya no prohíbe dar
+los mensajes del chat que permite la regla 13, que declara que los turnos previos no son fuente,
+que trae las reglas 11 a 13, y que ya no contiene «NO respondas preguntas sobre otros alumnos»)*
 
 ### BR-CB-10: Guardrails de seguridad
 
@@ -442,6 +451,10 @@ de la transacción responde un 500 genérico sin detalles de la base)*
 registra con `console.error` y no corta `listSessions`, `getSession`, `createSession` ni `ask`)*
 `[@test] ../../../test/HU28_ronald/chatbot.time-management.test.ts` *(existe; la lectura fallida
 de los bloques propios se registra con `console.warn` y la respuesta sigue sin ese bloque)*
+`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; por HTTP, Cohere que no
+responde en 8 s y Cohere con 429, con 500 o abortado dan `503 CHATBOT_UNAVAILABLE` con el mensaje
+de la tabla, sin detalles de Cohere y sin escrituras; la transacción fallida da el 500 genérico sin
+título; y la purga y la lectura de bloques propios que fallan a la vez dejan salir la respuesta)*
 
 ### BR-CB-13: Fecha y zona horaria del contexto
 
@@ -549,7 +562,7 @@ de los bloques propios se registra con `console.warn` y la respuesta sigue sin e
 
 - Solo se consulta cuando la pregunta activa `delegates` (BR-CB-04).
 
-`[@test] ../../../test/HU28_ronald/chatbot.delegates.postgres.test.ts` *(por escribir; contra un
+`[@test] ../../../test/HU28_ronald/chatbot.delegates.postgres.test.ts` *(existe; contra un
 PostgreSQL local vacío y solo con `TEST_DATABASE_URL`, como `time-blocks.postgres.test.ts`. Los
 casos que fija son delegado real en una sección y claim en otra; solo claim; real y claim del mismo cargo,
 donde gana el real; sección sin nada, que sale vacía; una persona matriculada en dos secciones y
@@ -586,7 +599,7 @@ que no cambian el resultado)*
 - Una pregunta como «¿quiénes están en mi sección?» activa `delegates` y se responde con los
   delegados de esa sección y con la regla 4 del prompt (BR-CB-09).
 
-`[@test] ../../../test/HU28_ronald/chatbot.no-classmates.test.ts` *(por escribir; recorre los
+`[@test] ../../../test/HU28_ronald/chatbot.no-classmates.test.ts` *(existe; recorre los
 `.ts` de `src/modules/chatbot/` con `Bun.Glob` y falla si aparecen `getClassmates`,
 `ClassmateData` o `DATOS DE COMPANEROS`. Además, con un repositorio falso en el que un compañero
 que no es representante está matriculado en la sección del alumno, con un historial de prueba de
@@ -672,13 +685,13 @@ datos, contiene su nombre)*
   bloque, como hace hoy con el chat (BR-CB-06). Tampoco sale entonces la línea de horas de clase
   de BR-CB-19, que vive dentro de este bloque.
 
-`[@test] ../../../test/HU28_ronald/chatbot.own-blocks-context.test.ts` *(por escribir; el
+`[@test] ../../../test/HU28_ronald/chatbot.own-blocks-context.test.ts` *(existe; el
 resumen de días, horas, frecuencia, vigencia, cambios y horas semanales, la limpieza del título
 con un salto de línea, una tabulación, una comilla doble y tildes, el caso sin bloques y el fallo
 de la función, que quita también la línea de horas de clase. Desde la revisión de la Tarea 3, la
 vigencia medida contra hoy, también con un bloque que empezó entre el lunes de la ventana y hoy, y
 el bloque 8 sin el horario cargado, que sale sin la línea de horas de clase)*
-`[@test] ../../../test/HU35_jeff/time-blocks-assistant-summary.test.ts` *(por escribir; lado de
+`[@test] ../../../test/HU35_jeff/time-blocks-assistant-summary.test.ts` *(existe; lado de
 `time-blocks`, ver RS-BE-35)*
 
 ### BR-CB-19: Sugerencias de gestión del tiempo
@@ -728,7 +741,7 @@ el bloque 8 sin el horario cargado, que sale sin la línea de horas de clase)*
   edite o borre bloques o cambie su matrícula (regla 7).
 - Las dos listas están en las reglas 11 y 12 del prompt (BR-CB-09).
 
-`[@test] ../../../test/HU28_ronald/chatbot.time-management.test.ts` *(por escribir; la suma de
+`[@test] ../../../test/HU28_ronald/chatbot.time-management.test.ts` *(existe; la suma de
 horas de clase con sesiones que no son horas enteras, el formato «16 h» y «7.5 h», «0 h» sin
 sesiones, que `own_blocks` carga horario y bloques, y que el mensaje trae los dos totales. Desde
 la revisión de la Tarea 3, que la suma lee solo `start_time` y `end_time` y que `getSchedule`
@@ -980,14 +993,14 @@ respaldo no entra al repositorio y se descarta cuando el dueño lo indique.
 - El prompt presenta el chat como texto de usuarios, no como fuente oficial, y sin atribución
   (regla 13 de BR-CB-09).
 
-`[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; se ajusta, sin
-`senderName`, con `date` en hora de Lima y sin los mensajes borrados)*
-`[@test] ../../../test/HU28_ronald/chatbot.chat-deleted.test.ts` *(nueva; la lectura de
+`[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; sin `senderName`, con
+`date` en hora de Lima y sin los mensajes borrados)*
+`[@test] ../../../test/HU28_ronald/chatbot.chat-deleted.test.ts` *(existe; la lectura de
 `getRecentMessages` deja pasar la marca `deleted` de R-CHAT-4)*
-`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; se ajusta para que una
-pregunta de notas no llame a la búsqueda en el chat y una de avisos sí)*
-`[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts` *(por escribir; el caso con
-chat de BR-CB-24)*
+`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; una pregunta de notas no
+llama a la búsqueda en el chat y una de avisos sí)*
+`[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts` *(existe; el caso con chat de
+BR-CB-24)*
 
 ### BR-CB-24: Formato del contexto que recibe el modelo
 
@@ -1099,10 +1112,15 @@ chat de BR-CB-24)*
   ]
   ```
 
-`[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts` *(por escribir; arma el
-mensaje del ejemplo con datos falsos y lo compara línea por línea, y comprueba el orden de los
-bloques y que no aparecen los dos títulos que desaparecen. Un segundo caso arma un mensaje con el
-bloque del chat de arriba y comprueba que el salto de línea y las comillas salen escapados, que no
+`[@test] ../../../test/HU28_ronald/chatbot.context-builder.test.ts` *(existe; el bloque 7 del
+ejemplo línea por línea, su lugar entre los anuncios y las notas oficiales, y el bloque 11 solo con
+`chat` o `announcements`)*
+`[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts` *(existe; lee el ejemplo de
+esta regla, arma el mensaje con datos falsos y lo compara línea por línea, con la línea abreviada
+del horario reemplazada por su JSON, y comprueba el orden de los bloques de la tabla y que no
+aparecen los dos títulos que desaparecen. Por el servicio, comprueba que el preamble y los dos
+turnos previos del ejemplo van antes del mensaje. Un segundo caso arma un mensaje con el bloque
+del chat de arriba y comprueba que el salto de línea y las comillas salen escapados, que no
 aparece ningún remitente y que `FIN DE LOS DATOS` es línea propia una sola vez)*
 
 ## Endpoints
@@ -1336,19 +1354,32 @@ CHATBOT_RATE_LIMIT=20   # Preguntas por alumno por hora (opcional, default 20)
 
 ## Test Links
 
-- Clasificacion de intencion (keyword fallback): `[@test] ../../../test/chatbot.intent-classifier.test.ts`
-- Construccion de contexto: `[@test] ../../../test/chatbot.context-builder.test.ts`
-- Busqueda en chat (filterSections + token match): `[@test] ../../../test/chatbot.chat-search.test.ts`
-- Queries de repositorio: `[@test] ../../../test/chatbot/chatbot.repository.test.ts`
-- Orquestacion del servicio: `[@test] ../../../test/chatbot/chatbot.service.test.ts`
-- Validacion Zod y controller: `[@test] ../../../test/chatbot/chatbot.controller.test.ts`
-- Rate limit middleware: `[@test] ../../../test/shared/rate-limit.test.ts`
-- Firebase service getRecentMessages: `[@test] ../../../test/services/firebase.service.test.ts`
+*Reemplazada el 2026-09-25, en el cierre de la Tarea 5.* ~~La lista original apuntaba a
+`test/chatbot.*.test.ts`, `test/chatbot/*.test.ts`, `test/shared/rate-limit.test.ts` y
+`test/services/firebase.service.test.ts`, rutas que no existen.~~ Las pruebas del chatbot viven en
+`test/HU28_ronald/`, y cada requisito lleva además su `[@test]` junto al texto.
 
-*Nota del 2026-09-25.* Las rutas de arriba son las de la versión original y varias no existen;
-las pruebas del chatbot viven hoy en `test/HU28_ronald/`. Cada requisito del ajuste lleva su
-`[@test]` junto al texto, y las que dicen «por escribir» todavía no existen. El aislamiento del
+- Clasificación por palabras clave: `[@test] ../../../test/HU28_ronald/chatbot.intent-classifier.test.ts`
+- Armado del contexto y formato del mensaje de datos: `[@test] ../../../test/HU28_ronald/chatbot.context-builder.test.ts`,
+  `[@test] ../../../test/HU28_ronald/context.cajanegra.test.ts` y
+  `[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts`
+- System prompt: `[@test] ../../../test/HU28_ronald/chatbot.system-prompt.test.ts`
+- Lectura del chat de sección: `[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts`
+- Consultas del repositorio: `[@test] ../../../test/HU28_ronald/chatbot.delegates.postgres.test.ts`,
+  `[@test] ../../../test/HU28_ronald/chatbot.retention.postgres.test.ts`,
+  `[@test] ../../../test/HU28_ronald/chatbot.retention.test.ts` y
+  `[@test] ../../../test/HU28_ronald/chatbot.atomic-save.test.ts`
+- Orquestación del servicio y errores del controlador: `[@test] ../../../test/HU28_ronald/chatbot.service.test.ts`,
+  `[@test] ../../../test/HU28_ronald/chatbot.history-turns.test.ts`,
+  `[@test] ../../../test/HU28_ronald/chatbot.no-classmates.test.ts` y
+  `[@test] ../../../test/HU28_ronald/chatbot.time-management.test.ts`
+- Bloques propios en el contexto: `[@test] ../../../test/HU28_ronald/chatbot.own-blocks-context.test.ts`
+- Migración `0013`: `[@test] ../../../test/HU28_ronald/migration-0013.test.ts`
+- `getRecentMessages` de Firebase: `[@test] ../../../test/HU28_ronald/chatbot.chat-deleted.test.ts`
+
+La validación Zod de la pregunta y los cinco patrones de BR-CB-10, y el límite de tasa de BR-CB-11,
+no tienen prueba propia en este repositorio, así que no llevan `[@test]`. El aislamiento del
 récord, sin cambios, sigue en `[@test] ../../../test/HU34_jeff/chatbot-isolation.test.ts`, y el
 acceso acotado a los bloques propios, en
-`[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts` *(existe; se ajusta, ver
-RS-BE-35 de `time-blocks`)*.
+`[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts` *(existe; ajustada a RS-BE-35
+de `time-blocks`)*.
