@@ -944,7 +944,7 @@ Contenido de la versión vigente, con lo necesario para conducir el test sin red
     ]
   }
   ```
-- **Qué no viaja**: resúmenes y electivos de cada tarea, pesos, umbral, plantillas del motivo, líneas de Ulises del resultado y del desempate, desempates, ejemplos y balance. Son del cálculo, que hace el servidor.
+- **Qué no viaja**: el nombre del ícono en Flutter (`icon.flutter`), resúmenes y electivos de cada tarea, pesos, umbral, plantillas del motivo, líneas de Ulises del resultado y del desempate, desempates, ejemplos, balance y fuentes. Son del cálculo y del motivo, que hace el servidor.
 - **`icon`**: el nombre del ícono en Lucide (`icon.lucide` del contenido, por ejemplo `code-xml`). `totalCredits` son los créditos del diploma.
 - **`specialty` de cada tarea**: viaja porque la app enciende la tarjeta tocada con el color de su especialidad. La app no la muestra antes del toque y Ulises no nombra especialidades durante el test.
 - **Errors**: los comunes.

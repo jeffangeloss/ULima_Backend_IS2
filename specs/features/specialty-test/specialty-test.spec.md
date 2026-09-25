@@ -24,13 +24,12 @@ targets:
 > Enmienda `specs/features/academic-profile/academic-profile.spec.md` (BR-AP-07 y BR-AP-08,
 > ver «Enmienda a la spec de Academic Profile»). La contraparte de frontend es
 > `ULima_Frontend_IS2/specs/features/specialty-test/specialty-test.spec.md` (RF-TEST-1 a
-> RF-TEST-14, commit `79c2719` de la rama `feat/test-especialidad-fe`), también pendiente de
+> RF-TEST-14, commit `2b3f136` de la rama `feat/test-especialidad-fe`), también pendiente de
 > aprobación. Todos los `[@test]` apuntan a pruebas que se crean con la implementación y hoy
 > no existen, así que cada uno lleva la marca *(pendiente)*. Los ejemplos usan datos
-> inventados. Esta rama parte de `38024d4` y va detrás de `main`. Las referencias de línea al chatbot y a
-> `src/services/cohere.client.ts` citan `main` en `f10eb3f`, porque esos archivos cambian
-> después de `38024d4`, y la rama se alinea con `main` antes de implementar. Las demás
-> referencias de línea valen igual en los dos.
+> inventados. La rama parte de `38024d4` y trae `main` en `f10eb3f` con un merge, que suma el
+> ajuste del chatbot y la migración `0013`, así que todas las referencias de línea citan ese
+> estado.
 
 ## El problema
 
@@ -61,7 +60,7 @@ redacta el motivo del resultado. El filtro de BR-AP-07 resuelve lo segundo.
 | --- | --- | --- |
 | 1 | El test es el paso central de `/setup-carrera`, con la opción «Saltar y elegir por mi cuenta», y se puede rehacer desde el Perfil. | RS-BE-44, RS-BE-45 |
 | 2 | El puntaje es transparente y lo calcula el backend con la fórmula del contenido, sin aprendizaje automático. Cohere (`command-a-03-2025`, `/v2/chat`, el mismo motor del chatbot) solo redacta el motivo a partir del ranking ya calculado. A Cohere le llegan solo las respuestas del test y los puntajes, nunca el nombre, el código ni las notas del alumno. Si Cohere falla o tarda, el resultado sale igual con el motivo de las plantillas del contenido. La fase 3 queda fuera. | RS-BE-40 a RS-BE-43 |
-| 3 | El contenido de `contenido-test.json` y `contenido-test.md` está aprobado y va versionado. **Confirmado.** El 2026-09-25 el dueño deja `tb-sw-si-2` y la escala de TI (pregunta 4) con su texto actual («Dejarlas como están»). **Aprobado.** El mismo día aprueba los cuatro cambios por sumillas (pregunta 13 abajo, `tb-ti-si-1` arriba y `tb-si-vj-2` abajo cambian de texto, y `tb-sw-si-1` arriba solo de ilustración), los dos de Videojuegos (pregunta 2 abajo recomienda Proyecto de Videojuegos y luego Diseño de Videojuegos, y `tb-sw-vj-1` abajo pasa a «Crear las reglas de un juego de mesa y probarlas con amigos») y el código 550090 de Diseño de Videojuegos, con su nota en `meta.diplomaNotes`. Todo eso forma la versión `2026-09-25.3`. **Abierto.** La línea `low` de Ulises, la línea `second` sin usar y el Metropolitano de la pregunta 10 quedan sin marca del dueño, y la spec los adopta con la opción recomendada en la decisión abierta 1. | RS-BE-37, RS-BE-42 |
+| 3 | El contenido de `contenido-test.json` y `contenido-test.md` está aprobado y va versionado. **Confirmado.** El 2026-09-25 el dueño deja con su texto actual la escala de TI de la pregunta 4 («Pasar a la nube los sistemas de diez pollerías sin cortar la atención») y la tarea de Sistemas de Información de `tb-sw-si-2`, que en el contenido va arriba («Unir en una sola base de datos las ventas de todas las sedes»), y lo confirma con «Dejarlas como están» en la página de revisión de los cambios. **Aprobado.** El mismo día aprueba en esa página los cuatro cambios por sumillas (la pregunta 13 abajo, «Averiguar por dónde se coló un atacante en el sistema de una municipalidad», `tb-ti-si-1` arriba, «Detectar a un intruso en la red de una cadena de boticas y echarlo», `tb-si-vj-2` abajo, «Recopilar los trucos de los boticarios veteranos en un buscador para todo el equipo», y la ilustración de `tb-sw-si-1` arriba), los dos de Videojuegos (la pregunta 2 abajo toma como primer electivo Proyecto de Videojuegos, 650081, y luego Diseño de Videojuegos, y `tb-sw-vj-1` abajo pasa a «Crear las reglas de un juego de mesa y probarlas con amigos») y el código 550090 de Diseño de Videojuegos en lugar del 550043, con el requisito del diploma (Storytelling) y una nota en `meta.diplomaNotes`. `meta.sources` y `meta.sourceLimits` suman las sumillas y los sílabos. Todo eso forma la versión `2026-09-25.3`. **Abierto.** La línea `low` de Ulises, la línea `second` sin usar y el Metropolitano de la pregunta 10 quedan sin marca del dueño, y la spec los adopta con la opción recomendada en la decisión abierta 1. El titular del empate con afinidad menor que 50 va en la decisión abierta 3. | RS-BE-37, RS-BE-42 |
 | 4 | Diseño «Conversación con Ulises». Las tarjetas del duelo son grises y se encienden en el color de su especialidad al tocarlas. | RS-BE-38 |
 | 5 | Se guarda solo el último resultado por alumno, con el ranking, la fecha y la versión del test, para mostrarlo en el Perfil. Las respuestas una por una no se guardan. Es un cambio de BD que pide aprobación explícita. | RS-BE-44, RS-BE-45 |
 | 6 | Solo se muestran y se eligen los cuatro diplomas oficiales, con el filtro `is_active = true` en el backend y sin tocar los datos de `specialty`. `specialtyBelongsToCareer` exige también `is_active`. | BR-AP-07 |
@@ -80,10 +79,10 @@ parte que la app necesita (RS-BE-38).
 - **Versión.** Cadena con la forma `AAAA-MM-DD.N` (`^\d{4}-\d{2}-\d{2}\.\d+$`), igual al
   campo `version` del archivo y a su nombre. La primera versión registrada es
   `2026-09-25.3`, que es el `contenido-test.json` vigente. Parte de la `2026-09-25.2` aprobada
-  y suma los cambios por sumillas y de Videojuegos y el código 550090 que el dueño aprueba el
-  2026-09-25 (decisión 3). `tb-sw-si-2` y la escala de TI (pregunta 4) conservan el texto de
-  la `2026-09-25.2`, como confirma el dueño. La `2026-09-25.2` no entra al registro, porque
-  ningún alumno la recibe.
+  y suma los cambios por sumillas y de Videojuegos, el código 550090 y las notas de `meta` que
+  el dueño aprueba el 2026-09-25 (decisión 3). La escala de TI de la pregunta 4 y
+  `tb-sw-si-2` conservan el texto de la `2026-09-25.2`, como confirma el dueño. La
+  `2026-09-25.2` no entra al registro, porque ningún alumno la recibe.
 - **Registro.** `content/index.ts` importa cada archivo de forma estática (sin leer el disco
   en tiempo de ejecución, para que el empaquetado de Vercel lo incluya) y exporta
   `CURRENT_VERSION` y el mapa `CONTENT_BY_VERSION`. `GET /specialty-test/content` sirve
@@ -256,9 +255,10 @@ empate, su número de desempates, sus plantillas (RS-BE-42) y su motivo, letra p
   preguntas de RS-BE-38) y la línea de Ulises que va antes, `first` antes del desempate 1 y
   `second` antes del desempate 2. No guarda nada.
 
-En una simulación de solo lectura con 200 000 juegos de respuestas al azar sobre la versión
-`2026-09-25.3`, el 51 % no pide desempate, el 15 % pide uno y el 35 % pide dos. Con alumnos
-reales, que no responden al azar, se espera menos.
+Si las cuatro opciones de cada pregunta y de cada desempate son igual de probables, un cálculo
+exacto de solo lectura sobre la versión `2026-09-25.3` da un 50,5 % de tests sin desempate, un
+14,7 % con uno y un 34,8 % con dos, y una simulación de 200 000 juegos al azar lo confirma. Con
+alumnos reales, que no responden al azar, se esperan menos desempates.
 
 `[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts` *(pendiente)*
 `[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts` *(pendiente)*
@@ -445,7 +445,7 @@ REGLAS
   `specialtyId` y afinidad redondeada de las cuatro, en orden), si hay empate y la fecha.
   Sobre la lista de la decisión 5 suma el empate, que el Perfil necesita para mostrar juntas
   a las dos ganadoras, y el `specialtyId`, que deja la fila como foto completa de lo que
-  devolvió la evaluación (decisión abierta 8).
+  devuelve la evaluación (decisión abierta 8).
 - **Qué no se guarda.** Las respuestas una por una, los desempates, el motivo ni las líneas de
   Ulises. El motivo resume las tareas que el alumno elige, así que guardarlo sería guardar
   parte de sus respuestas (decisión abierta 8).
@@ -543,8 +543,8 @@ sin una decisión aparte. Una prueba lo fija leyendo el código del chatbot, sin
 Número. La `0013` es `drizzle/0013_chatbot_message_history.sql`, del historial del
 chatbot, que ya está en `main` (PR #8, merge `1801a02`) y que `MIGRATIONS.md` registra como
 aplicada el 2026-09-25 (PR #9, `f10eb3f`). Esta es la `0014`, la siguiente libre. La rama
-`feat/test-especialidad` parte de `38024d4`, anterior a ese merge, así que todavía no trae la
-`0013` y se alinea con `main` antes de implementar.
+`feat/test-especialidad` parte de `38024d4`, anterior a ese merge, y trae la `0013` con el
+merge de `main` en `f10eb3f`.
 
 Se aplica con `bun run db:apply drizzle/0014_specialty_test_result.sql`, con respaldo previo y
 antes del merge del código que la usa, según `MIGRATIONS.md`, y no con `db:migrate` ni
@@ -733,12 +733,11 @@ enmendada lleva la marca en cada regla y los detalles están allí.
 - `MIGRATIONS.md`. La entrada de la `0014` se escribe cuando el dueño la aplica, con su
   respaldo y su verificación.
 - Spec del frontend, `ULima_Frontend_IS2/specs/features/specialty-test/specialty-test.spec.md`
-  (RF-TEST-1 a RF-TEST-14, commit `79c2719`). Cubre el id antiguo en caché de
+  (RF-TEST-1 a RF-TEST-14, commit `2b3f136`). Cubre el id antiguo en caché de
   `getEspecialidadName()` (decisión 6, RF-TEST-14), la capa de datos con el `409` de versión y
   el `404` de test no disponible (RF-TEST-2), la tarjeta del Perfil que se oculta con ese
   `404` (RF-TEST-10), el color de cada tarjeta y las ilustraciones (su decisión abierta 2).
-  Su decisión abierta 20 señala el choque de la escala de TI y `tb-sw-si-2` con
-  `decisiones.md`, que esta versión de la spec resuelve al dejar las dos tareas como están.
+  Las dos specs describen la misma `2026-09-25.3`.
 
 ## Qué NO entra
 
@@ -769,13 +768,10 @@ Cada punto trae la opción que la spec adopta por defecto. Ninguno está aprobad
    la pregunta 10, como ya lo hace la `2026-09-25.3`. Si el dueño cambia alguna de las dos
    primeras, cambia la lógica de RS-BE-42 y no el contenido; si rechaza la tercera, la
    pregunta 10 cambia en una versión nueva del contenido.
-2. **Retirada.** Proponía el resumen, los electivos y la ilustración de dos tareas que
-   reemplazaban a `tb-sw-si-2` y a la escala de TI. El dueño deja esas dos tareas como están
-   (decisión 3), así que no hay tareas nuevas. El número se conserva para no mover las
-   referencias de las otras specs.
+2. **Sin uso.** El número queda libre para no mover las referencias de las otras specs.
 3. **Empate con afinidad menor que 50.** El titular de Ulises es `tie` y no `low`, igual que el
-   motivo, que con empate usa solo `tie`. Ocurre en el 2,9 % de los juegos al azar de la
-   simulación.
+   motivo, que con empate usa solo `tie`. Con respuestas al azar ocurre en el 2,8 % de los
+   tests, según el cálculo exacto de RS-BE-41.
 4. **La especialidad de cada tarea viaja en `GET /specialty-test/content`.** No se trata como
    secreto, porque el diseño elegido enciende la tarjeta tocada con su color (decisión 4) y el
    puntaje es transparente. La alternativa, ocultarla, obliga a un viaje al servidor por toque.
@@ -793,7 +789,7 @@ Cada punto trae la opción que la spec adopta por defecto. Ninguno está aprobad
    motivos de 60 a 500 caracteres.
 8. **Qué se guarda.** La fila suma el empate y el `specialtyId` a lo que pide la decisión 5
    (ranking, fecha y versión). El empate le deja al Perfil mostrar juntas a las dos
-   ganadoras. El `specialtyId` deja la fila como foto completa de lo que devolvió la
+   ganadoras. El `specialtyId` deja la fila como foto completa de lo que devuelve la
    evaluación. La spec del frontend no pone «Elegir como principal» en la tarjeta del Perfil
    (su decisión abierta 16), así que hoy nadie elige con ese id desde el Perfil; queda listo
    si el dueño pide ese botón. La alternativa es guardar solo la clave y poner el id al leer,
