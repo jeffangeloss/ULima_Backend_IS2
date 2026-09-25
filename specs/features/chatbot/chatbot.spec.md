@@ -128,7 +128,8 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 
 `[@test] ../../../test/HU28_ronald/chatbot.retention.postgres.test.ts` *(existe; primer punto del
 ajuste contra un PostgreSQL local y solo con `TEST_DATABASE_URL`, con `ask` en 404, `getSession`
-en `null`, que la ruta responde con 404, y `listSessions` sin la sesión vencida)*
+en `null`, que el controlador convierte en 404 sin que la prueba llame a la ruta, y `listSessions`
+sin la sesión vencida)*
 `[@test] ../../../test/HU28_ronald/chatbot.retention.test.ts` *(existe; el mismo primer punto sin
 base, con un repositorio falso, y corre siempre)*
 `[@test] ../../../test/HU28_ronald/chatbot.atomic-save.test.ts` *(existe; segundo punto del
