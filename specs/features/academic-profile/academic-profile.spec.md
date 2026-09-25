@@ -98,6 +98,10 @@ targets:
 - El desactivado, los `upsert` y la marca de `specialty_setup_completed` corren en una sola
   transacción. Si algo falla, la base conserva el estado previo y el error sube igual que hoy
   (`409 DUPLICATE_PRIMARY` o `500`).
+- La transacción vive en un método nuevo del repository, que abre
+  `this.database.transaction` como `academic-record.repository.ts:110`, porque `AGENTS.md` no
+  deja que los services importen `db`. El service sigue validando cada id antes, como hoy, y
+  sigue traduciendo la violación de unicidad a `409 DUPLICATE_PRIMARY`.
 - «Elegir como principal» y los corazones de interés del resultado del test usan esta ruta.
 - `[@test] ../../../test/HU36_jeff/academic-profile-atomic.test.ts` *(pendiente)*
 

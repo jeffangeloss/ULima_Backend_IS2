@@ -9,6 +9,9 @@ targets:
   - ../../../src/shared/middleware/rate-limit.ts
   - ../../../src/db/schema/schema.ts
   - ../../../drizzle/0014_specialty_test_result.sql
+  # Las dos rutas siguientes quedan sujetas a la decisión abierta 15 y salen si el dueño la rechaza.
+  - ../../../scripts/specialty-test/generar.py
+  - ../../../docs/specialty-test/contenido-*.md
 ---
 
 # Test de especialidad
@@ -19,10 +22,15 @@ targets:
 > y nada de esa lista se da por aprobado. La tabla nueva de RS-BE-44 es un cambio de base de
 > datos y exige además la aprobación de BD de `AGENTS.md`, aparte de la de esta spec.
 > Enmienda `specs/features/academic-profile/academic-profile.spec.md` (BR-AP-07 y BR-AP-08,
-> ver «Enmienda a la spec de Academic Profile»). Contraparte de frontend por escribir en
-> `ULima_Frontend_IS2/specs/features/specialty-test/specialty-test.spec.md`. Todos los
-> `[@test]` apuntan a pruebas que se crean con la implementación y hoy no existen, así que
-> cada uno lleva la marca *(pendiente)*. Los ejemplos usan datos inventados.
+> ver «Enmienda a la spec de Academic Profile»). La contraparte de frontend es
+> `ULima_Frontend_IS2/specs/features/specialty-test/specialty-test.spec.md` (RF-TEST-1 a
+> RF-TEST-14, commit `79c2719` de la rama `feat/test-especialidad-fe`), también pendiente de
+> aprobación. Todos los `[@test]` apuntan a pruebas que se crean con la implementación y hoy
+> no existen, así que cada uno lleva la marca *(pendiente)*. Los ejemplos usan datos
+> inventados. Esta rama parte de `38024d4` y va detrás de `main`. Las referencias de línea al chatbot y a
+> `src/services/cohere.client.ts` citan `main` en `f10eb3f`, porque esos archivos cambian
+> después de `38024d4`, y la rama se alinea con `main` antes de implementar. Las demás
+> referencias de línea valen igual en los dos.
 
 ## El problema
 
@@ -53,7 +61,7 @@ redacta el motivo del resultado. El filtro de BR-AP-07 resuelve lo segundo.
 | --- | --- | --- |
 | 1 | El test es el paso central de `/setup-carrera`, con la opción «Saltar y elegir por mi cuenta», y se puede rehacer desde el Perfil. | RS-BE-44, RS-BE-45 |
 | 2 | El puntaje es transparente y lo calcula el backend con la fórmula del contenido, sin aprendizaje automático. Cohere (`command-a-03-2025`, `/v2/chat`, el mismo motor del chatbot) solo redacta el motivo a partir del ranking ya calculado. A Cohere le llegan solo las respuestas del test y los puntajes, nunca el nombre, el código ni las notas del alumno. Si Cohere falla o tarda, el resultado sale igual con el motivo de las plantillas del contenido. La fase 3 queda fuera. | RS-BE-40 a RS-BE-43 |
-| 3 | El contenido de `contenido-test.json` y `contenido-test.md` está aprobado y va versionado, porque puede recibir ajustes tras el cotejo con las sumillas oficiales. Las cinco dudas del revisor que quedan sin marca del dueño se adoptan con la opción recomendada y quedan a la vista en la decisión abierta 1. | RS-BE-37 |
+| 3 | El contenido de `contenido-test.json` y `contenido-test.md` está aprobado y va versionado. **Confirmado.** El 2026-09-25 el dueño deja `tb-sw-si-2` y la escala de TI (pregunta 4) con su texto actual («Dejarlas como están»). **Aprobado.** El mismo día aprueba los cuatro cambios por sumillas (pregunta 13 abajo, `tb-ti-si-1` arriba y `tb-si-vj-2` abajo cambian de texto, y `tb-sw-si-1` arriba solo de ilustración), los dos de Videojuegos (pregunta 2 abajo recomienda Proyecto de Videojuegos y luego Diseño de Videojuegos, y `tb-sw-vj-1` abajo pasa a «Crear las reglas de un juego de mesa y probarlas con amigos») y el código 550090 de Diseño de Videojuegos, con su nota en `meta.diplomaNotes`. Todo eso forma la versión `2026-09-25.3`. **Abierto.** La línea `low` de Ulises, la línea `second` sin usar y el Metropolitano de la pregunta 10 quedan sin marca del dueño, y la spec los adopta con la opción recomendada en la decisión abierta 1. | RS-BE-37, RS-BE-42 |
 | 4 | Diseño «Conversación con Ulises». Las tarjetas del duelo son grises y se encienden en el color de su especialidad al tocarlas. | RS-BE-38 |
 | 5 | Se guarda solo el último resultado por alumno, con el ranking, la fecha y la versión del test, para mostrarlo en el Perfil. Las respuestas una por una no se guardan. Es un cambio de BD que pide aprobación explícita. | RS-BE-44, RS-BE-45 |
 | 6 | Solo se muestran y se eligen los cuatro diplomas oficiales, con el filtro `is_active = true` en el backend y sin tocar los datos de `specialty`. `specialtyBelongsToCareer` exige también `is_active`. | BR-AP-07 |
@@ -71,8 +79,11 @@ parte que la app necesita (RS-BE-38).
 
 - **Versión.** Cadena con la forma `AAAA-MM-DD.N` (`^\d{4}-\d{2}-\d{2}\.\d+$`), igual al
   campo `version` del archivo y a su nombre. La primera versión registrada es
-  `2026-09-25.3`, que es la `2026-09-25.2` aprobada más los cambios de la decisión abierta 1.
-  Si el dueño rechaza esos cambios, la primera versión es la `2026-09-25.2` tal cual.
+  `2026-09-25.3`, que es el `contenido-test.json` vigente. Parte de la `2026-09-25.2` aprobada
+  y suma los cambios por sumillas y de Videojuegos y el código 550090 que el dueño aprueba el
+  2026-09-25 (decisión 3). `tb-sw-si-2` y la escala de TI (pregunta 4) conservan el texto de
+  la `2026-09-25.2`, como confirma el dueño. La `2026-09-25.2` no entra al registro, porque
+  ningún alumno la recibe.
 - **Registro.** `content/index.ts` importa cada archivo de forma estática (sin leer el disco
   en tiempo de ejecución, para que el empaquetado de Vercel lo incluya) y exporta
   `CURRENT_VERSION` y el mapa `CONTENT_BY_VERSION`. `GET /specialty-test/content` sirve
@@ -111,14 +122,16 @@ conducir el test sin red entre pregunta y pregunta.
 
 - **Sí viaja.** La versión. El catálogo de las cuatro especialidades con su clave, su
   `specialtyId` (ver abajo), su nombre, su frase, sus colores claro y oscuro, el nombre de su
-  ícono y sus electivos con código, nombre, nombre corto, créditos y requisito. Las líneas de
-  Ulises del recorrido (bienvenida, botón, ayudas, reacciones y la línea de espera del
+  ícono en Lucide, sus créditos totales (`totalCredits`) y sus electivos con código, nombre,
+  nombre corto, créditos y requisito. El contenido guarda el ícono como `{ lucide, flutter }` y
+  el campo `icon` de la respuesta es la cadena de `icon.lucide` (por ejemplo `code-xml`). Las
+  líneas de Ulises del recorrido (bienvenida, botón, ayudas, reacciones y la línea de espera del
   resultado). Las opciones del duelo y de la escala con su etiqueta, sin valores. Las 14
   preguntas con su id, número, tipo, enunciado, reacción o cierre de bloque, y cada tarea con
   su id (`q01.top`, `q01.bottom`, `q04.task`), su texto, su descripción de ilustración y la
   clave de su especialidad.
-- **No viaja.** Los resúmenes de las tareas, los electivos de cada tarea, los pesos, el
-  umbral, las plantillas del motivo, las líneas de Ulises del resultado y del desempate, los
+- **No viaja.** El nombre del ícono en Flutter (`icon.flutter`), los resúmenes de las
+  tareas, los electivos de cada tarea, los pesos, el umbral, las plantillas del motivo, las líneas de Ulises del resultado y del desempate, los
   desempates, los ejemplos, el balance ni las fuentes. Son del cálculo y del motivo, que hace
   el servidor.
 - **La especialidad de cada tarea no es un secreto.** La app la necesita para encender la
@@ -218,9 +231,9 @@ de serlo (35 · h / 6).
   100 con el medio hacia arriba, `floor((S + 105) / 210)`, de modo que 17,5 se muestra como 18.
   Todas las decisiones usan `S` y `U`, nunca el valor redondeado.
 
-Los ocho ejemplos del contenido, recalculados así el 2026-09-25 en una prueba de solo
-lectura sobre la versión `2026-09-25.2`, reproducen su ranking, sus afinidades redondeadas y
-su número de desempates.
+Los ocho ejemplos del contenido, recalculados así el 2026-09-25 con un script de solo
+lectura sobre la versión `2026-09-25.3`, reproducen su ranking, sus afinidades redondeadas, su
+empate, su número de desempates, sus plantillas (RS-BE-42) y su motivo, letra por letra.
 
 `[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts` *(pendiente)*
 
@@ -244,10 +257,11 @@ su número de desempates.
   `second` antes del desempate 2. No guarda nada.
 
 En una simulación de solo lectura con 200 000 juegos de respuestas al azar sobre la versión
-`2026-09-25.2`, el 51 % no pide desempate, el 15 % pide uno y el 34 % pide dos. Con alumnos
+`2026-09-25.3`, el 51 % no pide desempate, el 15 % pide uno y el 35 % pide dos. Con alumnos
 reales, que no responden al azar, se espera menos.
 
 `[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts` *(pendiente)*
 
 ### RS-BE-42 · Resultado final, motivo con plantillas y líneas de Ulises
 
@@ -303,21 +317,30 @@ decide nada del resultado. Si no responde a tiempo, falla o devuelve un texto qu
 validación, el resultado sale igual con el motivo de las plantillas (RS-BE-42), sin error
 para la app.
 
-- **Llamada.** Reusa `cohereClient.chatWithHistory` (`src/services/cohere.client.ts:81-123`),
+- **Llamada.** Reusa `cohereClient.chatWithHistory` (`src/services/cohere.client.ts:72-114`),
   que llama a `/v2/chat` con `command-a-03-2025` y la clave `COHERE_API_KEY`
   (`src/config/env.ts:78`, leída por `config.chatbot.cohereApiKey`). No hay variable de
   entorno nueva ni cambio en el cliente. Va con el prompt de abajo como mensaje `system`, un
   solo mensaje `user` con los datos, `temperature` 0,3 y `maxTokens` 200.
 - **Tiempo.** Un `AbortController` corta la llamada a los **5 segundos**, con el mismo patrón
-  que el chatbot usa con 8 (`chatbot.service.ts:97-98`). El chatbot espera más porque su
+  que el chatbot usa con 8 (`chatbot.service.ts:138-139`). El chatbot espera más porque su
   respuesta es el producto; aquí el alumno ya tiene el resultado calculado y la espera es solo
   por el texto (decisión abierta 7).
 - **Errores.** A diferencia del chatbot, que responde `503 CHATBOT_UNAVAILABLE`
-  (`chatbot.service.ts:116-121`), aquí ningún fallo de Cohere llega a la app. Un tiempo
-  agotado, un error de red, una respuesta que no es 2xx, un texto vacío o un texto que no pasa
-  la validación producen el motivo de las plantillas y un `console.warn` con un código corto
-  (`timeout`, `http`, `empty` o `invalid:<regla>`). El registro nunca lleva el texto de
-  Cohere, las respuestas ni el id del alumno.
+  (`chatbot.service.ts:162`), aquí ningún fallo de Cohere llega a la app. Cualquier excepción
+  del cliente, un texto vacío o un texto que no pasa la validación producen el motivo de las
+  plantillas y un `console.warn` con uno de estos códigos cortos.
+  - `timeout`. La señal del `AbortController` está abortada.
+  - `http`. El mensaje del error empieza con `Cohere Chat error`, que es como el cliente
+    señala una respuesta que no es 2xx (`cohere.client.ts:109`).
+  - `error`. Cualquier otra excepción, por ejemplo un error de red o un cuerpo de respuesta
+    que no es JSON.
+  - `empty`. Cohere responde un texto vacío.
+  - `invalid:<regla>`. El texto no pasa la validación de abajo.
+
+  El módulo lee `error.message` solo para buscar ese prefijo y nunca lo registra, porque en
+  un `http` trae el cuerpo de la respuesta de Cohere. El registro nunca lleva el texto de
+  Cohere, `error.message`, las respuestas ni el id del alumno.
 - **Datos que le llegan.** Solo textos del propio contenido y el resultado del cálculo, sin
   ninguna cifra. Nunca el nombre, el código, el correo, el id ni las notas del alumno, ni nada
   leído de la base salvo el resultado. El mensaje `user` es exactamente
@@ -344,13 +367,15 @@ para la app.
 }
 ```
 
-  El ejemplo es el `ejemplo-2` del contenido. `ganadoras` trae una especialidad, o las dos del
-  empate. `ranking` es el orden final, sin afinidades. `nombrables` son las únicas
-  especialidades que el texto puede nombrar, que son las ganadoras, la segunda si su afinidad
-  exacta es de 50 o más y el rival del desempate si la ganadora está en el par. `lectura`
-  traduce la plantilla `main` elegida a una frase fija (tabla de abajo). `detalle` trae una
-  entrada por ganadora, con sus tareas de los 10 duelos de las preguntas, y su escala.
-  `desempate` es `null` salvo que la ganadora esté en el par, y `tareaElegida` es el
+  El ejemplo es el `ejemplo-2` de la versión `2026-09-25.3`. `ganadoras` trae una
+  especialidad, o las dos del empate. `ranking` es el orden final, sin afinidades.
+  `nombrables` son las únicas especialidades que el texto puede nombrar. Sin empate son la
+  ganadora, la segunda si su afinidad exacta es de 50 o más y el rival del desempate si la
+  ganadora está en el par; con empate son solo las dos ganadoras. `lectura` traduce la
+  plantilla `main` elegida a una frase fija (tabla de abajo). `detalle` trae una entrada por
+  ganadora, con sus tareas de los 10 duelos de las preguntas, y su escala. `desempate` es
+  `null` con empate, porque el rival sería ambiguo con dos ganadoras, y también sin empate
+  salvo que la ganadora esté en el par. Cuando no es `null`, `tareaElegida` es el
   `{tareaDesempate}` de RS-BE-42 o `null`. `electivos` trae los nombres cortos de los
   electivos de las ganadoras.
 
@@ -393,9 +418,11 @@ REGLAS
     tildes.
   - `otras`. Fuera de las comillas latinas, no contiene el nombre completo de ninguna de las
     cuatro especialidades que no esté en `nombrables`. Así Cohere no puede presentar como
-    ganadora a otra que el cálculo no pone arriba. Lo que va entre comillas no cuenta, porque un
-    electivo puede llevar en su nombre el de otra especialidad («Arquitectura de Tecnologías de
-    la Información» es también de Sistemas de Información), y a ese texto lo revisa `comillas`.
+    ganadora a otra que el cálculo no pone arriba. Lo que va entre comillas no cuenta, porque
+    el nombre de un electivo puede llevar el de una especialidad, y a ese texto lo revisa
+    `comillas`. En la `2026-09-25.3` ningún nombre corto de `electivos` lo lleva, pero el
+    nombre completo de 650083, «Arquitectura de Tecnologías de la Información», sí, y una
+    versión futura puede usar un nombre corto así. La regla queda como resguardo.
   - `comillas`. Todo texto entre comillas latinas es un nombre de `electivos` o la respuesta
     de escala de una ganadora.
   - `resto`. No trae las marcas `DATOS DEL TEST` ni `FIN DE LOS DATOS`.
@@ -404,7 +431,10 @@ REGLAS
 - **Pruebas.** Las pruebas inyectan un cliente falso, así que ninguna llama a Cohere. Cubren
   que el mensaje no lleve el nombre, el código ni el id de un alumno de prueba (20230001,
   Garcia Lopez, Maria), cada regla de validación con un texto que la rompe, el tiempo agotado,
-  el error HTTP y el texto aceptado.
+  el error HTTP, el código `error` ante un error de red y ante un cuerpo que no es JSON, el
+  texto vacío, `desempate` en `null` y `nombrables` con solo las dos ganadoras en un empate, y
+  el texto aceptado. Espían `console` para fijar que ningún registro lleva el texto de Cohere,
+  `error.message`, las respuestas ni el id del alumno.
 
 `[@test] ../../../test/HU36_jeff/specialty-test-reason.test.ts` *(pendiente)*
 
@@ -413,14 +443,18 @@ REGLAS
 - **Qué se guarda.** Cuando el paso es el resultado final, el servidor guarda una fila por
   alumno en `student_specialty_test_result` con la versión del contenido, el ranking (clave,
   `specialtyId` y afinidad redondeada de las cuatro, en orden), si hay empate y la fecha.
-  Sobre la lista de la decisión 5 suma el empate y el `specialtyId`, que el Perfil necesita
-  para mostrar el resultado igual que la pantalla del test y para elegir desde ahí sin volver a
-  resolver nombres (decisión abierta 8).
+  Sobre la lista de la decisión 5 suma el empate, que el Perfil necesita para mostrar juntas
+  a las dos ganadoras, y el `specialtyId`, que deja la fila como foto completa de lo que
+  devolvió la evaluación (decisión abierta 8).
 - **Qué no se guarda.** Las respuestas una por una, los desempates, el motivo ni las líneas de
   Ulises. El motivo resume las tareas que el alumno elige, así que guardarlo sería guardar
   parte de sus respuestas (decisión abierta 8).
-- **Solo el último.** `INSERT … ON CONFLICT (student_id) DO UPDATE`. Rehacer el test reemplaza
-  la fila, y dos evaluaciones simultáneas dejan la última que escribe.
+- **Solo el último.** `INSERT … ON CONFLICT (student_id) DO UPDATE`, que reescribe
+  `content_version`, `ranking` e `is_tie` con los valores nuevos y fija `completed_at = now()`.
+  El `default now()` de `completed_at` solo actúa en el `INSERT`, así que el `DO UPDATE` fija
+  la fecha de forma explícita; sin eso, un test rehecho conservaría la fecha del primero.
+  Rehacer el test reemplaza la fila, y dos evaluaciones simultáneas dejan la última que
+  escribe.
 - **Orden.** El guardado va antes de la llamada a Cohere, porque el ranking no depende del
   motivo. Si el guardado falla, el error sube al manejador global (`500`) antes de gastar una
   llamada a Cohere, y la app puede reintentar con el mismo cuerpo, que da el mismo ranking.
@@ -431,6 +465,7 @@ REGLAS
 
 `[@test] ../../../test/HU36_jeff/migration-0014.test.ts` *(pendiente)*
 `[@test] ../../../test/HU36_jeff/specialty-test.repository.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts` *(pendiente)*
 `[@test] ../../../test/HU36_jeff/specialty-test.postgres.test.ts` *(pendiente, corre solo con `TEST_DATABASE_URL`)*
 
 ### RS-BE-45 · Último resultado para el Perfil
@@ -438,8 +473,16 @@ REGLAS
 `GET /specialty-test/me/result` devuelve el último resultado guardado del alumno del token, o
 `{ "result": null }` con `200` si el alumno no tiene ningún test terminado.
 
+- **Disponibilidad.** Después de la autorización de RS-BE-46, el alumno sale del token y sin
+  fila en `student` la ruta responde `404 USER_NOT_FOUND`. Luego comprueba las cuatro claves
+  como RS-BE-38 y, si alguna no encuentra su especialidad activa, responde
+  `404 SPECIALTY_TEST_NOT_AVAILABLE`, aunque el alumno tenga una fila guardada. Solo con el
+  test disponible lee la fila. Así las tres rutas cumplen los errores comunes del contrato,
+  y la app oculta la tarjeta del Perfil con el mismo código con el que salta el paso del
+  asistente (RF-TEST-2 y RF-TEST-10 de la spec del frontend).
 - Trae la versión, la fecha, el empate y el ranking guardado, con el nombre de cada
-  especialidad tomado de la versión vigente del contenido por su clave.
+  especialidad tomado de la versión vigente del contenido por su clave y el `specialtyId`
+  guardado en la fila.
 - `isCurrentVersion` dice si el resultado corresponde a la versión vigente, para que el
   Perfil pueda sugerir rehacer el test cuando el contenido cambia.
 - No trae el motivo, que no se guarda.
@@ -457,8 +500,10 @@ REGLAS
   sale solo del token y no hay parámetro de alumno.
 - **Límite de tasa.** `specialtyTestRateLimit`, en `src/shared/middleware/rate-limit.ts` con el
   mismo patrón que `chatbotRateLimit`, permite **30 evaluaciones por alumno por hora** en
-  `POST /specialty-test/me/evaluate`. Un test completo usa de una a tres, así que alcanza para
-  unas diez vueltas por hora, y cada vuelta llama a Cohere a lo más una vez. Al pasarse
+  `POST /specialty-test/me/evaluate`. Un test completo usa de una a tres, pero cualquier
+  evaluación puede ser final, porque un cliente puede repetir el cuerpo del resultado, y cada
+  evaluación final llama a Cohere. El tope real es entonces de 30 llamadas a Cohere por alumno
+  por hora, con la misma `COHERE_API_KEY` del chatbot (decisión abierta 10). Al pasarse
   responde `429 RATE_LIMITED` con el mensaje «Hiciste demasiados intentos del test. Intenta de
   nuevo en N minuto(s).» y `details.retryAfterMinutes`. El contador vive en la memoria de cada
   instancia, con el mismo límite que ya documentan los otros contadores del archivo. Las dos
@@ -468,7 +513,8 @@ REGLAS
   siempre. Es el primer `413` de la API.
 - **Caché.** `POST /specialty-test/me/evaluate` y `GET /specialty-test/me/result` responden
   con `Cache-Control: no-store`, como `academic-record`.
-- **Registro.** Ningún `console` del módulo imprime respuestas, motivos ni ids de alumno.
+- **Registro.** Ningún `console` del módulo imprime respuestas, motivos, textos de Cohere,
+  `error.message` de Cohere ni ids de alumno (RS-BE-43).
 - **Códigos.** `400 INVALID_JSON_BODY`, `400 INVALID_REQUEST_BODY`,
   `400 SPECIALTY_TEST_INVALID_ANSWERS`, `400 SPECIALTY_TEST_TIEBREAK_MISMATCH`,
   `401 MISSING_TOKEN`, `401 INVALID_TOKEN`, `403 FORBIDDEN`, `404 USER_NOT_FOUND`,
@@ -494,10 +540,11 @@ sin una decisión aparte. Una prueba lo fija leyendo el código del chatbot, sin
 > **Cambio de base de datos que espera la aprobación explícita del dueño.** No se aplica ni se
 > escribe el `.sql` antes de esa aprobación.
 
-Número. La `0013` ya la usa `drizzle/0013_chatbot_message_history.sql` en la rama
-`fix/chatbot-delegados-bloques`, que no está mergeada, así que esta es la `0014` aunque la
-`0013` todavía no esté en `main`. Con la misma lógica, si esa rama se abandona el número no se
-reusa.
+Número. La `0013` es `drizzle/0013_chatbot_message_history.sql`, del historial del
+chatbot, que ya está en `main` (PR #8, merge `1801a02`) y que `MIGRATIONS.md` registra como
+aplicada el 2026-09-25 (PR #9, `f10eb3f`). Esta es la `0014`, la siguiente libre. La rama
+`feat/test-especialidad` parte de `38024d4`, anterior a ese merge, así que todavía no trae la
+`0013` y se alinea con `main` antes de implementar.
 
 Se aplica con `bun run db:apply drizzle/0014_specialty_test_result.sql`, con respaldo previo y
 antes del merge del código que la usa, según `MIGRATIONS.md`, y no con `db:migrate` ni
@@ -506,7 +553,7 @@ idempotente (`CREATE TABLE IF NOT EXISTS`) y no toca ninguna tabla existente.
 
 | tabla | clave | columnas |
 | :--- | :--- | :--- |
-| `student_specialty_test_result` | PK `student_id` | `student_id` integer NOT NULL, FK → `student(id)` ON DELETE CASCADE; `content_version` varchar(20) NOT NULL; `ranking` jsonb NOT NULL; `is_tie` boolean NOT NULL; `completed_at` timestamptz NOT NULL default now() |
+| `student_specialty_test_result` | PK `student_id` | `student_id` integer NOT NULL, FK → `student(id)` ON DELETE CASCADE; `content_version` varchar(20) NOT NULL; `ranking` jsonb NOT NULL; `is_tie` boolean NOT NULL; `completed_at` timestamptz NOT NULL default now(), que el `DO UPDATE` vuelve a fijar con `now()` (RS-BE-44) |
 
 CHECK de la tabla.
 
@@ -625,8 +672,12 @@ GET /specialty-test/me/result
                     "ranking": [ { "key": "vj", "specialtyId": 7, "name": "Desarrollo de Videojuegos", "affinity": 75 }, … ] } }
 ```
 
-- El ejemplo del `POST` es el `ejemplo-2` del contenido, que no cambia con la versión
-  `2026-09-25.3`. Los `specialtyId` son ilustrativos.
+- El ejemplo del `POST` es el `ejemplo-2` de la versión `2026-09-25.3`. Los `specialtyId`
+  son ilustrativos.
+- `icon` es la cadena de `icon.lucide` del contenido (RS-BE-38) y `totalCredits` son los
+  créditos del diploma.
+- `GET /specialty-test/me/result` también responde `404 SPECIALTY_TEST_NOT_AVAILABLE`
+  cuando el test no está disponible, aunque haya una fila guardada (RS-BE-45).
 - `affinity` es siempre un entero de 0 a 100. `completedAt` es ISO-8601 en UTC con
   milisegundos. `tiebreakOutcome` es `null` si no hay desempate. `reasonSource` es `"ai"` o
   `"templates"`.
@@ -644,14 +695,14 @@ Todas se crean con la implementación, en `test/HU36_jeff/`, y hoy no existen.
 | RS-BE-38 | `specialty-test.routes.test.ts`, `specialty-test.service.test.ts` | Qué campos viajan y cuáles no, resolución de `specialtyId` por nombre sin tildes ni mayúsculas, `404 SPECIALTY_TEST_NOT_AVAILABLE` |
 | RS-BE-39 | `specialty-test.routes.test.ts`, `specialty-test.service.test.ts` | Orden de la validación, `413`, `429`, `400` de forma, `409` de versión, respuestas faltantes, de más y con valor de otro tipo, desempate que no toca, con otro id o de más |
 | RS-BE-40 | `specialty-test-logic.test.ts` | `S` y `U` enteros e iguales a la fracción exacta para todo `h`, `n` y `e`; orden por `S`, `U`, `e` y orden fijo; redondeo de 17,5 a 18 |
-| RS-BE-41 | `specialty-test-logic.test.ts` | Diferencia de 10 exacta que pide desempate y de 11 que no lo pide, 10,83 tras el primer desempate que ya no pide el segundo (la menor diferencia posible por encima de 10 con seis duelos), segundo desempate medido en el par aunque una tercera lo pase, ningún tercer desempate |
-| RS-BE-42 | `specialty-test-logic.test.ts` | Cada plantilla `main` alcanzada al menos una vez, `tie` sola con empate, empate con afinidad menor que 50 con titular `tie`, `{electivos}` sin repetidos, `stillTied` y `resolved` |
-| RS-BE-43 | `specialty-test-reason.test.ts` | Mensaje sin datos del alumno de prueba, cada regla de validación, tiempo agotado a los 5 s, error HTTP y texto aceptado |
-| RS-BE-44 | `migration-0014.test.ts`, `specialty-test.repository.test.ts`, `specialty-test.postgres.test.ts` | SQL de la migración, `ON CONFLICT (student_id)`, una sola fila tras dos evaluaciones y la fila borrada con el alumno |
-| RS-BE-45 | `specialty-test.routes.test.ts`, `specialty-test.service.test.ts` | `result: null`, ranking con nombres de la versión vigente, `isCurrentVersion` y `500` ante un `ranking` corrupto |
-| RS-BE-46 | `specialty-test.routes.test.ts`, `specialty-test.rate-limit.test.ts` | `401`, `403` con token docente, `429` en la evaluación 31, `no-store` y la forma de error del `413` |
+| RS-BE-41 | `specialty-test-logic.test.ts`, `specialty-test.service.test.ts` | Diferencia de 10 exacta que pide desempate y de 11 que no lo pide, 10,83 tras el primer desempate que ya no pide el segundo (la menor diferencia posible por encima de 10 con seis duelos), segundo desempate medido en el par aunque una tercera lo pase, ningún tercer desempate, y la respuesta del paso con el desempate y `ulisesLine` igual a `first` antes del desempate 1 y a `second` antes del 2 |
+| RS-BE-42 | `specialty-test-logic.test.ts` | Cada plantilla `main` alcanzada al menos una vez, `tie` sola con empate, titular `winner` con afinidad de 50 o más y `low` con menos, empate con afinidad menor que 50 con titular `tie`, `{electivos}` sin repetidos, `stillTied` y `resolved`, `closing` y `retake` en todo resultado y la línea `second` de Ulises en ninguno |
+| RS-BE-43 | `specialty-test-reason.test.ts` | Mensaje sin datos del alumno de prueba, cada regla de validación, tiempo agotado a los 5 s, error HTTP, código `error` ante un error de red o un cuerpo que no es JSON, texto vacío, `desempate` en `null` y `nombrables` con las dos ganadoras en un empate, registros sin el texto de Cohere, `error.message`, respuestas ni ids, y texto aceptado |
+| RS-BE-44 | `migration-0014.test.ts`, `specialty-test.repository.test.ts`, `specialty-test.service.test.ts`, `specialty-test.postgres.test.ts` | SQL de la migración, `ON CONFLICT (student_id)` con `completed_at = now()` en el `DO UPDATE` y una fecha nueva al rehacer el test, un paso de desempate que no escribe nada, el guardado antes de la llamada a Cohere (un fallo del guardado da `500` sin llamar a Cohere), una sola fila tras dos evaluaciones y la fila borrada con el alumno |
+| RS-BE-45 | `specialty-test.routes.test.ts`, `specialty-test.service.test.ts` | `result: null`, ranking con nombres de la versión vigente y el `specialtyId` guardado, `isCurrentVersion`, `404 USER_NOT_FOUND`, `404 SPECIALTY_TEST_NOT_AVAILABLE` también con una fila guardada y sin leerla, y `500` ante un `ranking` corrupto |
+| RS-BE-46 | `specialty-test.routes.test.ts`, `specialty-test.rate-limit.test.ts` | `401`, `403` con token docente, `429` en la evaluación 31, las dos rutas `GET` sin límite pasadas 31 llamadas, `no-store`, la forma de error del `413` y ningún `console` con respuestas, motivos, textos de Cohere, `error.message` ni ids |
 | RS-BE-47 | `chatbot-isolation-specialty-test.test.ts` | El chatbot no nombra la tabla ni importa el módulo |
-| BR-AP-07 | `academic-profile-official.test.ts` | `is_active = true` en el listado y en `specialtyBelongsToCareer`, y `404 SPECIALTY_NOT_FOUND` al elegir una inactiva |
+| BR-AP-07 | `academic-profile-official.test.ts` | `is_active = true` en el listado con `careerId` y sin él, y en `specialtyBelongsToCareer`, y `404 SPECIALTY_NOT_FOUND` al elegir una inactiva |
 | BR-AP-08 | `academic-profile-atomic.test.ts` | Un fallo a mitad del reemplazo deja intactas las especialidades previas |
 
 ## Enmienda a la spec de Academic Profile
@@ -667,8 +718,9 @@ enmendada lleva la marca en cada regla y los detalles están allí.
   `404 SPECIALTY_NOT_FOUND`, el mismo código que una de otra carrera.
 - **BR-AP-08 (decisión abierta 14).** El reemplazo de especialidades pasa a una sola
   transacción. Hoy desactiva todas y después inserta una por una (`academic-profile.service.ts:72-86`),
-  y un fallo a mitad deja al alumno sin especialidades. «Elegir como principal» y los
-  corazones del resultado del test usan esa ruta.
+  y un fallo a mitad deja al alumno sin especialidades. La transacción vive en un método del
+  repository, porque `AGENTS.md` no deja que los services importen `db`. «Elegir como
+  principal» y los corazones del resultado del test usan esa ruta.
 
 ## Cambios en otras specs
 
@@ -680,10 +732,13 @@ enmendada lleva la marca en cada regla y los detalles están allí.
   marcas de enmienda en BR-AP-03 y BR-AP-04.
 - `MIGRATIONS.md`. La entrada de la `0014` se escribe cuando el dueño la aplica, con su
   respaldo y su verificación.
-- Spec del frontend (por escribir). Tiene que cubrir que `getEspecialidadName()`
-  (`lib/services/auth_service.dart`, cerca de la línea 92) devuelve una cadena vacía para un id
-  antiguo que sigue en caché (decisión 6), el uso de `specialtyId` para elegir, el `409` de
-  versión, el `404` de test no disponible, el color de cada tarjeta y las ilustraciones.
+- Spec del frontend, `ULima_Frontend_IS2/specs/features/specialty-test/specialty-test.spec.md`
+  (RF-TEST-1 a RF-TEST-14, commit `79c2719`). Cubre el id antiguo en caché de
+  `getEspecialidadName()` (decisión 6, RF-TEST-14), la capa de datos con el `409` de versión y
+  el `404` de test no disponible (RF-TEST-2), la tarjeta del Perfil que se oculta con ese
+  `404` (RF-TEST-10), el color de cada tarjeta y las ilustraciones (su decisión abierta 2).
+  Su decisión abierta 20 señala el choque de la escala de TI y `tb-sw-si-2` con
+  `decisiones.md`, que esta versión de la spec resuelve al dejar las dos tareas como están.
 
 ## Qué NO entra
 
@@ -707,33 +762,29 @@ enmendada lleva la marca en cada regla y los detalles están allí.
 
 Cada punto trae la opción que la spec adopta por defecto. Ninguno está aprobado.
 
-1. **Las cinco dudas del revisor (decisión 3), que dan la versión `2026-09-25.3`.** La línea
-   `low` de Ulises sale con afinidad de la ganadora menor que 50. La línea `second` de Ulises
-   no se usa. La tarea de Sistemas de Información de `tb-sw-si-2` pasa a «Unir los datos de
-   varias boticas para que ninguna se quede sin medicinas» (13 palabras). La escala de TI
-   (pregunta 4) pasa a «Lograr que la web de una tienda aguante a miles de compradores en una
-   oferta de medianoche». El Metropolitano (pregunta 10) se puede nombrar. **Aviso.** La escala
-   de TI propuesta tiene 17 palabras y rompe la pauta de 6 a 14 del propio contenido, que
-   `generar.py` y RS-BE-37 hacen cumplir, y además se parece a la tarea de TI de la pregunta 10
-   (una web que no se cae cuando todos compran). La spec propone «Lograr que la web de una
-   tienda aguante miles de compras a medianoche» (13 palabras), que el dueño confirma o cambia.
-   Los motivos de los ejemplos 3, 6 y 7 cambian con los resúmenes nuevos.
-2. **Resumen, electivos e ilustración de las dos tareas nuevas.** `tb-sw-si-2`, resumen «unir
-   los datos de varias boticas para que no falten medicinas», electivo 650071, ilustración
-   «Varias boticas pequeñas con flechas que llegan a un solo cilindro de base de datos». Escala
-   de TI, resumen «lograr que la web de una tienda aguante una oferta de medianoche»,
-   electivos 650025 y 650077, ilustración «Tienda en línea con una fila larga de carritos y
-   varios servidores en la nube que se reparten la carga, con un reloj en las doce».
+1. **Las tres dudas del revisor que el dueño no marca una por una (decisión 3).** La línea
+   `low` de Ulises sale cuando la afinidad de la ganadora es menor que 50, el mismo corte de
+   la plantilla `low` (RS-BE-42). La línea `second` de Ulises no se usa, porque la plantilla
+   `second` del motivo y el ranking ya dicen el segundo lugar. El Metropolitano se nombra en
+   la pregunta 10, como ya lo hace la `2026-09-25.3`. Si el dueño cambia alguna de las dos
+   primeras, cambia la lógica de RS-BE-42 y no el contenido; si rechaza la tercera, la
+   pregunta 10 cambia en una versión nueva del contenido.
+2. **Retirada.** Proponía el resumen, los electivos y la ilustración de dos tareas que
+   reemplazaban a `tb-sw-si-2` y a la escala de TI. El dueño deja esas dos tareas como están
+   (decisión 3), así que no hay tareas nuevas. El número se conserva para no mover las
+   referencias de las otras specs.
 3. **Empate con afinidad menor que 50.** El titular de Ulises es `tie` y no `low`, igual que el
-   motivo, que con empate usa solo `tie`. Ocurre en el 2,8 % de los juegos al azar de la
+   motivo, que con empate usa solo `tie`. Ocurre en el 2,9 % de los juegos al azar de la
    simulación.
 4. **La especialidad de cada tarea viaja en `GET /specialty-test/content`.** No se trata como
    secreto, porque el diseño elegido enciende la tarjeta tocada con su color (decisión 4) y el
    puntaje es transparente. La alternativa, ocultarla, obliga a un viaje al servidor por toque.
 5. **Clave a `specialtyId` por nombre.** Se busca por nombre sin tildes ni mayúsculas entre
    las especialidades activas de la carrera del alumno, y si falta alguna el test no está
-   disponible (`404`). La alternativa es fijar los ids en el JSON, que ata el contenido a una
-   base concreta y rompe las pruebas con otra.
+   disponible (`404`). Las tres rutas lo comprueban, también `GET /specialty-test/me/result`
+   aunque haya una fila guardada (RS-BE-45), como ya dice el contrato y como espera la spec del
+   frontend. La alternativa es fijar los ids en el JSON, que ata el contenido a una base
+   concreta y rompe las pruebas con otra.
 6. **Cohere sin cifras.** Los datos no llevan afinidades ni puntos y el texto no puede traer
    dígitos ni porcentajes. Es la forma más simple de asegurar que no invente porcentajes. La
    alternativa es mandar las afinidades y aceptar solo las que coinciden, que exige comprobar
@@ -741,11 +792,20 @@ Cada punto trae la opción que la spec adopta por defecto. Ninguno está aprobad
 7. **Parámetros de Cohere.** 5 segundos de espera, `temperature` 0,3, `maxTokens` 200 y
    motivos de 60 a 500 caracteres.
 8. **Qué se guarda.** La fila suma el empate y el `specialtyId` a lo que pide la decisión 5
-   (ranking, fecha y versión). El motivo no se guarda, porque resume respuestas.
+   (ranking, fecha y versión). El empate le deja al Perfil mostrar juntas a las dos
+   ganadoras. El `specialtyId` deja la fila como foto completa de lo que devolvió la
+   evaluación. La spec del frontend no pone «Elegir como principal» en la tarjeta del Perfil
+   (su decisión abierta 16), así que hoy nadie elige con ese id desde el Perfil; queda listo
+   si el dueño pide ese botón. La alternativa es guardar solo la clave y poner el id al leer,
+   con la misma resolución que RS-BE-45 ya hace para la disponibilidad. El motivo no se
+   guarda, porque resume respuestas.
 9. **Diseño de la tabla.** Clave `student_id`, ranking en `jsonb` con dos CHECK, sin índice
    extra, migración `0014` aplicada con `db:apply`. Es el cambio de BD que pide aprobación.
 10. **Límites.** 30 evaluaciones por alumno por hora, cuerpo de hasta 4 KiB con el código
-    nuevo `413 PAYLOAD_TOO_LARGE`, y sin límite en las rutas `GET`.
+    nuevo `413 PAYLOAD_TOO_LARGE`, y sin límite en las rutas `GET`. Como cualquier evaluación
+    puede ser final, ese límite permite hasta 30 llamadas a Cohere por alumno por hora, con la
+    misma `COHERE_API_KEY` del chatbot, así que los dos gastan de la misma cuenta de Cohere.
+    La alternativa es un límite aparte para las evaluaciones finales o un límite más bajo.
 11. **Versiones.** La evaluación acepta cualquier versión del registro y responde `409` con
     una retirada. La alternativa, aceptar solo la vigente, haría empezar de nuevo a quien
     está a mitad del test durante un despliegue.
@@ -763,6 +823,8 @@ Cada punto trae la opción que la spec adopta por defecto. Ninguno está aprobad
     `scripts/specialty-test/generar.py`, escribe el JSON en
     `src/modules/specialty-test/content/` y el documento legible en
     `docs/specialty-test/contenido-<versión>.md`. Así cada versión se puede regenerar y revisar.
+    Las dos rutas están en `targets` sujetas a esta decisión; si el dueño la rechaza, salen de
+    `targets` y `generar.py` sigue fuera del repo.
 16. **Colores.** El backend sirve los colores del contenido aprobado (por ejemplo `#1E3A8A`
     para Software), que no son los de la maqueta elegida (`#5B4BDB`). La spec del frontend
     decide cuáles usa; si son los de la maqueta, se cambian en el contenido con una versión

@@ -881,7 +881,7 @@ Test que conduce Ulises y que recomienda uno de los cuatro diplomas oficiales. E
 Las tres rutas comparten estas reglas.
 
 - **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate` (`authMiddleware` + `requireRole(...STUDENT_ROLES)` sobre todo el módulo). Un token docente recibe `403 FORBIDDEN`. El alumno sale solo del token.
-- **Disponibilidad**: el servidor traduce las claves `sw`, `ti`, `si` y `vj` a los `specialtyId` de las especialidades con `is_active = true` de la carrera del alumno, por nombre, sin distinguir mayúsculas ni tildes. Si alguna no aparece, el test no está disponible para ese alumno (`404 SPECIALTY_TEST_NOT_AVAILABLE`) y la app muestra la elección manual.
+- **Disponibilidad**: el servidor traduce las claves `sw`, `ti`, `si` y `vj` a los `specialtyId` de las especialidades con `is_active = true` de la carrera del alumno, por nombre, sin distinguir mayúsculas ni tildes. Si alguna no aparece, el test no está disponible para ese alumno (`404 SPECIALTY_TEST_NOT_AVAILABLE`) y la app muestra la elección manual. Las tres rutas lo comprueban, `GET /specialty-test/me/result` también cuando hay un resultado guardado.
 - **Tipos**: `affinity` es un entero de 0 a 100, redondeado con el medio hacia arriba; el servidor decide el orden, los desempates y el empate con la afinidad exacta. Las fechas van en ISO-8601 UTC con milisegundos.
 - **Mensajes** (`error.message` de cada código nuevo): `SPECIALTY_TEST_NOT_AVAILABLE` "El test de especialidad no está disponible para tu carrera.", `SPECIALTY_TEST_VERSION_OUTDATED` "El test se actualizó. Vuelve a empezarlo.", `SPECIALTY_TEST_INVALID_ANSWERS` "Las respuestas no corresponden a esta versión del test.", `SPECIALTY_TEST_TIEBREAK_MISMATCH` "Los desempates enviados no son los que corresponden a estas respuestas.", `PAYLOAD_TOO_LARGE` "La petición es demasiado grande." y `RATE_LIMITED` "Hiciste demasiados intentos del test. Intenta de nuevo en N minuto(s).".
 - **Errors comunes**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`, `404` `USER_NOT_FOUND` (el token no tiene fila en `student`), `404` `SPECIALTY_TEST_NOT_AVAILABLE`.
@@ -936,6 +936,7 @@ Contenido de la versión vigente, con lo necesario para conducir el test sin red
   }
   ```
 - **Qué no viaja**: resúmenes y electivos de cada tarea, pesos, umbral, plantillas del motivo, líneas de Ulises del resultado y del desempate, desempates, ejemplos y balance. Son del cálculo, que hace el servidor.
+- **`icon`**: el nombre del ícono en Lucide (`icon.lucide` del contenido, por ejemplo `code-xml`). `totalCredits` son los créditos del diploma.
 - **`specialty` de cada tarea**: viaja porque la app enciende la tarjeta tocada con el color de su especialidad. La app no la muestra antes del toque y Ulises no nombra especialidades durante el test.
 - **Errors**: los comunes.
 
@@ -1028,4 +1029,4 @@ Evaluación sin estado. Recibe todas las respuestas dadas hasta ese momento y de
 - **Estado vacío**: `{ "result": null }` con `200` si el alumno no tiene ningún test terminado.
 - No trae el motivo, que no se guarda. `name` sale de la versión vigente del contenido por la clave.
 - **`Cache-Control: no-store`** en la respuesta.
-- **Errors**: los comunes, y `500` `INTERNAL_SERVER_ERROR` si la fila guardada no tiene la forma esperada.
+- **Errors**: los comunes, y `500` `INTERNAL_SERVER_ERROR` si la fila guardada no tiene la forma esperada. El `404` `SPECIALTY_TEST_NOT_AVAILABLE` sale aunque el alumno tenga un resultado guardado, y la app oculta la tarjeta del Perfil.
