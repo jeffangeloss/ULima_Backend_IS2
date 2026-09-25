@@ -19,8 +19,10 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > bloques propios e historial, **aprobada por el dueño el 2026-09-25 e implementada** en la rama
 > `fix/chatbot-delegados-bloques`, salvo el último punto de BR-CB-10, que tampoco está implementado
 > en `main` y que el dueño enmienda el 2026-09-25 con la excepción de delegado y subdelegado (ver
-> BR-CB-10). El merge espera además las decisiones del dueño que siguen abiertas en «Pendiente del
-> dueño antes del merge». Cambian BR-CB-02,
+> BR-CB-10). ~~El merge espera además las decisiones del dueño que siguen abiertas en «Pendiente del
+> dueño antes del merge».~~ Desde la decisión 13 no queda abierto ninguno de los puntos de
+> «Pendiente del dueño antes del merge», y el merge espera solo las condiciones operativas de ese
+> apartado. Cambian BR-CB-02,
 > BR-CB-03, BR-CB-04, BR-CB-05, BR-CB-06, BR-CB-07, BR-CB-09 y BR-CB-12, y se agregan BR-CB-16
 > a BR-CB-24. Tres puntos son propuestas derivadas que el dueño confirma al aprobar, BR-CB-23
 > (de la decisión 1), el total de horas de clase de BR-CB-19 (de la decisión 2) y la condición
@@ -36,14 +38,15 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > Vercel o un `bun run dev` local, correría esa purga en su primera petición al chatbot, antes de la
 > aprobación, así que nadie la corre contra esa base hasta que el dueño apruebe el conteo y el
 > respaldo (paso 1 de ese apartado). De los dos residuos de texto libre de BR-CB-17, el primero lo
-> resuelve el borrado único de BR-CB-22b, que el dueño decide al aprobar, y el segundo espera su
-> confirmación. Los ejemplos usan datos inventados.
+> resuelve el borrado único de BR-CB-22b, que el dueño decide al aprobar, y el segundo ~~espera su
+> confirmación~~ lo acepta el dueño sin filtro (decisión 13). Los ejemplos usan datos inventados.
 > La revisión de la Tarea 2 del mismo día agrega a BR-CB-23 la omisión de los mensajes borrados,
 > que el dueño confirma en la ronda final, y aclara la lista de artículos y preposiciones de
 > BR-CB-06. La revisión de la Tarea 3 aclara contra qué fecha se mide la vigencia de BR-CB-18, qué
 > pasa con la línea de horas de clase si el horario no se cargó (BR-CB-19 y BR-CB-24) y qué claves
 > lee la suma de BR-CB-19, tres aclaraciones que el dueño también confirma en la ronda final. Deja
-> además abierta para el dueño la limpieza de los caracteres de control en el título de BR-CB-18.
+> además abierta para el dueño la limpieza de los caracteres de control en el título de BR-CB-18,
+> que el dueño resuelve con la decisión 13.
 > La revisión de la Tarea 4 enlaza con `[@test]` las pruebas ya escritas de BR-CB-02, BR-CB-03,
 > BR-CB-12 y BR-CB-20 a BR-CB-22. Alinea además con la aprobación del dueño las etiquetas de estado
 > que seguían diciendo «pendiente de aprobación», aquí y en RS-BE-35 de `time-blocks`, sin cambiar
@@ -58,8 +61,8 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > La revisión del cierre de la Tarea 5 hace que un bloque sin datos no salga del mensaje de datos,
 > como pide BR-CB-24, y aclara qué cuenta como dato, para que el dueño lo confirme. Anota además en
 > BR-CB-10 que su último punto no está implementado ni probado y que sumar patrones para las dos
-> líneas del marco de BR-CB-24 queda pendiente de la decisión del dueño, y en BR-CB-22 el riesgo de
-> un despliegue de vista previa con la base de producción.
+> líneas del marco de BR-CB-24 queda pendiente de la decisión del dueño, que los suma con la
+> decisión 13, y en BR-CB-22 el riesgo de un despliegue de vista previa con la base de producción.
 > La revisión final del ajuste (ronda 1) reúne en «Pendiente del dueño antes del merge» los puntos
 > que la spec suma después de la aprobación o que son lecturas del implementador, con la salida de
 > cada uno si el dueño no lo confirma. Registra además en BR-CB-10 que su último punto choca con el
@@ -73,12 +76,19 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > aprobación quedan confirmados y una repregunta sin palabras clave hereda los dominios de la
 > pregunta anterior del alumno (BR-CB-04). Suma además el escape de U+2028, U+2029 y U+0085 en el
 > JSON del chat y de los anuncios (BR-CB-23, corrección 12). Siguen abiertos los puntos 6, 7 y 9 de
-> «Pendiente del dueño antes del merge».
+> «Pendiente del dueño antes del merge», que el dueño resuelve después con la decisión 13.
 > La revisión de la ronda final corrige, dentro de la decisión 8, la línea de «no hay» del bloque
 > 11. Sin un curso en la pregunta, BR-CB-06 lee solo las tres primeras secciones, y una línea que
 > habla de «las secciones consultadas» sin nombrarlas deja que el modelo niegue mensajes de las
 > secciones que no se leyeron. La línea nombra ahora las secciones leídas y, sin secciones
 > activas, dice que el alumno no las tiene (BR-CB-06 y BR-CB-24).
+> La decisión 13 del dueño, aprobada en el chat el 2026-09-25 después de la revisión de la ronda
+> final, resuelve los tres puntos que seguían abiertos en «Pendiente del dueño antes del merge».
+> El texto libre del chat y de los anuncios se acepta sin filtro (segundo residuo de BR-CB-17),
+> `singleLine` convierte en un espacio todo carácter de control, U+0085 incluido (BR-CB-18), y el
+> guardia de BR-CB-10 suma los dos patrones de las líneas del marco de BR-CB-24, con su primera
+> prueba propia. Ninguna fila de ese apartado sigue abierta, y el merge solo espera sus condiciones
+> operativas.
 > Contraparte en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-35, ajustada el mismo
 > día). El récord académico sigue fuera del chatbot (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -151,32 +161,45 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 | --- | --- | --- |
 | 12 | El JSON de los dos bloques con texto de terceros, el del chat y el de los anuncios, escapa U+2028, U+2029 y U+0085, que `JSON.stringify` deja tal cual. Refuerza la garantía que BR-CB-23 ya da, que ningún mensaje forma una línea propia, sin cambiar ningún campo. Sale del informe final de la ronda 1. | BR-CB-23 |
 
+### Decisión del dueño sobre los puntos abiertos (2026-09-25, vinculante)
+
+> Aprobada por el dueño en el chat el 2026-09-25, después de la revisión de la ronda final. Aprueba
+> las tres recomendaciones sobre los puntos 6, 7 y 9 de «Pendiente del dueño antes del merge».
+
+| # | Decisión | Requisitos |
+| --- | --- | --- |
+| 13 | Los tres puntos abiertos se cierran con la salida recomendada. El texto libre del chat y de los anuncios, que puede nombrar a terceros, se acepta sin filtro, porque el alumno ya ve esos mensajes en el chat de su sección, el chatbot solo los lee cuando la pregunta es sobre el chat o los anuncios (BR-CB-06 y BR-CB-23) y los manda sin remitente. `singleLine` pasa de `/\s+/g` a `/[\s\p{Cc}]+/gu`, así que todo carácter de control, U+0085 incluido, se vuelve un espacio en el título de los bloques propios, en los nombres, cursos y secciones del bloque 7 y en la línea de secciones leídas del bloque 11, y un título hecho solo de caracteres de control sale como `""`. El guardia de BR-CB-10 suma dos patrones sin distinguir mayúsculas, una línea que empieza con `DATOS DEL ALUMNO` y una línea que es solo `FIN DE LOS DATOS`, con el mismo `400 INVALID_QUESTION` y el mismo mensaje. | BR-CB-10, BR-CB-17, BR-CB-18 |
+
 ### Pendiente del dueño antes del merge
 
 > *Agregado el 2026-09-25, en la revisión final del ajuste (ronda 1), y actualizado en la ronda
-> final del mismo día.* No cambia ningún requisito. Reúne lo que la rama no puede cerrar sin el
-> dueño.
+> final del mismo día y con la decisión 13.* No cambia ningún requisito. Reúne lo que la rama no
+> puede cerrar sin el dueño.
 
 `AGENTS.md` pide una spec aprobada antes de implementar. Los puntos 1 a 5 entran a la spec después
 de la aprobación del 2026-09-25, en las revisiones de las Tareas 2, 3 y 5, y la rama ya los
-implementa. El punto 6 es una lectura del implementador que la aprobación no registra, el 7 es una
+implementa. El punto 6 es una lectura del implementador que la aprobación no registra, el 7 nace como una
 decisión abierta y el 8 era una contradicción entre reglas. En la ronda final, el dueño confirma
 los puntos 1 a 4 (decisión 10), reemplaza la lectura del punto 5 por la enmienda de BR-CB-24
 (decisiones 8 y 10) y enmienda el punto 8 (decisión 9). La decisión 9 no resuelve los patrones que
-el punto 8 dejaba para la misma decisión, así que pasan al punto 9. El merge espera la decisión del
-dueño sobre los puntos 6, 7 y 9, con la salida de la última columna si no los confirma.
+el punto 8 dejaba para la misma decisión, así que pasan al punto 9. ~~El merge espera la decisión del
+dueño sobre los puntos 6, 7 y 9, con la salida de la última columna si no los confirma.~~
+*Actualizado el 2026-09-25 (decisión 13), aprobado por el dueño el 2026-09-25.* Después de la
+revisión de la ronda final, el dueño resuelve los puntos 6, 7 y 9 con la decisión 13, así que
+ninguna fila sigue abierta. El merge solo espera las condiciones operativas de la lista que sigue a
+la tabla.
 
 | # | Punto | Regla | Qué hace hoy la rama | Si el dueño no lo confirma | Estado |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Los mensajes borrados del chat no viajan | BR-CB-23 | `searchChatMessages` omite los mensajes con `deleted: true` (`chat-search.ts:86-88`) | Sale el filtro, y el texto que su autor o el profesor titular borró vuelve a llegar a Cohere. Cambian los casos de `chatbot.chat-search.test.ts` que fijan la omisión | Confirmado por el dueño el 2026-09-25 (decisión 10) |
-| 2 | La vigencia de un bloque propio se mide contra hoy | BR-CB-18 | Un bloque sale con «empieza el …» solo si su `startDate` es posterior a `today` (`context-builder.ts:261-264`) | La comparación pasa al lunes de la ventana, y un bloque que empezó entre ese lunes y hoy sale con «empieza el …». Cambian los casos de `chatbot.own-blocks-context.test.ts` que fijan la vigencia | Confirmado por el dueño el 2026-09-25 (decisión 10) |
+| 2 | La vigencia de un bloque propio se mide contra hoy | BR-CB-18 | Un bloque sale con «empieza el …» solo si su `startDate` es posterior a `today` (`context-builder.ts:268-271`) | La comparación pasa al lunes de la ventana, y un bloque que empezó entre ese lunes y hoy sale con «empieza el …». Cambian los casos de `chatbot.own-blocks-context.test.ts` que fijan la vigencia | Confirmado por el dueño el 2026-09-25 (decisión 10) |
 | 3 | La suma de horas de clase lee `start_time` y `end_time` | BR-CB-19 | `ScheduleData` declara las claves snake_case que proyecta `getSchedule` (`chatbot.types.ts:38-45`) y `weeklyClassHours` las lee | La otra salida es que `getSchedule` mapee sus filas a camelCase. Eso cambia el JSON del bloque 3, que BR-CB-24 fija «sin cambios», así que exige además enmendar BR-CB-24 | Confirmado por el dueño el 2026-09-25 (decisión 10) |
 | 4 | Sin horario cargado, el bloque 8 sale sin la línea de horas de clase | BR-CB-19 y BR-CB-24 | La línea se omite si el horario no se leyó | La línea dice «0 h» también sin horario, un total que nadie leyó, o el dueño fija otro texto. Hoy el caso no ocurre, porque `own_blocks` arrastra `schedule` | Confirmado por el dueño el 2026-09-25 (decisión 10) |
 | 5 | «Tiene datos» significa al menos un elemento | BR-CB-24 | Desde la ronda final, un bloque leído sin datos sale con su línea de «no hay» (BR-CB-24) | La revisión final recomendaba la enmienda de BR-CB-24, con el arreglo vacío o una línea explícita cuando el dominio está activo y la consulta vuelve vacía | Reemplazado por la enmienda de BR-CB-24 y confirmado por el dueño el 2026-09-25 (decisiones 8 y 10) |
-| 6 | El texto libre del chat y de los anuncios puede nombrar a terceros | BR-CB-17, segundo residuo | El chatbot no filtra texto libre | El dueño define otra salida, que es un cambio de spec aparte. La aprobación del 2026-09-25 no la decide, y leer esa aprobación como aceptación es una inferencia del implementador | Abierto |
-| 7 | Los caracteres de control del título de un bloque propio | BR-CB-18 | Rige `/\s+/g` y el código no endurece la limpieza | El dueño elige `/[\s\p{Cc}]+/gu` en `singleLine`, el rechazo en RS-BE-31 de `time-blocks` o el aplazamiento explícito de la decisión | Abierto |
+| 6 | El texto libre del chat y de los anuncios puede nombrar a terceros | BR-CB-17, segundo residuo | El chatbot no filtra texto libre | El dueño define otra salida, que es un cambio de spec aparte. La aprobación del 2026-09-25 no la decide, y leer esa aprobación como aceptación es una inferencia del implementador | Resuelto por el dueño el 2026-09-25 (decisión 13). Se acepta sin filtro, porque el alumno ya ve esos mensajes, el chatbot solo los lee con preguntas sobre el chat o los anuncios y los manda sin remitente. No pide código |
+| 7 | Los caracteres de control del título de un bloque propio | BR-CB-18 | Desde la decisión 13, `singleLine` usa `/[\s\p{Cc}]+/gu` (`context-builder.ts:105`), y todo carácter de control del título, de los nombres, cursos y secciones del bloque 7 y de la línea de secciones leídas del bloque 11 pasa a un espacio | El dueño elige `/[\s\p{Cc}]+/gu` en `singleLine`, el rechazo en RS-BE-31 de `time-blocks` o el aplazamiento explícito de la decisión | Resuelto por el dueño el 2026-09-25 (decisión 13), con `/[\s\p{Cc}]+/gu` en `singleLine`. RS-BE-31 de `time-blocks` no cambia |
 | 8 | El descarte de una respuesta con datos de otro alumno | BR-CB-10, último punto | No descarta ninguna respuesta, igual que `main` | El dueño enmendaba el punto con la salvedad del delegado y el subdelegado o lo retiraba | Enmendado por el dueño el 2026-09-25 con la excepción de delegado y subdelegado (decisión 9). Sigue sin implementar, como anota BR-CB-10 |
-| 9 | Los patrones de `DATOS DEL ALUMNO` y `FIN DE LOS DATOS` | BR-CB-10, patrones del formato nuevo | Aplica solo los cinco patrones del formato anterior | El dueño aprueba los dos patrones, con el `400 INVALID_QUESTION` para una pregunta genuina que empiece con «datos del alumno», o los descarta de forma explícita | Abierto. Venía con el punto 8 y la decisión 9 no lo resuelve |
+| 9 | Los patrones de `DATOS DEL ALUMNO` y `FIN DE LOS DATOS` | BR-CB-10, patrones del formato nuevo | Desde la decisión 13, aplica siete patrones, los cinco del formato anterior y los dos del formato nuevo (`chatbot.controller.ts:5-14`), que fija `chatbot.injection-guard.test.ts` | El dueño aprueba los dos patrones, con el `400 INVALID_QUESTION` para una pregunta genuina que empiece con «datos del alumno», o los descarta de forma explícita | Resuelto por el dueño el 2026-09-25 (decisión 13). El dueño aprueba los dos patrones y acepta el 400 para una pregunta genuina que empiece con «datos del alumno» |
 
 Además de esas decisiones, el dueño cumple las condiciones de «Antes del merge y del despliegue» de
 `docs/superpowers/plans/2026-09-25-chatbot-delegados-bloques.md` y los pasos de «Primera purga en
@@ -553,7 +576,21 @@ que trae las reglas 11 a 13, y que ya no contiene «NO respondas preguntas sobre
 ### BR-CB-10: Guardrails de seguridad
 
 - El campo `question` tiene maximo 500 caracteres (Zod `.max(500)`).
-- Se rechaza la pregunta si contiene intentos de prompt injection: cadenas como `<context>`, `[CONTEXTO]`, `[DATOS_`, `system:`, `assistant:` -> `400 INVALID_QUESTION`.
+- ~~Se rechaza la pregunta si contiene intentos de prompt injection: cadenas como `<context>`, `[CONTEXTO]`, `[DATOS_`, `system:`, `assistant:` -> `400 INVALID_QUESTION`.~~
+  *Enmendado el 2026-09-25 (decisión 13), aprobado por el dueño el 2026-09-25.* Se rechaza con
+  `400 INVALID_QUESTION` y el mensaje «La pregunta contiene caracteres no permitidos.» la pregunta
+  que contiene `<context>`, `[CONTEXTO]` o `[DATOS_`, la que tiene una línea que empieza con
+  `system:` o `assistant:`, la que tiene una línea que empieza con `DATOS DEL ALUMNO`, aunque lleve
+  espacios delante, y la que tiene una línea que es solo `FIN DE LOS DATOS`, con espacios al borde
+  o sin ellos. Ninguno de los siete patrones distingue mayúsculas, y con el 400 el servicio no se
+  llama. Los dos últimos son los del formato nuevo (ver «Patrones del formato nuevo» abajo).
+  `[@test] ../../../test/HU28_ronald/chatbot.injection-guard.test.ts` *(existe; monta la ruta real
+  con una base y un servicio falsos. Fija los siete patrones con su 400 y su mensaje, que el
+  servicio no se llama en un 400 y que una pregunta normal y una de varias líneas pasan. Del
+  formato nuevo fija que «¿Cuáles son los datos del alumno delegado?» pasa, que una línea que
+  empieza con «Datos del alumno» recibe 400, también con espacios delante y en minúsculas, que
+  `FIN DE LOS DATOS` con otras mayúsculas, espacios al borde o fin de línea `\r\n` recibe 400, y
+  que «fin de los datos» dentro de una oración más larga o seguido de más texto en su línea pasa)*
 - Timeout de 8 segundos para la llamada a Cohere Chat.
 - ~~Si Cohere responde con texto que contiene IDs o datos que no corresponden al `studentId` del JWT, se descarta la respuesta y se retorna error 500 generico (no se guarda en BD).~~
   *Enmendado el 2026-09-25 en la ronda final (decisión 9), aprobado por el dueño el 2026-09-25.*
@@ -566,7 +603,7 @@ que trae las reglas 11 a 13, y que ya no contiene «NO respondas preguntas sobre
   o sus bloques, sí lo motiva.
 
 > *Anotación del 2026-09-25, en la revisión del cierre de la Tarea 5, actualizada en la ronda
-> final con la enmienda del último punto.*
+> final con la enmienda del último punto y con la decisión 13 en el texto libre y los patrones.*
 
 - **El último punto no está implementado.** `ChatbotService.ask` guarda la respuesta de Cohere sin
   inspeccionarla, igual que `main` 38024d4. La brecha es anterior al ajuste del 2026-09-25 y sigue
@@ -590,21 +627,39 @@ que trae las reglas 11 a 13, y que ya no contiene «NO respondas preguntas sobre
   - Nada comprueba que el modelo cumpla la regla 4, es decir, que no nombre a nadie fuera del
     bloque 7 ni dé otros datos de los delegados.
   - Tampoco se filtra el texto libre del chat y de los anuncios, que puede nombrar a terceros
-    (segundo residuo de BR-CB-17, punto 6 de «Pendiente del dueño antes del merge»).
-- **Patrones del formato nuevo, pendientes de la decisión del dueño.** Los cinco patrones son los
-  delimitadores del formato anterior y no cubren `DATOS DEL ALUMNO` ni `FIN DE LOS DATOS`, las dos
-  líneas del marco de BR-CB-24. La pregunta va después del cierre real y no puede cerrarlo, pero sí
-  puede escribir un segundo bloque de datos falso que la regla 1 del prompt (BR-CB-09) tomaría como
-  fuente. El efecto se queda en la respuesta del propio alumno, porque ese bloque solo trae lo que
-  él mismo escribe.
-  - Si el dueño lo aprueba, la regla suma dos patrones sin distinguir mayúsculas, una línea que
+    (segundo residuo de BR-CB-17, punto 6 de «Pendiente del dueño antes del merge»). *Resuelto por
+    el dueño el 2026-09-25 (decisión 13).* El dueño acepta ese texto sin filtro, porque el alumno
+    ya ve esos mensajes en el chat de su sección, el chatbot solo los lee cuando la pregunta es
+    sobre el chat o los anuncios (BR-CB-06 y BR-CB-23) y los manda sin remitente.
+- **Patrones del formato nuevo.** ~~Pendientes de la decisión del dueño.~~ *Enmendado el
+  2026-09-25 (decisión 13), aprobado por el dueño el 2026-09-25.* Los cinco patrones del formato
+  anterior son sus delimitadores y no cubren `DATOS DEL ALUMNO` ni `FIN DE LOS DATOS`, las dos
+  líneas del marco de BR-CB-24. La pregunta va después del cierre real y no puede cerrarlo, pero
+  sin los patrones nuevos puede escribir un segundo bloque de datos falso que la regla 1 del prompt
+  (BR-CB-09) tomaría como fuente. El efecto se queda en la respuesta del propio alumno, porque ese
+  bloque solo trae lo que él mismo escribe.
+  - ~~Si el dueño lo aprueba, la regla suma dos patrones sin distinguir mayúsculas, una línea que
     empieza con `DATOS DEL ALUMNO` y una línea que es solo `FIN DE LOS DATOS`, con el mismo
     `400 INVALID_QUESTION`. Una pregunta genuina que empiece con «datos del alumno» recibiría
-    también ese 400.
-  - Mientras el dueño no lo decida, el código aplica solo los cinco patrones de arriba. La
+    también ese 400.~~ La regla suma dos patrones sin distinguir mayúsculas,
+    `/^\s*datos del alumno/im`, una línea que empieza con `DATOS DEL ALUMNO` aunque lleve espacios
+    delante, y `/^\s*fin de los datos\s*$/im`, una línea que es solo `FIN DE LOS DATOS`, con
+    espacios al borde o sin ellos. Los dos dan el mismo `400 INVALID_QUESTION` y el mismo mensaje
+    que los cinco anteriores (`chatbot.controller.ts:5-14`).
+  - Una pregunta genuina que empieza con «datos del alumno», como «Datos del alumno, ¿cuáles
+    guarda la app?», recibe también ese 400, y el dueño lo acepta con la decisión. La frase en
+    medio de una línea, como en «¿Cuáles son los datos del alumno delegado?», pasa, y también pasa
+    «fin de los datos» dentro de una oración más larga o seguido de más texto en su línea.
+  - ~~Mientras el dueño no lo decida, el código aplica solo los cinco patrones de arriba. La
     decisión iba junto con la del último punto, pero la decisión 9 de la ronda final enmienda ese
     punto sin resolver los patrones, que siguen pendientes (punto 9 de «Pendiente del dueño antes
-    del merge»).
+    del merge»).~~ La decisión 9 de la ronda final enmienda el último punto sin resolver los
+    patrones, y la decisión 13 los resuelve (punto 9 de «Pendiente del dueño antes del merge»).
+  - *Anotación de la decisión 13, sin cambio de regla.* Con la bandera `m`, `^` y `$` de
+    JavaScript reconocen como fin de línea `\n`, `\r`, U+2028 y U+2029, y no U+000B, U+000C,
+    U+001C a U+001E ni U+0085, que `str.splitlines` de Python sí trata como salto de línea. Una
+    pregunta que separa sus líneas con esos caracteres no activa los dos patrones nuevos, y el
+    efecto sigue en la respuesta del propio alumno.
 
 ### BR-CB-11: Rate Limiting
 
@@ -774,8 +829,9 @@ que no cambian el resultado)*
 - **Dos residuos de texto libre.** *Para que el dueño los acepte al aprobar o decida otra
   salida. Actualizado el 2026-09-25, en la revisión del cierre de la Tarea 5, con lo que el dueño
   decide al aprobar, y corregido en la revisión final del ajuste (ronda 1), que deja el segundo
-  pendiente.* El punto anterior cubre los campos que arma el chatbot, pero dos textos
-  libres pueden seguir llevando a Cohere nombres de compañeros que no son representantes.
+  pendiente. El dueño acepta el segundo con la decisión 13.* El punto anterior cubre los campos que
+  arma el chatbot, pero dos textos libres pueden seguir llevando a Cohere nombres de compañeros que
+  no son representantes.
   1. Las respuestas del bot anteriores al ajuste, que ya traen nombres de compañeros tomados del
      bloque plano, siguen guardadas y viajan como turnos previos (BR-CB-20) mientras viva su
      sesión. La primera purga (BR-CB-22) solo borra las sesiones sin actividad desde el inicio de
@@ -786,12 +842,16 @@ que no cambian el resultado)*
      plano.
   2. El cuerpo de los mensajes del chat (BR-CB-23) y el de los anuncios lo escriben personas y
      puede nombrar a terceros aunque ya no viajen el remitente ni el autor. El chatbot no filtra
-     texto libre. **Pendiente de confirmación del dueño.** La aprobación del 2026-09-25 no decide
+     texto libre. ~~**Pendiente de confirmación del dueño.** La aprobación del 2026-09-25 no decide
      otra salida para este residuo. La revisión del cierre de la Tarea 5 lo daba por aceptado con
      esa aprobación, pero esa lectura es una inferencia del implementador y no una decisión
      registrada, así que el dueño la confirma antes del merge o decide otra salida (punto 6 de
      «Pendiente del dueño antes del merge»). `docs/specs/api-contracts.md` registra el residuo sin
-     darlo por aceptado.
+     darlo por aceptado.~~ **Aceptado sin filtro por el dueño el 2026-09-25 (decisión 13).** El
+     alumno ya ve esos mensajes en el chat de su sección, el chatbot solo los lee cuando la
+     pregunta es sobre el chat o los anuncios (BR-CB-06 y BR-CB-23) y los manda sin remitente. La
+     decisión no pide código y cierra el punto 6 de «Pendiente del dueño antes del merge», y
+     `docs/specs/api-contracts.md` registra el residuo como aceptado.
 - Una pregunta como «¿quiénes están en mi sección?» activa `delegates` y se responde con los
   delegados de esa sección y con la regla 4 del prompt (BR-CB-09).
 
@@ -851,8 +911,12 @@ datos, contiene su nombre)*
   filtra BR-CB-10, y no debe romper la estructura del bloque. Llega con 1 a 60 caracteres y sin
   espacios al borde (`chk_time_block_titulo`, RS-BE-30 y RS-BE-31 de `time-blocks`), y
   `context-builder.ts` lo limpia en este orden.
-  1. Cada tramo de espacios en blanco (`/\s+/g`, que incluye saltos de línea y tabulaciones) pasa
-     a un solo espacio, y se recortan los bordes.
+  1. ~~Cada tramo de espacios en blanco (`/\s+/g`, que incluye saltos de línea y tabulaciones) pasa
+     a un solo espacio, y se recortan los bordes.~~ *Enmendado el 2026-09-25 (decisión 13),
+     aprobado por el dueño el 2026-09-25.* Cada tramo de espacios en blanco o de caracteres de
+     control (`/[\s\p{Cc}]+/gu`, que incluye saltos de línea, tabulaciones, U+0000 a U+001F y
+     U+007F a U+009F, NEL entre ellos) pasa a un solo espacio, y se recortan los bordes. Un título
+     hecho solo de caracteres de control queda vacío y sale como `""`.
   2. Cada comilla doble `"` pasa a comilla simple `'`.
   3. Las tildes y la eñe se conservan tal como las guarda la app, que escribe «Prácticas» en el
      ejemplo del contrato de `time-blocks`.
@@ -863,19 +927,26 @@ datos, contiene su nombre)*
   bloque. El título solo llega al contexto de su propio dueño y no abre una vía hacia la sesión de
   otro alumno.
 
-  *Decisión abierta del dueño, anotada el 2026-09-25 en la revisión de la Tarea 3.* La expresión
-  `/\s+/g` del paso 1 no cubre NEL (U+0085) ni los separadores U+001C a U+001E, que el corte de
-  líneas de Unicode (UAX #14) o `str.splitlines` de Python tratan como salto de línea. Ni
+  *Decisión del dueño, anotada como abierta el 2026-09-25 en la revisión de la Tarea 3 y resuelta
+  el mismo día con la decisión 13.* La expresión `/\s+/g` ~~del paso 1~~ que el paso 1 usa antes de
+  la decisión no cubre NEL (U+0085) ni los separadores U+001C a U+001E, que el corte de líneas de
+  Unicode (UAX #14) o `str.splitlines` de Python tratan como salto de línea. Ni
   `z.string().trim()` (`time-blocks.schemas.ts:88`) ni `chk_time_block_titulo` rechazan esos
-  caracteres, así que la garantía del párrafo anterior vale para quien corta las líneas en `\n` y
-  no para un consumidor que corte también en ellos. El riesgo es bajo, porque el título solo llega
-  al contexto de su dueño. La propuesta es que el paso 1 use `/[\s\p{Cc}]+/gu`, que suma todo
-  carácter de control, en `singleLine` de `context-builder.ts`, la función que limpia además los
-  cursos, las secciones y los nombres del bloque 7 (BR-CB-16). Con esa expresión, un título hecho
-  solo de caracteres de control queda vacío y sale como `""`. Otra salida es que RS-BE-31 de
-  `time-blocks` rechace esos caracteres al guardar el título. Mientras el dueño no decida, rige
-  `/\s+/g` y el código no endurece la limpieza. La decisión, o su aplazamiento explícito, es el
-  punto 7 de «Pendiente del dueño antes del merge».
+  caracteres, así que con esa expresión la garantía del párrafo anterior vale para quien corta las
+  líneas en `\n` y no para un consumidor que corte también en ellos. El riesgo es bajo, porque el
+  título solo llega al contexto de su dueño. ~~La propuesta es que el paso 1 use `/[\s\p{Cc}]+/gu`,
+  que suma todo carácter de control, en `singleLine` de `context-builder.ts`, la función que limpia
+  además los cursos, las secciones y los nombres del bloque 7 (BR-CB-16). Con esa expresión, un
+  título hecho solo de caracteres de control queda vacío y sale como `""`. Otra salida es que
+  RS-BE-31 de `time-blocks` rechace esos caracteres al guardar el título. Mientras el dueño no
+  decida, rige `/\s+/g` y el código no endurece la limpieza. La decisión, o su aplazamiento
+  explícito, es el punto 7 de «Pendiente del dueño antes del merge».~~ El dueño elige que el paso 1
+  use `/[\s\p{Cc}]+/gu`, que suma todo carácter de control, en `singleLine`
+  (`context-builder.ts:105`), la función que limpia además los cursos, las secciones y los nombres
+  del bloque 7 (BR-CB-16) y las secciones leídas de la línea de «no hay» del bloque 11 (BR-CB-24).
+  La garantía vale entonces también para esos consumidores. RS-BE-31 de `time-blocks` no cambia y
+  sigue sin rechazar esos caracteres al guardar el título. La decisión cierra el punto 7 de
+  «Pendiente del dueño antes del merge».
 - Si el alumno no tiene bloques vigentes ni futuros, el bloque existe igual y dice «No registraste
   bloques propios vigentes.», para que el modelo no confunda «sin bloques» con «sin datos».
 - Si la función falla, el servicio lo registra con `console.warn` y arma el contexto sin ese
@@ -887,7 +958,10 @@ resumen de días, horas, frecuencia, vigencia, cambios y horas semanales, la lim
 con un salto de línea, una tabulación, una comilla doble y tildes, el caso sin bloques y el fallo
 de la función, que quita también la línea de horas de clase. Desde la revisión de la Tarea 3, la
 vigencia medida contra hoy, también con un bloque que empezó entre el lunes de la ventana y hoy, y
-el bloque 8 sin el horario cargado, que sale sin la línea de horas de clase)*
+el bloque 8 sin el horario cargado, que sale sin la línea de horas de clase. Desde la decisión 13,
+U+0085 y cada carácter de U+0000 a U+001F en el título, con las tildes y la eñe, un tramo con los
+de C0, DEL y C1, los controles de los bordes, el título hecho solo de caracteres de control, que
+sale como `""`, y un título que imita el cierre con U+001C a U+001E y U+0085, cortado como Python)*
 `[@test] ../../../test/HU35_jeff/time-blocks-assistant-summary.test.ts` *(existe; lado de
 `time-blocks`, ver RS-BE-35)*
 
@@ -1417,7 +1491,11 @@ con la simulación vacía y que un «Hola» con todo vacío trae los bloques 3, 
 También fija que el horario con solo sesiones o solo evaluaciones sale con el JSON sin cambios y
 que el bloque 8 sale sin bloques. Desde la revisión de la ronda final fija la línea del bloque 11
 con una, dos y tres secciones y sin secciones activas, y que el bloque 11 vacío no sale sin las
-secciones leídas)*
+secciones leídas. Desde la decisión 13 fija que U+0085 y cada carácter de U+0000 a U+001F en el
+nombre de un delegado pasan a un espacio, con las tildes y la eñe, que el curso y la sección los
+pierden también, que un nombre hecho solo de caracteres de control sale como «sin delegado
+registrado», que un nombre que imita el cierre no forma una línea propia cortado como Python y que
+la línea de secciones leídas del bloque 11 los pierde)*
 `[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; desde la ronda final, «¿Estoy
 en riesgo académico?» sin alertas manda el bloque de alertas con su línea, y lo mismo los
 anuncios, la malla, el horario y el chat vacíos, el chat también sin secciones activas. Una
@@ -1552,6 +1630,8 @@ Envia una pregunta dentro de una sesion existente y obtiene una respuesta del ch
   ```
 - **Errors**:
   - `400 INVALID_QUESTION`: pregunta vacia, excede 500 chars, o contiene prompt injection.
+    *(Desde el 2026-09-25, decisión 13, también una línea que empieza con `DATOS DEL ALUMNO` o
+    una línea que es solo `FIN DE LOS DATOS`, BR-CB-10.)*
   - `404 SESSION_NOT_FOUND`: sesion no existe o no pertenece al alumno. *(Desde el 2026-09-25,
     también una sesión del ciclo anterior, BR-CB-22, o una que el alumno borró mientras esperaba la
     respuesta, BR-CB-21.)*
@@ -1656,8 +1736,8 @@ CHATBOT_RATE_LIMIT=20   # Preguntas por alumno por hora (opcional, default 20)
   en ningún campo que arme el chatbot, ni remitentes del chat (BR-CB-17 y BR-CB-23). De los dos
   residuos de texto libre de BR-CB-17, el de las respuestas anteriores al ajuste lo resuelve el
   borrado único de BR-CB-22b, y el del cuerpo de los mensajes del chat y de los anuncios, que el
-  chatbot no filtra, espera la confirmación del dueño (punto 6 de «Pendiente del dueño antes del
-  merge»).
+  chatbot no filtra, ~~espera la confirmación del dueño (punto 6 de «Pendiente del dueño antes del
+  merge»)~~ lo acepta el dueño sin filtro el 2026-09-25 (decisión 13).
 - *Agregado el 2026-09-25.* NO se leen el récord académico (RS-BE-28 de `academic-record`, sin
   cambios) ni los bloques de otro alumno.
 - *Agregado el 2026-09-25.* NO se distingue teoría de práctica en el horario, porque
@@ -1686,11 +1766,15 @@ CHATBOT_RATE_LIMIT=20   # Preguntas por alumno por hora (opcional, default 20)
   `[@test] ../../../test/HU28_ronald/chatbot.no-classmates.test.ts` y
   `[@test] ../../../test/HU28_ronald/chatbot.time-management.test.ts`
 - Bloques propios en el contexto: `[@test] ../../../test/HU28_ronald/chatbot.own-blocks-context.test.ts`
+- Guardia contra la inyección de prompt: `[@test] ../../../test/HU28_ronald/chatbot.injection-guard.test.ts`
 - Migración `0013`: `[@test] ../../../test/HU28_ronald/migration-0013.test.ts`
 - `getRecentMessages` de Firebase: `[@test] ../../../test/HU28_ronald/chatbot.chat-deleted.test.ts`
 
-La validación Zod de la pregunta y los cinco patrones de BR-CB-10, y el límite de tasa de BR-CB-11,
-no tienen prueba propia en este repositorio, así que no llevan `[@test]`. El último punto de
+~~La validación Zod de la pregunta y los cinco patrones de BR-CB-10, y el límite de tasa de BR-CB-11,
+no tienen prueba propia en este repositorio, así que no llevan `[@test]`.~~ *Actualizado el
+2026-09-25 (decisión 13).* Los siete patrones de BR-CB-10 tienen prueba propia en
+`chatbot.injection-guard.test.ts`. La validación Zod de la pregunta y el límite de tasa de BR-CB-11
+siguen sin prueba propia en este repositorio, así que no llevan `[@test]`. El último punto de
 BR-CB-10, que descarta una respuesta de Cohere con datos de otro alumno y que el dueño enmienda el
 2026-09-25 con la excepción de delegado y subdelegado, no tiene ni implementación ni prueba. La
 anotación de BR-CB-10 dice qué pruebas cubren lo que entra a Cohere y qué queda sin verificar. El
