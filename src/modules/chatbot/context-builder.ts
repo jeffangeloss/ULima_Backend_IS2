@@ -95,8 +95,14 @@ const DELEGATES_TITLE = "DELEGADOS DE TUS SECCIONES (solo delegado y subdelegado
 const OWN_BLOCKS_TITLE = "TUS BLOQUES DE HORARIO PROPIOS (los registra el alumno en la app; no son clases):";
 const CHAT_TITLE = "MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):";
 
-/** Una sola línea: ningún salto de línea de un dato abre una línea propia en el mensaje. */
-const singleLine = (text: string): string => text.replace(/\s+/g, " ").trim();
+/**
+ * Una sola línea (BR-CB-18, decisión 13). Cada tramo de espacios en blanco o de
+ * caracteres de control (`\p{Cc}`, que suma U+0085 y U+001C a U+001E) pasa a un
+ * espacio y se recortan los bordes, así que ningún dato abre una línea propia
+ * en el mensaje, tampoco para quien corta las líneas como UAX #14 o Python. Un
+ * texto hecho solo de caracteres de control queda vacío.
+ */
+const singleLine = (text: string): string => text.replace(/[\s\p{Cc}]+/gu, " ").trim();
 
 // --- BR-CB-18 y BR-CB-19: bloques propios y horas de clase, como lógica pura ---
 
@@ -130,12 +136,13 @@ function dayNameOf(date: string): string {
 const formatHours = (hours: number): string => `${hours} h`;
 
 /**
- * El título es texto libre del alumno (BR-CB-18): primero `singleLine` (cada
- * tramo de espacios en blanco, saltos de línea incluidos, pasa a un espacio y
- * se recortan los bordes) y después las comillas dobles pasan a simples. Las
- * tildes y la eñe se conservan. Así el título no puede abrir una línea propia
- * ni cerrar sus comillas. Reusa `singleLine` para que un cambio en esa
- * limpieza alcance también al título.
+ * El título es texto libre del alumno (BR-CB-18). Primero pasa por `singleLine`,
+ * que lleva cada tramo de espacios en blanco o de caracteres de control, saltos
+ * de línea y U+0085 incluidos, a un espacio y recorta los bordes, y después las
+ * comillas dobles pasan a simples. Las tildes y la eñe se conservan, y un título
+ * hecho solo de caracteres de control queda vacío y sale como "" (decisión 13).
+ * Así el título no puede abrir una línea propia ni cerrar sus comillas. Reusa
+ * `singleLine` para que un cambio en esa limpieza alcance también al título.
  */
 const cleanBlockTitle = (title: string): string => singleLine(title).replace(/"/g, "'");
 
