@@ -53,3 +53,13 @@
 **Archivos:** `context-builder.ts`, `chatbot.service.ts`, `chatbot.controller.ts` si cambia un error; pruebas `test/HU28_ronald/chatbot.system-prompt.test.ts`, `chatbot.context-format.test.ts` (el ejemplo inventado de la spec, byte a byte donde la spec lo fija) y los casos de error en `chatbot.service.test.ts`.
 **Cierre:** en la spec, cada `[@test]` apunta a un archivo que existe y el estado suma «e implementada»; `docs/specs/feature-index.md` y `README.md` al día con lo que cambió (sin reescribir cifras globales ajenas); `MIGRATIONS.md` recibe la entrada de la `0013` como pendiente de aplicar; suite completa, build y una revisión de que no hay nombres, códigos ni rutas reales.
 - [ ] Prueba que falla → rojo → implementar → verde → suite y build → commits `feat(chatbot): prompt y formato del contexto con la base como única fuente (BR-CB-09, BR-CB-24, BR-CB-12)` y `docs(chatbot): cerrar la spec y la documentación del ajuste del 2026-09-25`.
+
+## Antes del merge y del despliegue
+
+Desde `509d20f` (Tarea 4), la primera petición a `listSessions`, `getSession`, `createSession` o `ask` corre la purga global de BR-CB-22, así que desplegar la rama borra datos vivos de producción. Por eso la rama no se mergea ni se despliega hasta cumplir las cinco condiciones de abajo, que salen de la spec y del protocolo manual de `MIGRATIONS.md`.
+
+1. La Tarea 5 está cerrada. Hasta entonces el historial ya viaja como turnos, pero la regla 1 del prompt todavía no dice que los turnos previos no son fuente (BR-CB-09).
+2. El dueño corre en solo lectura la consulta de conteo de «Primera purga en producción» (BR-CB-22), toma el respaldo con `pg_dump` de `chatbot_session` y `chatbot_message`, fuera de git, y aprueba de forma explícita el conteo y el respaldo. Si el `start_date` del período activo no coincide con el calendario publicado del ciclo, la rama espera la decisión del dueño.
+3. El dueño aplica `drizzle/0013_chatbot_message_history.sql` con `bun run db:apply`, con respaldo previo, y verifica el índice antes del merge del código que lo usa.
+4. El borrado único de BR-CB-22b corre en una transacción, con su conteo en solo lectura y su respaldo, en la misma ventana del merge. La spec lo fija «al desplegar», y un borrado corrido días antes dejaría vivas las sesiones que el código de `main` guarda mientras tanto, cuyas respuestas pueden traer nombres de compañeros de antes de BR-CB-17.
+5. `MIGRATIONS.md` registra la `0013` con su fecha, su respaldo y su verificación, junto con el conteo y el respaldo de la primera purga y el borrado de BR-CB-22b, sin copiar contenido. La Tarea 5 deja la entrada como pendiente de aplicar, el dueño la completa al aplicar la `0013` y la fecha del despliegue entra al desplegar.
