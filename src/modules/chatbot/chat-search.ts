@@ -16,11 +16,14 @@ export interface ChatSearchResult {
 
 type SectionDetail = { sectionId: number; courseName: string; sectionCode: string };
 
-/** Lectura de los últimos mensajes de una sección. Solo se usan el texto y la hora. */
+/**
+ * Lectura de los últimos mensajes de una sección. Solo se usan el texto, la
+ * hora y la marca de borrado de R-CHAT-4, que conserva `body`.
+ */
 export type ChatMessagesReader = (
   sectionId: number,
   limit: number,
-) => Promise<Array<{ body: string; createdAt: number }>>;
+) => Promise<Array<{ body: string; createdAt: number; deleted?: boolean }>>;
 
 // Tope de BR-CB-06: los últimos 200 mensajes de cada sección.
 const MESSAGES_PER_SECTION = 200;
@@ -55,7 +58,12 @@ export async function searchChatMessages(
 
   for (const section of matchedSections) {
     try {
-      const messages = await readMessages(section.sectionId, MESSAGES_PER_SECTION);
+      // Un mensaje que su autor o el profesor titular borró guarda aún su
+      // texto (R-CHAT-4) y no viaja (BR-CB-23). Si todos lo están, la sección
+      // se omite como una sin mensajes.
+      const messages = (await readMessages(section.sectionId, MESSAGES_PER_SECTION)).filter(
+        (m) => m.deleted !== true,
+      );
 
       if (messages.length === 0) continue;
 
@@ -84,6 +92,22 @@ const bySectionOrder = (a: SectionDetail, b: SectionDetail): number => {
   return a.sectionId - b.sectionId;
 };
 
+// Números romanos que no cuentan como token del nombre del curso (BR-CB-06).
+const ROMAN_NUMERAL = /^(ii|iii|iv|vi|vii|viii|ix|x)$/;
+
+// Artículos y preposiciones que BR-CB-06 ignora, ya normalizados. La regla de
+// longitud mayor que 3 deja pasar los de cuatro letras o más («para», «sobre»,
+// «entre», «desde», «hasta»…); los cortos van también para que la lista esté
+// completa.
+const STOPWORDS = new Set([
+  // Artículos y contracciones.
+  "el", "la", "los", "las", "lo", "un", "una", "unos", "unas", "al", "del",
+  // Preposiciones.
+  "a", "ante", "bajo", "cabe", "con", "contra", "de", "desde", "durante", "en", "entre",
+  "hacia", "hasta", "mediante", "para", "por", "segun", "sin", "so", "sobre", "tras",
+  "versus", "via",
+]);
+
 export function filterSections(question: string, sections: SectionDetail[]): SectionDetail[] {
   // La pregunta y los nombres de curso se comparan con la normalización de
   // BR-CB-04: minúsculas y sin tildes.
@@ -95,7 +119,7 @@ export function filterSections(question: string, sections: SectionDetail[]): Sec
     if (normalizedQuestion.includes(courseName)) return true;
     const tokens = courseName
       .split(/[^a-z0-9]+/)
-      .filter((t) => t.length > 3 && !/^(ii|iii|iv|vi|vii|viii|ix|x)$/.test(t));
+      .filter((t) => t.length > 3 && !ROMAN_NUMERAL.test(t) && !STOPWORDS.has(t));
     return tokens.some((t) => normalizedQuestion.includes(t));
   });
   return mentioned.length > 0 ? mentioned : ordered.slice(0, 3);

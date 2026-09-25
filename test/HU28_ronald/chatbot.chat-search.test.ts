@@ -240,3 +240,97 @@ describe("searchChatMessages - sin remitente y con fecha en hora de Lima (BR-CB-
     expect(fuente).not.toMatch(/senderName\s*:/);
   });
 });
+
+// ============================================================================
+// Revisión de la Tarea 2 (2026-09-25): el filtro de BR-CB-06 ignora artículos y
+// preposiciones aunque tengan más de 3 letras, y los mensajes que su autor
+// borró (R-CHAT-4, borrado suave que conserva `body`) no viajan (BR-CB-23).
+// Cursos y mensajes inventados.
+// ============================================================================
+
+describe("filterSections - artículos y preposiciones no emparejan (BR-CB-06)", () => {
+  // El respaldo, sin coincidencias, da ANALITICA, BASES y CALCULO. Si una
+  // palabra vacía emparejara, saldría la sección de ZOOLOGIA.
+  const CON_PALABRAS_VACIAS = [
+    { sectionId: 1, courseName: "ANALITICA DE DATOS", sectionCode: "801" },
+    { sectionId: 2, courseName: "BASES DE DATOS", sectionCode: "802" },
+    { sectionId: 3, courseName: "CÁLCULO I", sectionCode: "803" },
+    {
+      sectionId: 9,
+      courseName:
+        "ZOOLOGÍA ANTE BAJO CABE CONTRA DESDE DURANTE ENTRE HACIA HASTA MEDIANTE PARA SEGÚN SOBRE TRAS VERSUS VÍA UNOS UNAS",
+      sectionCode: "809",
+    },
+  ];
+
+  test("«para», «sobre», «entre», «desde» y «hasta» en la pregunta no emparejan un curso que las lleva", () => {
+    const result = filterSections(
+      "¿qué dijeron para el examen, sobre la práctica, entre semana, desde el lunes hasta el viernes?",
+      CON_PALABRAS_VACIAS,
+    );
+    expect(result.map((s) => s.sectionId)).toEqual([1, 2, 3]);
+  });
+
+  test("ningún artículo ni preposición de más de 3 letras empareja por sí solo", () => {
+    const vacias = [
+      "ante", "bajo", "cabe", "contra", "desde", "durante", "entre", "hacia", "hasta",
+      "mediante", "para", "según", "sobre", "tras", "versus", "vía", "unos", "unas",
+    ];
+    for (const palabra of vacias) {
+      const result = filterSections(`mensajes ${palabra} el grupo`, CON_PALABRAS_VACIAS);
+      expect({ palabra, ids: result.map((s) => s.sectionId) }).toEqual({ palabra, ids: [1, 2, 3] });
+    }
+  });
+
+  test("una preposición dentro de otra palabra tampoco empareja («preparar» contiene «para»)", () => {
+    const result = filterSections("¿cómo preparar el parcial?", [
+      { sectionId: 1, courseName: "ANALITICA DE DATOS", sectionCode: "801" },
+      { sectionId: 2, courseName: "BASES DE DATOS", sectionCode: "802" },
+      { sectionId: 3, courseName: "CÁLCULO I", sectionCode: "803" },
+      { sectionId: 4, courseName: "ESTADÍSTICA PARA INGENIEROS", sectionCode: "804" },
+    ]);
+    expect(result.map((s) => s.sectionId)).toEqual([1, 2, 3]);
+  });
+
+  test("las palabras con contenido del mismo curso siguen emparejando", () => {
+    const result = filterSections("¿qué dijeron en zoología?", CON_PALABRAS_VACIAS);
+    expect(result.map((s) => s.sectionId)).toEqual([9]);
+  });
+});
+
+describe("searchChatMessages - los mensajes borrados no viajan (BR-CB-23, R-CHAT-4)", () => {
+  const SECCIONES = [
+    { sectionId: 7, courseName: "SEGURIDAD DE SISTEMAS", sectionCode: "801" },
+    { sectionId: 8, courseName: "PLANEAMIENTO ESTRATEGICO", sectionCode: "802" },
+  ];
+
+  test("un mensaje con deleted === true se omite y su texto no llega al resultado", async () => {
+    const results = await searchChatMessages("que dijeron en seguridad?", SECCIONES, async () => [
+      { body: "El parcial es el lunes", createdAt: Date.UTC(2026, 8, 24, 15, 0) },
+      { body: "TEXTO BORRADO POR SU AUTOR", createdAt: Date.UTC(2026, 8, 24, 15, 5), deleted: true },
+      { body: "Gracias", createdAt: Date.UTC(2026, 8, 24, 15, 10), deleted: false },
+    ]);
+
+    expect(results).toEqual([
+      {
+        sectionName: "SEGURIDAD DE SISTEMAS (801)",
+        messages: [
+          { body: "El parcial es el lunes", date: "2026-09-24 10:00" },
+          { body: "Gracias", date: "2026-09-24 10:10" },
+        ],
+      },
+    ]);
+    expect(JSON.stringify(results)).not.toContain("TEXTO BORRADO POR SU AUTOR");
+  });
+
+  test("una sección cuyos mensajes leídos están todos borrados se omite, como una sección sin mensajes", async () => {
+    const results = await searchChatMessages("chat de seguridad y planeamiento", SECCIONES, async (sectionId) =>
+      sectionId === 7
+        ? [{ body: "BORRADO UNO", createdAt: 1, deleted: true }, { body: "BORRADO DOS", createdAt: 2, deleted: true }]
+        : [{ body: "Nos vemos en clase", createdAt: Date.UTC(2026, 8, 24, 15, 0) }],
+    );
+
+    expect(results.map((r) => r.sectionName)).toEqual(["PLANEAMIENTO ESTRATEGICO (802)"]);
+    expect(JSON.stringify(results)).not.toContain("BORRADO");
+  });
+});

@@ -30,6 +30,8 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > antes del merge, como la migración 0013 (BR-CB-22, «Primera purga en producción»). BR-CB-17
 > deja además dos residuos de texto libre para que el dueño los acepte o decida otra salida. Los
 > ejemplos usan datos inventados.
+> La revisión de la Tarea 2 del mismo día agrega a BR-CB-23 la omisión de los mensajes borrados,
+> pendiente de confirmación del dueño, y aclara la lista de artículos y preposiciones de BR-CB-06.
 > Contraparte en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-35, ajustada el mismo
 > día). El récord académico sigue fuera del chatbot (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -233,14 +235,24 @@ bloque «el chat se consulta SIEMPRE» pasa a exigir lo contrario)*
   mirar el chat, que es el costo de no mandar mensajes de terceros en toda pregunta.
 - Se obtienen los `sectionId` de las secciones activas del alumno.
 - **Filtro de secciones:** `filterSections(question, sections)` retorna las secciones cuyo nombre de curso (en minusculas, sin acentos) **o** codigo de seccion aparece como substring en la pregunta. Ademas, hace **match por tokens significativos** (palabras del nombre del curso con longitud > 3, ignorando articulos/preposiciones y numeros romanos como `II`, `III`): si cualquiera de esos tokens esta en la pregunta, la seccion matchea. Esto permite que "software" matchee con "INGENIERIA DE SOFTWARE II" aunque la frase completa no este. Si ninguna seccion matchea, se toman las primeras 3 secciones (alfabeticas) como fallback. *Nota del 2026-09-25.* El código de hoy no cumple este punto. `filterSections` solo aplica `toLowerCase` (`chat-search.ts:46`), sin quitar tildes, y el respaldo toma `sections.slice(0, 3)` (`chat-search.ts:56`) de `getActiveSectionDetails`, que no tiene `ORDER BY` (`chatbot.repository.ts:142-157`). El ajuste usa la normalización de BR-CB-04 para la pregunta y el nombre del curso, y ordena las secciones por nombre de curso y código de sección.
+  *Aclaración del 2026-09-25, en la revisión de la Tarea 2.* La regla de longitud mayor que 3 no
+  basta para ignorar artículos y preposiciones, porque deja pasar «ante», «bajo», «cabe»,
+  «contra», «desde», «durante», «entre», «hacia», «hasta», «mediante», «para», «según», «sobre»,
+  «tras», «versus», «unos» y «unas». Por eso el filtro descarta además los tokens de una lista
+  explícita de artículos y preposiciones, escrita ya con la normalización de BR-CB-04. La lista trae los artículos
+  el, la, los, las, lo, un, una, unos y unas, las contracciones al y del, y las preposiciones a,
+  ante, bajo, cabe, con, contra, de, desde, durante, en, entre, hacia, hasta, mediante, para, por,
+  según, sin, so, sobre, tras, versus y vía. La aclaración no cambia la regla, que ya pedía
+  ignorarlos, y la vuelve comprobable. Como el emparejamiento por tokens busca subcadenas, la lista
+  evita también que «para» empareje dentro de «preparar».
 - Para cada seccion relevante, se leen los **ultimos 200 mensajes** desde Firebase RTDB (`getRecentMessages(sectionId, 200)`).
 - **No se usa Cohere Rerank** para el chat: se envian todos los mensajes leidos al LLM en el contexto. El LLM tiene capacidad nativa de leer JSON y razonar sobre los mensajes, asi que entiende tanto preguntas especificas ("que se dijo del examen?") como preguntas meta ("dijeron algo por el grupo?"). Esto evita dependencia adicional de Cohere Rerank, reduce latencia y costo, y elimina el riesgo de perder mensajes relevantes por scores bajos.
 - ~~Los mensajes se incluyen en el contexto bajo el titulo `MENSAJES DEL CHAT DE LA SECCION`, en formato JSON con `senderName`, `body` y `createdAt`. El LLM debe responder en lenguaje natural (no IDs tecnicos), citando remitentes por nombre.~~ *Reemplazado el 2026-09-25.* Los mensajes van bajo `MENSAJES DEL CHAT DE LA SECCION`, agrupados por curso y sección, **sin remitente**, solo con su texto y su fecha en hora de Lima (BR-CB-23). El modelo no atribuye ningún mensaje a nadie (regla 13 de BR-CB-09).
 - Si una seccion no tiene mensajes, se omite. Si Firebase RTDB no esta disponible para una seccion, se hace `console.warn` y se continua con la siguiente seccion (no se bloquea la respuesta para otros intents).
 
 `[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; se ajusta a la
-normalización, al orden del respaldo y a los mensajes sin remitente y con `date` en hora de Lima,
-BR-CB-23)*
+normalización, al orden del respaldo, a los artículos y preposiciones que no emparejan y a los
+mensajes sin remitente y con `date` en hora de Lima, BR-CB-23)*
 
 ### BR-CB-07: Ventana de contexto
 
@@ -880,6 +892,15 @@ respaldo no entra al repositorio y se descarta cuando el dueño lo indique.
   convierte `createdAt`, en milisegundos, al campo `date` con el formato `YYYY-MM-DD HH:MM` en
   hora de Lima (`timeZone: "America/Lima"`, como `todayISO()` de BR-CB-13), que el modelo lee sin
   convertir. `createdAt` no viaja.
+- *Agregado el 2026-09-25 en la revisión de la Tarea 2, pendiente de confirmación del dueño.* Los
+  mensajes borrados no viajan. R-CHAT-4 de `chat` hace un borrado suave que conserva `body` y
+  agrega `deleted: true`, así que sin este filtro el texto que su autor o el profesor titular borró
+  llegaría a Cohere aunque la app ya lo muestre como lápida. `getRecentMessages`
+  (`firebase.service.ts`) devuelve `deleted` en cada mensaje, verdadero solo si el mensaje guarda
+  `deleted === true`, y `searchChatMessages` omite esos mensajes antes de agruparlos. Una sección
+  cuyos mensajes leídos están todos borrados se omite como una sección sin mensajes (BR-CB-06). El
+  tope de 200 se aplica a la lectura, de modo que una sección puede mandar menos de 200 mensajes.
+  La regla deriva de R-CHAT-4 y de la decisión 1, y reduce lo que viaja sin cambiar ningún campo.
 - **Formato del bloque.** Sigue siendo JSON, como hoy (`context-builder.ts:153-156`).
   `context-builder.ts` escribe `JSON.stringify(chatSearchResults, null, 2)` del arreglo de
   `ChatSearchResult`, sin ningún otro campo. `JSON.stringify` escapa los saltos de línea y las
@@ -893,7 +914,9 @@ respaldo no entra al repositorio y se descarta cuando el dueño lo indique.
   (regla 13 de BR-CB-09).
 
 `[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; se ajusta, sin
-`senderName` y con `date` en hora de Lima)*
+`senderName`, con `date` en hora de Lima y sin los mensajes borrados)*
+`[@test] ../../../test/HU28_ronald/chatbot.chat-deleted.test.ts` *(nueva; la lectura de
+`getRecentMessages` deja pasar la marca `deleted` de R-CHAT-4)*
 `[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; se ajusta para que una
 pregunta de notas no llame a la búsqueda en el chat y una de avisos sí)*
 `[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts` *(por escribir; el caso con
