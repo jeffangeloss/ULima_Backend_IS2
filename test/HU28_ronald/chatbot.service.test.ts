@@ -443,6 +443,67 @@ describe("ChatbotService.ask - un dominio consultado sin datos manda su línea d
   });
 });
 
+describe("ChatbotService.ask - una repregunta sin palabras clave hereda el tema (BR-CB-04, decisión 11)", () => {
+  beforeEach(() => {
+    fuentesConsultadas.length = 0;
+    enviosACohere.length = 0;
+  });
+
+  afterEach(() => {
+    historialFalso = [];
+  });
+
+  const turno = (role: "user" | "assistant", content: string, minuto: number) => ({
+    id: `m${minuto}`,
+    sessionId: "s1",
+    role,
+    content,
+    createdAt: new Date(Date.UTC(2026, 8, 25, 15, minuto)),
+  });
+
+  const preguntar = async (question: string) => {
+    const service = new ChatbotService(fakeRepo, fakeScheduleService, fakeReadOwnBlocks, stubSearchChat);
+    await service.ask("s1", 2, { question });
+  };
+
+  test("«¿Y en Planeamiento?» después de «¿Quiénes son los delegados de Seguridad de Sistemas?» consulta los delegados", async () => {
+    historialFalso = [
+      turno("user", "¿Quiénes son los delegados de Seguridad de Sistemas?", 0),
+      turno("assistant", "En SEGURIDAD DE SISTEMAS (seccion 801) la delegada es ANA FICTICIA ROJAS.", 1),
+    ];
+    await preguntar("¿Y en Planeamiento?");
+    expect(fuentesConsultadas).toContain("delegates");
+    expect(fuentesConsultadas).not.toContain("grades");
+    expect(ultimoMensajeDeDatos()).toContain(
+      "- PLANEAMIENTO ESTRATEGICO (seccion 802): delegado BRUNO INVENTADO SOTO; subdelegado CARLA INVENTADA DIAZ.",
+    );
+  });
+
+  test("una primera pregunta sin palabras clave usa el respaldo: horario, notas y malla", async () => {
+    historialFalso = [];
+    await preguntar("¿Y en Planeamiento?");
+    expect([...fuentesConsultadas].sort()).toEqual(["curriculum", "grades", "schedule"]);
+  });
+
+  test("las respuestas del bot no cuentan como pregunta anterior", async () => {
+    historialFalso = [
+      turno("user", "Hola", 0),
+      turno("assistant", "Puedo decirte quienes son los delegados de tus secciones.", 1),
+    ];
+    await preguntar("¿Y en Planeamiento?");
+    expect([...fuentesConsultadas].sort()).toEqual(["curriculum", "grades", "schedule"]);
+  });
+
+  test("una pregunta con palabras clave no hereda nada de la anterior", async () => {
+    historialFalso = [
+      turno("user", "¿Quiénes son los delegados de Seguridad de Sistemas?", 0),
+      turno("assistant", "La delegada es ANA FICTICIA ROJAS.", 1),
+    ];
+    await preguntar("¿Qué nota saqué en el parcial?");
+    expect(fuentesConsultadas).toEqual(["grades"]);
+  });
+});
+
 describe("ChatbotService.ask - el bug reportado: cada curso con sus delegados (BR-CB-16 y BR-CB-24)", () => {
   beforeEach(() => {
     fuentesConsultadas.length = 0;

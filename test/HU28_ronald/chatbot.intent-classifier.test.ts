@@ -204,3 +204,56 @@ describe("classifyByKeywords - chat intent", () => {
     expect(intents).toContain("chat");
   });
 });
+
+// ============================================================================
+// BR-CB-04, ronda final (decisión 11): una pregunta que no activa ningún
+// dominio hereda los de la pregunta anterior del alumno en la misma sesión. El
+// clasificador recibe el texto de los mensajes `user` del historial en orden
+// cronológico y toma el más reciente que activa algún dominio. Sin pregunta
+// anterior con palabras clave usa el respaldo schedule, grades y curriculum.
+// ============================================================================
+
+describe("BR-CB-04: herencia del tema en las repreguntas (decisión 11)", () => {
+  const DELEGADOS = "¿Quiénes son los delegados de Seguridad de Sistemas?";
+  const RESPALDO: ChatbotIntent[] = ["schedule", "grades", "curriculum"];
+
+  test("«¿Y en Planeamiento?» no activa ningún dominio por sí sola", () => {
+    expect(classifyByKeywords("¿Y en Planeamiento?")).toEqual(RESPALDO);
+  });
+
+  test("«¿Y en Planeamiento?» después de la pregunta de delegados hereda delegates", () => {
+    expect(classifyByKeywords("¿Y en Planeamiento?", [DELEGADOS])).toEqual(classifyByKeywords(DELEGADOS));
+    expect(classifyByKeywords("¿Y en Planeamiento?", [DELEGADOS])).toContain("delegates");
+  });
+
+  test("una primera pregunta sin palabras clave usa el respaldo", () => {
+    expect(classifyByKeywords("Hola", [])).toEqual(RESPALDO);
+    expect(classifyByKeywords("Hola")).toEqual(RESPALDO);
+  });
+
+  test("la pregunta propia con palabras clave manda sobre la anterior", () => {
+    expect(classifyByKeywords("¿Qué nota saqué en el parcial?", [DELEGADOS])).toEqual(["grades"]);
+  });
+
+  test("hereda de la pregunta anterior más reciente, no de una más antigua", () => {
+    expect(classifyByKeywords("¿Y en Planeamiento?", ["¿Qué nota saqué en el parcial?", DELEGADOS])).toEqual(
+      classifyByKeywords(DELEGADOS),
+    );
+    expect(classifyByKeywords("¿Y en Planeamiento?", [DELEGADOS, "¿Qué nota saqué en el parcial?"])).toEqual(["grades"]);
+  });
+
+  test("en una cadena de repreguntas sin palabras clave se sigue heredando el tema de la última que lo fijó", () => {
+    const historial = [DELEGADOS, "¿Y en Planeamiento?", "¿Y en Ética?"];
+    expect(classifyByKeywords("¿Y en Cálculo I?", historial)).toContain("delegates");
+  });
+
+  test("si ninguna pregunta anterior activa un dominio, usa el respaldo", () => {
+    // «¿Y ahora?» no sirve de ejemplo: «ahora» contiene «hora», que activa schedule.
+    expect(classifyByKeywords("¿Y eso?")).toEqual(RESPALDO);
+    expect(classifyByKeywords("¿Y eso?", ["Hola", "Gracias"])).toEqual(RESPALDO);
+  });
+
+  test("la herencia conserva el arrastre de own_blocks a schedule", () => {
+    expect(classifyByKeywords("¿Y el otro?", ["¿Qué bloque libre me queda?"])).toEqual(["schedule", "own_blocks"]);
+  });
+});

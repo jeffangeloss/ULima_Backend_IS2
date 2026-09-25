@@ -74,8 +74,11 @@ export class ChatbotService {
     // pregunta actual. Viaja una sola vez, como turnos.
     const history = await this.repository.getRecentMessages(sessionId, HISTORY_LIMIT);
 
-    // BR-CB-04: solo palabras clave, sin esperar a Cohere.
-    const intents = classifyByKeywords(input.question);
+    // BR-CB-04: solo palabras clave, sin esperar a Cohere. Una repregunta sin
+    // palabras clave hereda los dominios de la pregunta anterior del alumno, que
+    // sale de los mensajes `user` del historial ya leído (decisión 11).
+    const previousQuestions = history.filter((m) => m.role === "user").map((m) => m.content);
+    const intents = classifyByKeywords(input.question, previousQuestions);
     const studentInfo = await this.repository.getStudentInfo(studentId);
 
     const dateContext = await this.computeDateContext();
