@@ -18,8 +18,9 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > Estado: **ajustada el 2026-09-25** con las decisiones del dueño de ese día sobre delegados,
 > bloques propios e historial, **aprobada por el dueño el 2026-09-25 e implementada** en la rama
 > `fix/chatbot-delegados-bloques`, salvo el último punto de BR-CB-10, que tampoco está implementado
-> en `main` y que choca con BR-CB-16, BR-CB-17 y la regla 4 de BR-CB-09 (ver BR-CB-10). El merge
-> espera además las decisiones del dueño de «Pendiente del dueño antes del merge». Cambian BR-CB-02,
+> en `main` y que el dueño enmienda el 2026-09-25 con la excepción de delegado y subdelegado (ver
+> BR-CB-10). El merge espera además las decisiones del dueño que siguen abiertas en «Pendiente del
+> dueño antes del merge». Cambian BR-CB-02,
 > BR-CB-03, BR-CB-04, BR-CB-05, BR-CB-06, BR-CB-07, BR-CB-09 y BR-CB-12, y se agregan BR-CB-16
 > a BR-CB-24. Tres puntos son propuestas derivadas que el dueño confirma al aprobar, BR-CB-23
 > (de la decisión 1), el total de horas de clase de BR-CB-19 (de la decisión 2) y la condición
@@ -38,11 +39,11 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > resuelve el borrado único de BR-CB-22b, que el dueño decide al aprobar, y el segundo espera su
 > confirmación. Los ejemplos usan datos inventados.
 > La revisión de la Tarea 2 del mismo día agrega a BR-CB-23 la omisión de los mensajes borrados,
-> pendiente de confirmación del dueño, y aclara la lista de artículos y preposiciones de BR-CB-06.
-> La revisión de la Tarea 3 aclara, para que el dueño lo confirme, contra qué fecha se mide la
-> vigencia de BR-CB-18, qué pasa con la línea de horas de clase si el horario no se cargó
-> (BR-CB-19 y BR-CB-24) y qué claves lee la suma de BR-CB-19. Deja además abierta para el dueño
-> la limpieza de los caracteres de control en el título de BR-CB-18.
+> que el dueño confirma en la ronda final, y aclara la lista de artículos y preposiciones de
+> BR-CB-06. La revisión de la Tarea 3 aclara contra qué fecha se mide la vigencia de BR-CB-18, qué
+> pasa con la línea de horas de clase si el horario no se cargó (BR-CB-19 y BR-CB-24) y qué claves
+> lee la suma de BR-CB-19, tres aclaraciones que el dueño también confirma en la ronda final. Deja
+> además abierta para el dueño la limpieza de los caracteres de control en el título de BR-CB-18.
 > La revisión de la Tarea 4 enlaza con `[@test]` las pruebas ya escritas de BR-CB-02, BR-CB-03,
 > BR-CB-12 y BR-CB-20 a BR-CB-22. Alinea además con la aprobación del dueño las etiquetas de estado
 > que seguían diciendo «pendiente de aprobación», aquí y en RS-BE-35 de `time-blocks`, sin cambiar
@@ -65,6 +66,14 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > ajuste y en BR-CB-24 que la lectura de «tiene datos» empeora respuestas que `main` da bien, y
 > extiende el paso 1 de «Primera purga en producción» a toda ejecución de la rama con el
 > `DATABASE_URL` de producción. Ningún requisito cambia.
+> La ronda final del mismo día lleva a la spec y al código cuatro decisiones del dueño, aprobadas en
+> el chat el 2026-09-25 (decisiones 8 a 11). Un dominio que se consultó sin datos manda su bloque
+> con una línea que dice que no hay (BR-CB-24), el último punto de BR-CB-10 se enmienda con la
+> excepción de delegado y subdelegado, los cinco comportamientos que la spec sumó después de la
+> aprobación quedan confirmados y una repregunta sin palabras clave hereda los dominios de la
+> pregunta anterior del alumno (BR-CB-04). Suma además el escape de U+2028, U+2029 y U+0085 en el
+> JSON del chat y de los anuncios (BR-CB-23, corrección 12). Siguen abiertos los puntos 6, 7 y 9 de
+> «Pendiente del dueño antes del merge».
 > Contraparte en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-35, ajustada el mismo
 > día). El récord académico sigue fuera del chatbot (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -121,27 +130,48 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 | 6 | La regla del prompt sobre otros alumnos se reconcilia con la decisión 1. | BR-CB-09 |
 | 7 | La búsqueda en el chat de sección corre solo con preguntas sobre el chat o los avisos y no manda nombres de remitentes. **Derivada de la decisión 1, para que el dueño la confirme al aprobar.** | BR-CB-23 |
 
+### Decisiones del dueño de la ronda final (2026-09-25, vinculantes)
+
+> Aprobadas por el dueño en el chat el 2026-09-25. Resuelven los puntos 1 a 5 y 8 de «Pendiente
+> del dueño antes del merge».
+
+| # | Decisión | Requisitos |
+| --- | --- | --- |
+| 8 | Datos vacíos explícitos. Cuando un dominio se consultó y no trae datos, su bloque va igual al mensaje con una línea en español que dice que no hay, como hace BR-CB-18 con «No registraste bloques propios vigentes.», para que el modelo distinga «no hay» de «no se consultó». Un dominio que no se consultó sigue sin bloque. Corrige la lectura de «tiene datos» de la revisión del cierre de la Tarea 5. | BR-CB-24 |
+| 9 | El último punto de BR-CB-10, que manda descartar las respuestas con datos de otros alumnos, se enmienda con la excepción explícita del delegado y el subdelegado por curso y sección (BR-CB-16, BR-CB-17 y la regla 4 de BR-CB-09). La anotación dice qué se verifica y qué no. | BR-CB-10 |
+| 10 | Quedan confirmados los cinco comportamientos que la spec sumó después de la aprobación, que son la omisión de los mensajes borrados (BR-CB-23), la vigencia medida contra hoy (BR-CB-18), las claves snake_case de la suma de horas (BR-CB-19), la línea de horas de clase omitida sin horario (BR-CB-19 y BR-CB-24) y la lectura de «tiene datos» de BR-CB-24, esta última con la corrección de la decisión 8. | BR-CB-18, BR-CB-19, BR-CB-23, BR-CB-24 |
+| 11 | Herencia del tema en las repreguntas. Una pregunta que no activa ningún dominio por palabras clave hereda los dominios de la pregunta anterior del alumno en la misma sesión, y sin pregunta anterior usa el respaldo `schedule`, `grades` y `curriculum`. | BR-CB-04 |
+
+| # | Corrección que acompaña | Requisitos |
+| --- | --- | --- |
+| 12 | El JSON de los dos bloques con texto de terceros, el del chat y el de los anuncios, escapa U+2028, U+2029 y U+0085, que `JSON.stringify` deja tal cual. Refuerza la garantía que BR-CB-23 ya da, que ningún mensaje forma una línea propia, sin cambiar ningún campo. Sale del informe final de la ronda 1. | BR-CB-23 |
+
 ### Pendiente del dueño antes del merge
 
-> *Agregado el 2026-09-25, en la revisión final del ajuste (ronda 1).* No cambia ningún requisito.
-> Reúne lo que la rama no puede cerrar sin el dueño.
+> *Agregado el 2026-09-25, en la revisión final del ajuste (ronda 1), y actualizado en la ronda
+> final del mismo día.* No cambia ningún requisito. Reúne lo que la rama no puede cerrar sin el
+> dueño.
 
 `AGENTS.md` pide una spec aprobada antes de implementar. Los puntos 1 a 5 entran a la spec después
 de la aprobación del 2026-09-25, en las revisiones de las Tareas 2, 3 y 5, y la rama ya los
 implementa. El punto 6 es una lectura del implementador que la aprobación no registra, el 7 es una
-decisión abierta y el 8 es una contradicción entre reglas. El merge espera que el dueño confirme
-cada punto o que se revierta el que no confirme, con la salida de la última columna.
+decisión abierta y el 8 era una contradicción entre reglas. En la ronda final, el dueño confirma
+los puntos 1 a 4 (decisión 10), reemplaza la lectura del punto 5 por la enmienda de BR-CB-24
+(decisiones 8 y 10) y enmienda el punto 8 (decisión 9). La decisión 9 no resuelve los patrones que
+el punto 8 dejaba para la misma decisión, así que pasan al punto 9. El merge espera la decisión del
+dueño sobre los puntos 6, 7 y 9, con la salida de la última columna si no los confirma.
 
-| # | Punto | Regla | Qué hace hoy la rama | Si el dueño no lo confirma |
-| --- | --- | --- | --- | --- |
-| 1 | Los mensajes borrados del chat no viajan | BR-CB-23 | `searchChatMessages` omite los mensajes con `deleted: true` (`chat-search.ts:64-66`) | Sale el filtro, y el texto que su autor o el profesor titular borró vuelve a llegar a Cohere. Cambian los casos de `chatbot.chat-search.test.ts` que fijan la omisión |
-| 2 | La vigencia de un bloque propio se mide contra hoy | BR-CB-18 | Un bloque sale con «empieza el …» solo si su `startDate` es posterior a `today` (`context-builder.ts:202-205`) | La comparación pasa al lunes de la ventana, y un bloque que empezó entre ese lunes y hoy sale con «empieza el …». Cambian los casos de `chatbot.own-blocks-context.test.ts` que fijan la vigencia |
-| 3 | La suma de horas de clase lee `start_time` y `end_time` | BR-CB-19 | `ScheduleData` declara las claves snake_case que proyecta `getSchedule` (`chatbot.types.ts:38-45`) y `weeklyClassHours` las lee | La otra salida es que `getSchedule` mapee sus filas a camelCase. Eso cambia el JSON del bloque 3, que BR-CB-24 fija «sin cambios», así que exige además enmendar BR-CB-24 |
-| 4 | Sin horario cargado, el bloque 8 sale sin la línea de horas de clase | BR-CB-19 y BR-CB-24 | La línea se omite si el horario no se leyó (`context-builder.ts:227-229`) | La línea dice «0 h» también sin horario, un total que nadie leyó, o el dueño fija otro texto. Hoy el caso no ocurre, porque `own_blocks` arrastra `schedule` |
-| 5 | «Tiene datos» significa al menos un elemento | BR-CB-24 | `hasData` deja fuera los bloques 3 a 6, 10 y 11 cuando su arreglo viene vacío (`context-builder.ts:172-177`) | La revisión final recomienda la enmienda de BR-CB-24, con el arreglo vacío o una línea explícita cuando el dominio está activo y la consulta vuelve vacía |
-| 6 | El texto libre del chat y de los anuncios puede nombrar a terceros | BR-CB-17, segundo residuo | El chatbot no filtra texto libre | El dueño define otra salida, que es un cambio de spec aparte. La aprobación del 2026-09-25 no la decide, y leer esa aprobación como aceptación es una inferencia del implementador |
-| 7 | Los caracteres de control del título de un bloque propio | BR-CB-18 | Rige `/\s+/g` y el código no endurece la limpieza | El dueño elige `/[\s\p{Cc}]+/gu` en `singleLine`, el rechazo en RS-BE-31 de `time-blocks` o el aplazamiento explícito de la decisión |
-| 8 | El descarte de una respuesta con datos de otro alumno | BR-CB-10, último punto | No descarta ninguna respuesta ni aplica los patrones de `DATOS DEL ALUMNO` y `FIN DE LOS DATOS`, igual que `main` | El dueño enmienda el punto con la salvedad del delegado y el subdelegado o lo retira, y en la misma decisión resuelve los dos patrones (BR-CB-10) |
+| # | Punto | Regla | Qué hace hoy la rama | Si el dueño no lo confirma | Estado |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Los mensajes borrados del chat no viajan | BR-CB-23 | `searchChatMessages` omite los mensajes con `deleted: true` (`chat-search.ts:64-66`) | Sale el filtro, y el texto que su autor o el profesor titular borró vuelve a llegar a Cohere. Cambian los casos de `chatbot.chat-search.test.ts` que fijan la omisión | Confirmado por el dueño el 2026-09-25 (decisión 10) |
+| 2 | La vigencia de un bloque propio se mide contra hoy | BR-CB-18 | Un bloque sale con «empieza el …» solo si su `startDate` es posterior a `today` (`context-builder.ts:202-205`) | La comparación pasa al lunes de la ventana, y un bloque que empezó entre ese lunes y hoy sale con «empieza el …». Cambian los casos de `chatbot.own-blocks-context.test.ts` que fijan la vigencia | Confirmado por el dueño el 2026-09-25 (decisión 10) |
+| 3 | La suma de horas de clase lee `start_time` y `end_time` | BR-CB-19 | `ScheduleData` declara las claves snake_case que proyecta `getSchedule` (`chatbot.types.ts:38-45`) y `weeklyClassHours` las lee | La otra salida es que `getSchedule` mapee sus filas a camelCase. Eso cambia el JSON del bloque 3, que BR-CB-24 fija «sin cambios», así que exige además enmendar BR-CB-24 | Confirmado por el dueño el 2026-09-25 (decisión 10) |
+| 4 | Sin horario cargado, el bloque 8 sale sin la línea de horas de clase | BR-CB-19 y BR-CB-24 | La línea se omite si el horario no se leyó | La línea dice «0 h» también sin horario, un total que nadie leyó, o el dueño fija otro texto. Hoy el caso no ocurre, porque `own_blocks` arrastra `schedule` | Confirmado por el dueño el 2026-09-25 (decisión 10) |
+| 5 | «Tiene datos» significa al menos un elemento | BR-CB-24 | Desde la ronda final, un bloque leído sin datos sale con su línea de «no hay» (BR-CB-24) | La revisión final recomendaba la enmienda de BR-CB-24, con el arreglo vacío o una línea explícita cuando el dominio está activo y la consulta vuelve vacía | Reemplazado por la enmienda de BR-CB-24 y confirmado por el dueño el 2026-09-25 (decisiones 8 y 10) |
+| 6 | El texto libre del chat y de los anuncios puede nombrar a terceros | BR-CB-17, segundo residuo | El chatbot no filtra texto libre | El dueño define otra salida, que es un cambio de spec aparte. La aprobación del 2026-09-25 no la decide, y leer esa aprobación como aceptación es una inferencia del implementador | Abierto |
+| 7 | Los caracteres de control del título de un bloque propio | BR-CB-18 | Rige `/\s+/g` y el código no endurece la limpieza | El dueño elige `/[\s\p{Cc}]+/gu` en `singleLine`, el rechazo en RS-BE-31 de `time-blocks` o el aplazamiento explícito de la decisión | Abierto |
+| 8 | El descarte de una respuesta con datos de otro alumno | BR-CB-10, último punto | No descarta ninguna respuesta, igual que `main` | El dueño enmendaba el punto con la salvedad del delegado y el subdelegado o lo retiraba | Enmendado por el dueño el 2026-09-25 con la excepción de delegado y subdelegado (decisión 9). Sigue sin implementar, como anota BR-CB-10 |
+| 9 | Los patrones de `DATOS DEL ALUMNO` y `FIN DE LOS DATOS` | BR-CB-10, patrones del formato nuevo | Aplica solo los cinco patrones del formato anterior | El dueño aprueba los dos patrones, con el `400 INVALID_QUESTION` para una pregunta genuina que empiece con «datos del alumno», o los descarta de forma explícita | Abierto. Venía con el punto 8 y la decisión 9 no lo resuelve |
 
 Además de esas decisiones, el dueño cumple las condiciones de «Antes del merge y del despliegue» de
 `docs/superpowers/plans/2026-09-25-chatbot-delegados-bloques.md` y los pasos de «Primera purga en
@@ -237,8 +267,35 @@ mensajes previos y, si falla su generación o su guardado, deja la respuesta y e
   `intent-classifier.ts:22` solo aplica `toLowerCase`, y «¿Quiénes son los delegados…?» con tilde
   no activa ningún dominio de compañeros.
 - La coincidencia es por subcadena sobre el texto normalizado, como hoy, y una pregunta puede
-  activar varios dominios. Sin ninguna coincidencia se usan `schedule`, `grades` y `curriculum`,
-  como hoy (`intent-classifier.ts:31-33`).
+  activar varios dominios. ~~Sin ninguna coincidencia se usan `schedule`, `grades` y `curriculum`,
+  como hoy (`intent-classifier.ts:31-33`).~~ *Enmendado el 2026-09-25 en la ronda final (decisión
+  11).* Sin ninguna coincidencia, la pregunta hereda los dominios de la pregunta anterior del
+  alumno (punto siguiente), y solo si no hay pregunta anterior se usan `schedule`, `grades` y
+  `curriculum`, el respaldo de hoy.
+- **Herencia del tema en las repreguntas.** *Agregado el 2026-09-25 en la ronda final (decisión
+  11), aprobado por el dueño el 2026-09-25.*
+  - La pregunta anterior es el último mensaje `user` del historial que el servicio lee antes de
+    guardar nada (BR-CB-20), así que pertenece a la misma sesión y nunca es la pregunta actual.
+    Los mensajes `assistant` no cuentan, porque la respuesta del bot no es una pregunta del alumno
+    y puede repetir palabras clave tomadas de los datos.
+  - Esa pregunta pudo heredar a su vez, así que el clasificador recorre los mensajes `user` del
+    historial del más reciente al más antiguo y toma los dominios del primero cuyas palabras clave
+    activan algún dominio, con el arrastre de `own_blocks` a `schedule`. Si ninguno activa un
+    dominio, o el historial no trae mensajes `user`, usa el respaldo. El resultado es el mismo que
+    tomar los dominios con que se respondió la pregunta anterior, salvo en una cadena larga (punto
+    siguiente).
+  - El recorrido solo ve el historial que viaja, que son los 10 últimos mensajes y, como el par se
+    guarda junto (BR-CB-21), cinco preguntas. La sexta repregunta seguida sin palabras clave ya no
+    ve la pregunta que fijó el tema y cae en el respaldo.
+  - La herencia solo elige los dominios. El filtro de secciones del chat (BR-CB-06) sigue
+    comparando la pregunta actual, así que «¿Y en Planeamiento?» después de una pregunta sobre el
+    chat lee el chat de Planeamiento.
+  - `classifyByKeywords(question, previousQuestions)` recibe el texto de los mensajes `user` del
+    historial en orden cronológico, y el servicio se los pasa en el paso 4 de BR-CB-21, que ya
+    viene después de leer el historial.
+  - La prueba fija dos ejemplos. «¿Quiénes son los delegados de Seguridad de Sistemas?» seguida de
+    «¿Y en Planeamiento?» carga `delegates` en la segunda, y una primera pregunta sin palabras
+    clave, como «Hola», usa el respaldo.
 - **`own_blocks` arrastra a `schedule`, en el clasificador.** `classifyByKeywords` agrega
   `schedule` a su salida siempre que detecta `own_blocks`, porque BR-CB-19 combina los bloques
   propios con el horario de clases. Es el único lugar del arrastre, y el servicio y
@@ -275,7 +332,13 @@ mensajes previos y, si falla su generación o su guardado, deja la respuesta y e
   | «¿Cuántos créditos llevo?» | `curriculum` |
 
 `[@test] ../../../test/HU28_ronald/chatbot.intent-classifier.test.ts` *(existe; fija los dominios
-nuevos, la normalización, el arrastre de `own_blocks` a `schedule` y los ejemplos)*
+nuevos, la normalización, el arrastre de `own_blocks` a `schedule` y los ejemplos. Desde la ronda
+final fija además la herencia, con la pregunta anterior con palabras clave, la cadena de
+repreguntas, la pregunta propia que manda sobre la anterior y el respaldo sin pregunta anterior)*
+`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; desde la ronda final, el
+servicio pasa al clasificador los mensajes `user` del historial, de modo que «¿Y en Planeamiento?»
+después de la pregunta de delegados consulta los delegados, y una primera pregunta sin palabras
+clave consulta el horario, las notas y la malla)*
 
 ### BR-CB-05: Recoleccion de datos por intencion
 
@@ -326,10 +389,18 @@ cada dominio, y su bloque del chat exige lo contrario de «el chat se consulta S
 - **No se usa Cohere Rerank** para el chat: se envian todos los mensajes leidos al LLM en el contexto. El LLM tiene capacidad nativa de leer JSON y razonar sobre los mensajes, asi que entiende tanto preguntas especificas ("que se dijo del examen?") como preguntas meta ("dijeron algo por el grupo?"). Esto evita dependencia adicional de Cohere Rerank, reduce latencia y costo, y elimina el riesgo de perder mensajes relevantes por scores bajos.
 - ~~Los mensajes se incluyen en el contexto bajo el titulo `MENSAJES DEL CHAT DE LA SECCION`, en formato JSON con `senderName`, `body` y `createdAt`. El LLM debe responder en lenguaje natural (no IDs tecnicos), citando remitentes por nombre.~~ *Reemplazado el 2026-09-25.* Los mensajes van bajo `MENSAJES DEL CHAT DE LA SECCION`, agrupados por curso y sección, **sin remitente**, solo con su texto y su fecha en hora de Lima (BR-CB-23). El modelo no atribuye ningún mensaje a nadie (regla 13 de BR-CB-09).
 - Si una seccion no tiene mensajes, se omite. Si Firebase RTDB no esta disponible para una seccion, se hace `console.warn` y se continua con la siguiente seccion (no se bloquea la respuesta para otros intents).
+  *Agregado el 2026-09-25 en la ronda final, por la decisión 8.* Si ninguna sección leída trae
+  mensajes y al menos una lectura falló, `searchChatMessages` devuelve `null` y no un arreglo
+  vacío, porque no puede afirmar que no hay mensajes, y el bloque 11 no sale (BR-CB-24). Un
+  arreglo vacío queda para el caso en que todas las lecturas respondieron sin mensajes, y también
+  para un alumno sin secciones activas, que el servicio resuelve sin leer Firebase. Si una lectura
+  falla y otra trae mensajes, salen los que llegaron, como hoy.
 
 `[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; fija la normalización,
 el orden del respaldo, los artículos y preposiciones que no emparejan y los mensajes sin remitente
-y con `date` en hora de Lima, BR-CB-23)*
+y con `date` en hora de Lima, BR-CB-23. Desde la ronda final fija además que una lectura fallida
+sin ningún mensaje leído devuelve `null` y que las lecturas sin mensajes y sin fallas devuelven un
+arreglo vacío)*
 
 ### BR-CB-07: Ventana de contexto
 
@@ -471,30 +542,42 @@ que trae las reglas 11 a 13, y que ya no contiene «NO respondas preguntas sobre
 - El campo `question` tiene maximo 500 caracteres (Zod `.max(500)`).
 - Se rechaza la pregunta si contiene intentos de prompt injection: cadenas como `<context>`, `[CONTEXTO]`, `[DATOS_`, `system:`, `assistant:` -> `400 INVALID_QUESTION`.
 - Timeout de 8 segundos para la llamada a Cohere Chat.
-- Si Cohere responde con texto que contiene IDs o datos que no corresponden al `studentId` del JWT, se descarta la respuesta y se retorna error 500 generico (no se guarda en BD).
+- ~~Si Cohere responde con texto que contiene IDs o datos que no corresponden al `studentId` del JWT, se descarta la respuesta y se retorna error 500 generico (no se guarda en BD).~~
+  *Enmendado el 2026-09-25 en la ronda final (decisión 9), aprobado por el dueño el 2026-09-25.*
+  Si Cohere responde con texto que contiene IDs o datos que no corresponden al `studentId` del
+  JWT, se descarta la respuesta y se retorna error 500 generico (no se guarda en BD), **salvo el
+  nombre, el cargo, el curso y la sección del delegado y del subdelegado de las secciones del
+  alumno**, tal como vienen en el bloque 7 de BR-CB-24. Nombrarlos es la respuesta correcta a
+  «¿quiénes son los delegados…?» (BR-CB-16, BR-CB-17 y la regla 4 de BR-CB-09) y no motiva el
+  descarte. Cualquier otro dato de esas mismas personas, como sus notas, su horario, su contacto
+  o sus bloques, sí lo motiva.
 
-> *Anotación del 2026-09-25, en la revisión del cierre de la Tarea 5. No cambia la regla.*
+> *Anotación del 2026-09-25, en la revisión del cierre de la Tarea 5, actualizada en la ronda
+> final con la enmienda del último punto.*
 
 - **El último punto no está implementado.** `ChatbotService.ask` guarda la respuesta de Cohere sin
-  inspeccionarla, igual que `main` 38024d4, y ninguna prueba cubre ese descarte. La brecha es
-  anterior al ajuste del 2026-09-25 y sigue abierta, porque la regla no dice cómo reconocer en
-  texto libre un dato de otro alumno.
-- **El último punto choca con el ajuste.** *Agregado el 2026-09-25, en la revisión final del ajuste
-  (ronda 1).* El punto manda descartar toda respuesta con «datos que no corresponden al `studentId`
-  del JWT», mientras que BR-CB-16, BR-CB-17 y la regla 4 de BR-CB-09 hacen que la respuesta
-  correcta a «¿quiénes son los delegados…?» traiga a propósito nombres de otros alumnos. Cumplido
-  al pie de la letra, el punto descartaría justo las respuestas que el ajuste corrige. Con dos
-  reglas incompatibles, `AGENTS.md` no deja cerrar la feature, así que el dueño elige antes del
-  merge una de dos salidas y, en la misma decisión, resuelve los patrones del punto siguiente
-  (punto 8 de «Pendiente del dueño antes del merge»).
-  1. Enmendar el punto con una salvedad, por ejemplo «salvo el nombre, el cargo, el curso y la
-     sección del delegado y del subdelegado de las secciones del alumno, tal como vienen en el
-     bloque 7 de BR-CB-24». La enmienda sigue sin decir cómo reconocer en texto libre un dato de
-     otro alumno, así que su implementación necesita además ese criterio y su prueba.
-  2. Retirar el punto, con los IDs incluidos. La regla 5 del prompt ya pide no revelar IDs, y
-     desde BR-CB-17 de otras personas solo llegan a Cohere los delegados y los residuos de texto
-     libre de esa regla, así que el modelo no recibe otros datos de terceros que pueda repetir. La
-     rama y `main` ya se comportan así, porque ninguna de las dos descarta respuestas.
+  inspeccionarla, igual que `main` 38024d4. La brecha es anterior al ajuste del 2026-09-25 y sigue
+  abierta, porque la regla, también enmendada, no dice cómo reconocer en texto libre un dato de
+  otro alumno ni un ID. Implementarla exige ese criterio y su prueba, que son un cambio aparte.
+- **La enmienda cierra el choque con el ajuste.** *Agregado en la revisión final del ajuste (ronda
+  1) y resuelto en la ronda final.* Al pie de la letra, el texto anterior descartaba justo las
+  respuestas que el ajuste corrige, porque la respuesta correcta a «¿quiénes son los delegados…?»
+  trae a propósito nombres de otros alumnos. Con la excepción, las dos reglas dejan de ser
+  incompatibles.
+- **Qué se verifica.** Lo que entra a Cohere, que es lo único que el chatbot controla.
+  - De otras personas, el mensaje de datos solo trae el delegado y el subdelegado de cada sección,
+    con su curso y su sección. Lo fijan `chatbot.no-classmates.test.ts`, que busca el nombre de
+    una compañera que no es representante en el preamble, los turnos y el mensaje de datos,
+    `chatbot.context-builder.test.ts` y `chatbot.delegates.postgres.test.ts`.
+  - El chat viaja sin remitente (`chatbot.chat-search.test.ts`) y el prompt trae la regla 4 con
+    la excepción de delegados (`chatbot.system-prompt.test.ts`).
+- **Qué no se verifica.** Lo que sale de Cohere.
+  - Ninguna prueba cubre el descarte, ni de IDs ni de datos de otro alumno, porque el código no lo
+    hace.
+  - Nada comprueba que el modelo cumpla la regla 4, es decir, que no nombre a nadie fuera del
+    bloque 7 ni dé otros datos de los delegados.
+  - Tampoco se filtra el texto libre del chat y de los anuncios, que puede nombrar a terceros
+    (segundo residuo de BR-CB-17, punto 6 de «Pendiente del dueño antes del merge»).
 - **Patrones del formato nuevo, pendientes de la decisión del dueño.** Los cinco patrones son los
   delimitadores del formato anterior y no cubren `DATOS DEL ALUMNO` ni `FIN DE LOS DATOS`, las dos
   líneas del marco de BR-CB-24. La pregunta va después del cierre real y no puede cerrarlo, pero sí
@@ -505,8 +588,10 @@ que trae las reglas 11 a 13, y que ya no contiene «NO respondas preguntas sobre
     empieza con `DATOS DEL ALUMNO` y una línea que es solo `FIN DE LOS DATOS`, con el mismo
     `400 INVALID_QUESTION`. Una pregunta genuina que empiece con «datos del alumno» recibiría
     también ese 400.
-  - Mientras el dueño no lo decida, el código aplica solo los cinco patrones de arriba. La decisión
-    va junto con la del último punto (punto anterior).
+  - Mientras el dueño no lo decida, el código aplica solo los cinco patrones de arriba. La
+    decisión iba junto con la del último punto, pero la decisión 9 de la ronda final enmienda ese
+    punto sin resolver los patrones, que siguen pendientes (punto 9 de «Pendiente del dueño antes
+    del merge»).
 
 ### BR-CB-11: Rate Limiting
 
@@ -741,8 +826,8 @@ datos, contiene su nombre)*
     semanal (`time-blocks`, «Qué NO entra»).
   - La vigencia va como «del 2026-09-01 al 2026-12-15». Si el bloque todavía no empieza, «empieza
     el 2026-10-03 y termina el 2026-11-28».
-    *Aclaración del 2026-09-25, en la revisión de la Tarea 3, que el dueño confirma antes del merge
-    (punto 2 de «Pendiente del dueño antes del merge»).* Un bloque todavía no empieza cuando su `startDate` es posterior a `today` (BR-CB-13), y no al lunes de la
+    *Aclaración del 2026-09-25, en la revisión de la Tarea 3. Comportamiento
+    confirmado por el dueño el 2026-09-25 (decisión 10).* Un bloque todavía no empieza cuando su `startDate` es posterior a `today` (BR-CB-13), y no al lunes de la
     ventana. Un bloque que empieza hoy, o entre ese lunes y hoy, ya empezó y va «del … al …». La
     aclaración sigue la lectura literal de «todavía», que habla del día en que el alumno pregunta.
   - Cada cambio de la ventana ocupa una línea, «miercoles 2026-09-30, no va (cancelado)» o «lunes
@@ -810,8 +895,8 @@ el bloque 8 sin el horario cargado, que sale sin la línea de horas de clase)*
     `weeklyHours` (`time-blocks.logic.ts:159-161` y `:184`). Sumar horas decimales sesión por
     sesión arrastra error de coma flotante, y ocho sesiones de 1 h 50 min darían
     14.666666666666668 en vez de 14.666666666666666.
-  - **Claves.** *Aclaración del 2026-09-25, en la revisión de la Tarea 3, que el dueño confirma
-    antes del merge (punto 3 de «Pendiente del dueño antes del merge»).*
+  - **Claves.** *Aclaración del 2026-09-25, en la revisión de la Tarea 3. Comportamiento
+    confirmado por el dueño el 2026-09-25 (decisión 10).*
     `getSchedule` castea sus filas sin mapearlas, así que cada sesión llega con las claves de la
     consulta, en snake_case, y con las horas de `time::text`, que traen segundos
     (`start_time: "08:00:00"`). La suma lee solo `start_time` y `end_time`. El tipo `ScheduleData`
@@ -825,8 +910,8 @@ el bloque 8 sin el horario cargado, que sale sin la línea de horas de clase)*
     horario: 16 h», como en el ejemplo. Si falla la lectura de bloques propios, el bloque 8 no sale
     (BR-CB-18) y esta línea tampoco, así que el modelo no tiene el total y no lo estima (reglas 1
     y 12).
-    *Aclaración del 2026-09-25, en la revisión de la Tarea 3, que el dueño confirma antes del merge
-    (punto 4 de «Pendiente del dueño antes del merge»).* Si el horario no se cargó, el bloque 8 sale sin esta línea y termina en las horas de bloques propios, porque
+    *Aclaración del 2026-09-25, en la revisión de la Tarea 3. Comportamiento
+    confirmado por el dueño el 2026-09-25 (decisión 10).* Si el horario no se cargó, el bloque 8 sale sin esta línea y termina en las horas de bloques propios, porque
     «0 h» de un horario sin leer sería un dato falso. «0 h» queda para un horario leído sin
     sesiones. Hoy el caso no ocurre, ya que el clasificador agrega `schedule` siempre que detecta
     `own_blocks` (BR-CB-04), pero la regla no depende de ese arrastre.
@@ -1100,8 +1185,8 @@ respaldo no entra al repositorio y se descarta cuando el dueño lo indique.
   convierte `createdAt`, en milisegundos, al campo `date` con el formato `YYYY-MM-DD HH:MM` en
   hora de Lima (`timeZone: "America/Lima"`, como `todayISO()` de BR-CB-13), que el modelo lee sin
   convertir. `createdAt` no viaja.
-- *Agregado el 2026-09-25 en la revisión de la Tarea 2, pendiente de confirmación del dueño (punto
-  1 de «Pendiente del dueño antes del merge»).* Los mensajes borrados no viajan. R-CHAT-4 de `chat` hace un borrado suave que conserva `body` y
+- *Agregado el 2026-09-25 en la revisión de la Tarea 2. Comportamiento
+  confirmado por el dueño el 2026-09-25 (decisión 10).* Los mensajes borrados no viajan. R-CHAT-4 de `chat` hace un borrado suave que conserva `body` y
   agrega `deleted: true`, así que sin este filtro el texto que su autor o el profesor titular borró
   llegaría a Cohere aunque la app ya lo muestre como lápida. `getRecentMessages`
   (`firebase.service.ts`) devuelve `deleted` en cada mensaje, verdadero solo si el mensaje guarda
@@ -1114,6 +1199,16 @@ respaldo no entra al repositorio y se descarta cuando el dueño lo indique.
   `ChatSearchResult`, sin ningún otro campo. `JSON.stringify` escapa los saltos de línea y las
   comillas del texto de terceros, así que un mensaje no puede formar una línea propia que imite
   `FIN DE LOS DATOS` ni el título de otro bloque. El ejemplo va en BR-CB-24.
+- **Separadores de línea de Unicode.** *Agregado el 2026-09-25 en la ronda final (corrección 12),
+  hecho.* `JSON.stringify` escapa los caracteres de control menores que U+0020, entre ellos U+000B,
+  U+000C y U+001C a U+001E, pero deja tal cual NEL (U+0085), el separador de línea (U+2028) y el
+  separador de párrafo (U+2029), que el corte de líneas de Unicode (UAX #14), `str.splitlines` de
+  Python y otros consumidores tratan como salto de línea. `context-builder.ts` los escribe como
+  `\u0085`, ` ` y ` ` en el JSON de los dos bloques con texto de terceros, el del chat
+  (bloque 11) y el de los anuncios (bloque 6). Esos tres caracteres solo pueden aparecer dentro de
+  las cadenas del JSON, así que el texto sigue siendo JSON válido y describe los mismos valores, y
+  ningún mensaje ni anuncio forma una línea propia tampoco para esos consumidores. Los demás
+  bloques JSON no traen texto de terceros y no cambian (BR-CB-24).
 - Los mensajes siguen agrupados por curso y sección (`sectionName`, que hoy es «CURSO (código)»,
   `chat-search.ts:27`), con el tope de 200 por sección de BR-CB-06.
 - El filtro de secciones cumple lo que ya pide BR-CB-06, con la normalización de BR-CB-04 y el
@@ -1123,6 +1218,10 @@ respaldo no entra al repositorio y se descarta cuando el dueño lo indique.
 
 `[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; sin `senderName`, con
 `date` en hora de Lima y sin los mensajes borrados)*
+`[@test] ../../../test/HU28_ronald/chatbot.context-builder.test.ts` *(existe; desde la ronda
+final, un mensaje del chat y un anuncio con U+2028, U+2029 y U+0085 salen con esos caracteres
+escapados, sin ninguna línea propia al cortar también en ellos, y el JSON escapado vuelve a los
+mismos valores con `JSON.parse`)*
 `[@test] ../../../test/HU28_ronald/chatbot.chat-deleted.test.ts` *(existe; la lectura de
 `getRecentMessages` deja pasar la marca `deleted` de R-CHAT-4)*
 `[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; una pregunta de notas no
@@ -1138,53 +1237,71 @@ BR-CB-24)*
 - El *preamble* es el system prompt de BR-CB-09. Los turnos previos van antes, como turnos
   (BR-CB-20). El último turno `user` es el mensaje de datos.
 - El mensaje de datos abre con `DATOS DEL ALUMNO`, cierra con `FIN DE LOS DATOS` y termina con la
-  pregunta. Los bloques van en este orden, y cada uno sale solo si su dominio está activo y tiene
-  datos, salvo el perfil y la fecha, que salen siempre, y los bloques propios, que salen con
-  `own_blocks` aunque no haya bloques, salvo que la lectura falle (BR-CB-18).
+  pregunta. Los bloques van en este orden. El perfil y la fecha salen siempre. ~~Cada uno de los
+  demás sale solo si su dominio está activo y tiene datos, salvo los bloques propios, que salen con
+  `own_blocks` aunque no haya bloques, salvo que la lectura falle (BR-CB-18).~~ *Enmendado el
+  2026-09-25 en la ronda final (decisión 8).* Cada uno de los demás sale si su dominio está activo
+  y su dato se leyó. Si se leyó sin datos, sale igual, con su título y la línea de «no hay» de la
+  tabla de abajo, como el bloque 8 sin bloques (BR-CB-18). No sale si su dominio no se consultó ni
+  si su lectura falló (bloques 8 y 11). El bloque 10 es la única excepción y sale solo con una
+  simulación que traiga datos.
 
   | Orden | Título | Cuándo |
   | --- | --- | --- |
   | 1 | `PERFIL DEL ALUMNO:` | Siempre |
   | 2 | `FECHA Y SEMANA ACTUAL:` | Siempre (BR-CB-13) |
-  | 3 | `DATOS DE HORARIO Y EVALUACIONES:` | `schedule`, que el clasificador agrega siempre que detecta `own_blocks` (BR-CB-04). JSON sin cambios (BR-CB-14 y BR-CB-15) |
-  | 4 | `DATOS DE MALLA CURRICULAR:` | `curriculum`. JSON sin cambios |
-  | 5 | `DATOS DE ALERTAS:` | `alerts`. JSON sin cambios |
-  | 6 | `DATOS DE ANUNCIOS:` | `announcements`. JSON sin cambios |
-  | 7 | `DELEGADOS DE TUS SECCIONES (solo delegado y subdelegado, por curso y seccion):` | `delegates` (BR-CB-16). Una línea por sección |
+  | 3 | `DATOS DE HORARIO Y EVALUACIONES:` | `schedule`, que el clasificador agrega siempre que detecta `own_blocks` (BR-CB-04). JSON sin cambios (BR-CB-14 y BR-CB-15) si trae al menos una sesión o una evaluación, y las dos líneas de «no hay» si no trae ninguna |
+  | 4 | `DATOS DE MALLA CURRICULAR:` | `curriculum`. JSON sin cambios, o la línea de «no hay» |
+  | 5 | `DATOS DE ALERTAS:` | `alerts`. JSON sin cambios, o la línea de «no hay» |
+  | 6 | `DATOS DE ANUNCIOS:` | `announcements`. JSON con los separadores de línea de Unicode escapados (BR-CB-23), o la línea de «no hay» |
+  | 7 | `DELEGADOS DE TUS SECCIONES (solo delegado y subdelegado, por curso y seccion):` | `delegates` (BR-CB-16). Una línea por sección, o la línea de «no hay» |
   | 8 | `TUS BLOQUES DE HORARIO PROPIOS (los registra el alumno en la app; no son clases):` | `own_blocks` (BR-CB-18 y BR-CB-19), salvo que falle la lectura de bloques. Su última línea son las horas de clase, si el horario se cargó (BR-CB-19) |
-  | 9 | `NOTAS OFICIALES DEL ALUMNO (…):` | `grades`. Sin cambios |
-  | 10 | `SIMULACION NO OFICIAL (…):` | `grades` con `localGrades`. Sin cambios |
-  | 11 | `MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):` | `chat` o `announcements` (BR-CB-23). JSON de `JSON.stringify(chatSearchResults, null, 2)`, con `[{ sectionName, messages: [{ body, date }] }]` |
+  | 9 | `NOTAS OFICIALES DEL ALUMNO (…):` | `grades`. Sin cambios, o la línea de «no hay» |
+  | 10 | `SIMULACION NO OFICIAL (…):` | `grades` con `localGrades` que traiga datos. Sin cambios |
+  | 11 | `MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):` | `chat` o `announcements` (BR-CB-23), salvo que falle la lectura (BR-CB-06). JSON de `JSON.stringify(chatSearchResults, null, 2)`, con `[{ sectionName, messages: [{ body, date }] }]` y los separadores de línea de Unicode escapados (BR-CB-23), o la línea de «no hay» |
 
-- *Aclaración del 2026-09-25, en la revisión del cierre de la Tarea 5, que el dueño confirma antes
-  del merge o reemplaza por la enmienda que sigue.* «Tiene datos» quiere decir que el bloque trae
-  al menos un elemento. Un arreglo vacío no es dato, así que la malla, las alertas, los anuncios,
-  la simulación y el chat no salen con `[]`, y el horario no sale si no trae ninguna sesión ni
-  ninguna evaluación. «JSON sin cambios» describe el formato del bloque cuando sale y no su
-  condición, y la excepción de los bloques propios, los únicos que salen «aunque no haya bloques»,
-  confirma esa lectura.
-  - Un «Hola», que cae en el respaldo `schedule`, `grades` y `curriculum` (BR-CB-04), llega sin
-    ningún bloque de datos si esas tres fuentes vienen vacías, solo con el perfil y la fecha.
-  - Si el alumno pregunta por sus alertas y no tiene ninguna, el mensaje llega sin ese bloque y el
-    modelo responde con la frase de la regla 1 de BR-CB-09. Si el dueño prefiere que diga que no
-    tiene alertas, la salida es enmendar esta regla para que esos bloques salgan con el arreglo
-    vacío, como los bloques propios.
-  - Un horario leído sin sesiones no sale como bloque 3, pero el bloque 8 lee las sesiones aparte
-    y sigue diciendo «0 h» de clase (BR-CB-19).
-  - *Revisión final del ajuste (ronda 1).* Esta lectura, que `69666fd` lleva al código, empeora
-    respuestas que `main` 38024d4 da bien. `main` manda los bloques 3 a 6 con `[]` cuando su
-    dominio está activo, así que ante «¿Estoy en riesgo académico?» sin alertas el modelo puede
-    decir que no hay alertas. Con la lectura de arriba, el mensaje llega sin el bloque 5 y la regla
-    1 obliga a «No tengo esa informacion en este momento.». Lo mismo pasa con los anuncios, la
-    malla, el horario o el chat vacíos, y el modelo deja de distinguir «no hay» de «no se
-    consultó», la confusión que BR-CB-18 evita a propósito con «No registraste bloques propios
-    vigentes.».
-  - La revisión recomienda la enmienda de arriba. Con el dominio activo y la consulta vacía, el
-    bloque saldría con el arreglo vacío, como en `main`, o con una línea explícita como «- Sin
-    alertas registradas.». El cambio es una condición por bloque en `context-builder.ts`, y
-    `chatbot.context-builder.test.ts` ya delimita los casos. El dueño elige antes del merge entre
-    confirmar esta aclaración y la enmienda (punto 5 de «Pendiente del dueño antes del merge»), y
-    mientras no elija, la rama sigue la aclaración.
+- **Datos vacíos explícitos.** *Enmendado el 2026-09-25 en la ronda final (decisión 8).
+  Comportamiento confirmado por el dueño el 2026-09-25 (decisión 10).* Reemplaza la aclaración de
+  la revisión del cierre de la Tarea 5, que dejaba fuera un bloque cuyo arreglo venía vacío y que
+  `69666fd` llevó al código. Esa lectura empeoraba respuestas que `main` 38024d4 da bien, porque
+  ante «¿Estoy en riesgo académico?» sin alertas el mensaje llegaba sin el bloque 5 y la regla 1 de
+  BR-CB-09 obligaba a «No tengo esa informacion en este momento.». El modelo dejaba de distinguir
+  «no hay» de «no se consultó», la confusión que BR-CB-18 evita con «No registraste bloques propios
+  vigentes.».
+  - **Leído o sin leer.** Para `buildContext`, un dato `null` o ausente es un dominio que no se
+    consultó o cuya lectura falló, y su bloque no sale. Un dato leído sin ningún elemento, que es
+    un arreglo vacío o el horario sin sesiones ni evaluaciones, es un «no hay», y su bloque sale
+    con su línea. El servicio pasa `null` para los dominios inactivos y, para los activos, lo que
+    devuelve la consulta, que siempre es un arreglo, vacío o no, o el objeto del horario. Los
+    bloques 8 y 11 reciben además `null` cuando su lectura falla (BR-CB-18 y BR-CB-06).
+  - **Las líneas.** Van después del título, con `- ` al comienzo y sin tildes, como el resto del
+    mensaje y como la línea del bloque 8.
+
+    | Bloque | Línea sin datos |
+    | --- | --- |
+    | 3 | «- No hay horario registrado para este ciclo.» y, debajo, «- No hay evaluaciones registradas en la semana anterior, la actual ni la siguiente.», o «- No hay evaluaciones registradas para este ciclo.» si no se conoce la semana actual y el horario trae el ciclo entero (BR-CB-14) |
+    | 4 | «- No tienes una malla curricular registrada.» |
+    | 5 | «- No tienes alertas registradas.» |
+    | 6 | «- No hay anuncios activos en tus secciones de este ciclo.» |
+    | 7 | «- No tienes secciones activas en este ciclo.» |
+    | 9 | «- No hay notas oficiales registradas en tus cursos de este ciclo.» |
+    | 11 | «- No hay mensajes recientes en el chat de las secciones consultadas.» |
+
+  - Cada línea dice lo que su consulta mira. La de alertas dice «registradas» y no «activas»
+    porque `getAlerts` trae las alertas del alumno sin filtrar si ya las leyó. La de anuncios dice
+    «activos» porque `getAnnouncements` filtra `an.is_active` y el período activo. La del chat
+    habla de «las secciones consultadas» porque el filtro de BR-CB-06 lee solo las secciones que
+    nombra la pregunta o, si no nombra ninguna, las tres primeras.
+  - El bloque 3 sale con el JSON sin cambios si trae al menos una sesión o una evaluación, así que
+    un horario con sesiones y sin evaluaciones sigue mandando `"assessments": []`, como `main`.
+    Solo sin sesiones ni evaluaciones cambia el JSON por las dos líneas. El bloque 8 lee las
+    sesiones aparte y, con el horario leído sin sesiones, sigue diciendo «0 h» de clase (BR-CB-19).
+  - El bloque 10 no cambia. La simulación no sale de una consulta sino del body (BR-CB-08), que el
+    frontend manda solo si el alumno guardó notas, y la regla 9 del prompt la usa solo ante un «que
+    pasaria si», así que una línea de «no hay» no ayuda al modelo a responder.
+  - Ante «¿Estoy en riesgo académico?» sin alertas, el mensaje trae `DATOS DE ALERTAS:` con
+    «- No tienes alertas registradas.». Un «Hola» como primera pregunta, que cae en el respaldo
+    (BR-CB-04), trae los bloques 3, 4 y 9 con sus líneas si las tres fuentes vienen vacías.
 - Desaparecen `HISTORIAL DE LA CONVERSACION` (BR-CB-07) y `DATOS DE COMPANEROS` (BR-CB-17).
 - **Ejemplo inventado.** La alumna ficticia LUCIA INVENTADA PAREDES pregunta, en una sesión con
   dos mensajes previos, «¿Quiénes son los delegados de Seguridad de Sistemas y a qué hora tengo
@@ -1271,12 +1388,16 @@ BR-CB-24)*
 
 `[@test] ../../../test/HU28_ronald/chatbot.context-builder.test.ts` *(existe; el bloque 7 del
 ejemplo línea por línea, su lugar entre los anuncios y las notas oficiales, y el bloque 11 solo con
-`chat` o `announcements`. Desde la revisión del cierre de la Tarea 5 fija además que los bloques 3
-a 6, 10 y 11 no salen con los datos vacíos y que un «Hola» sin datos deja solo el perfil, la fecha
-y la pregunta. También fija que el horario con solo sesiones o solo evaluaciones sí sale y que el
-bloque 8 sale sin bloques)*
-`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; una pregunta sin palabras
-clave, con el horario, las notas y la malla vacíos, no manda ningún bloque de datos)*
+`chat` o `announcements`. Desde la ronda final fija además que los bloques 3 a 7, 9 y 11 salen con
+su línea de «no hay» cuando su dominio está activo y el dato se leyó vacío, con las dos variantes
+de la línea de evaluaciones, que no salen con el dato sin leer, que el bloque 10 sigue sin salir
+con la simulación vacía y que un «Hola» con todo vacío trae los bloques 3, 4 y 9 con sus líneas.
+También fija que el horario con solo sesiones o solo evaluaciones sale con el JSON sin cambios y
+que el bloque 8 sale sin bloques)*
+`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; desde la ronda final, «¿Estoy
+en riesgo académico?» sin alertas manda el bloque de alertas con su línea, y lo mismo los
+anuncios, la malla, el horario y el chat vacíos, el chat también sin secciones activas. Una
+lectura del chat que falla sin traer mensajes no manda el bloque 11)*
 `[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts` *(existe; lee el ejemplo de
 esta regla, arma el mensaje con datos falsos y lo compara línea por línea, con la línea abreviada
 del horario reemplazada por su JSON, y comprueba el orden de los bloques de la tabla y que no
@@ -1544,9 +1665,10 @@ CHATBOT_RATE_LIMIT=20   # Preguntas por alumno por hora (opcional, default 20)
 
 La validación Zod de la pregunta y los cinco patrones de BR-CB-10, y el límite de tasa de BR-CB-11,
 no tienen prueba propia en este repositorio, así que no llevan `[@test]`. El último punto de
-BR-CB-10, que descarta una respuesta de Cohere con datos de otro alumno, no tiene ni implementación
-ni prueba y choca con BR-CB-16, BR-CB-17 y la regla 4 de BR-CB-09, así que espera la decisión del
-dueño (ver la anotación de BR-CB-10). El aislamiento del
+BR-CB-10, que descarta una respuesta de Cohere con datos de otro alumno y que el dueño enmienda el
+2026-09-25 con la excepción de delegado y subdelegado, no tiene ni implementación ni prueba. La
+anotación de BR-CB-10 dice qué pruebas cubren lo que entra a Cohere y qué queda sin verificar. El
+aislamiento del
 récord, sin cambios, sigue en `[@test] ../../../test/HU34_jeff/chatbot-isolation.test.ts`, y el
 acceso acotado a los bloques propios, en
 `[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts` *(existe; ajustada a RS-BE-35
