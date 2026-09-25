@@ -416,7 +416,7 @@ El patrón no es uniforme, y conviene decirlo antes de que alguien abra `chat/` 
 
 > **2 · `advising` es el único módulo con submódulos.** Su [`index.ts`](src/modules/advising/index.ts) tiene **11 líneas** y no es una raíz de composición: es un agregador que crea un `Hono` propio y monta dos sub-apps completas — `app.route("/me", teacherRoutes)` (`:6`) y `app.route("/", studentRoutes)` (`:7`). Por eso las rutas docentes viven bajo `/advising/me/*` y las de alumno bajo `/advising/section/:sectionId` y `/advising/:sessionId/rsvp`. Cada submódulo tiene sus **8 archivos** y **su propia raíz de composición** (`advising/teacher/index.ts:8-12`, `advising/student/index.ts:8-12`), y hasta guardas distintas: teacher usa `app.use("*", authMiddleware)` + `requireRole("teacher")`, student las declara ruta por ruta. Total recursivo: **17 archivos**.
 
-> **3 · `chatbot` tiene 4 archivos sueltos fuera del patrón.** Además de los 7 canónicos: [`intent-classifier.ts`](src/modules/chatbot/intent-classifier.ts) (65 líneas, `KEYWORD_MAP` con 8 dominios y palabras clave sin tildes), [`context-builder.ts`](src/modules/chatbot/context-builder.ts) (382, el `SYSTEM_PROMPT` de 13 reglas de «ULimaBot» y el mensaje de datos de BR-CB-24), [`chat-search.ts`](src/modules/chatbot/chat-search.ts) (126, lee los mensajes de Firebase sin remitente) y [`grades-summary.ts`](src/modules/chatbot/grades-summary.ts) (89, que **reutiliza la lógica pura de otro módulo**: importa `aggregateCourseScores`, `personalAverage`, `requiredOnRemaining` y `PASSING_GRADE` desde `../alerts/alerts.logic.js`). Su `index.ts` es un IIFE en vez de constantes sueltas, inyecta **otro service** en lugar del `eventBus` — `new ChatbotService(repository, scheduleService, readOwnTimeBlocksForAssistant)` (`chatbot/index.ts:12`), único caso de service que depende de service y que recibe además la función acotada de `time-blocks` (RS-BE-35) — y su controller **no delega los errores al `errorHandler`**: hace `try/catch` y devuelve 400/404/500/503 a mano (`chatbot.controller.ts:54-100`), además de filtrar prompt-injection con 5 regex.
+> **3 · `chatbot` tiene 4 archivos sueltos fuera del patrón.** Además de los 7 canónicos: [`intent-classifier.ts`](src/modules/chatbot/intent-classifier.ts) (86 líneas, `KEYWORD_MAP` con 8 dominios y palabras clave sin tildes, más la herencia del tema de la pregunta anterior), [`context-builder.ts`](src/modules/chatbot/context-builder.ts) (454, el `SYSTEM_PROMPT` de 13 reglas de «ULimaBot» y el mensaje de datos de BR-CB-24), [`chat-search.ts`](src/modules/chatbot/chat-search.ts) (134, lee los mensajes de Firebase sin remitente) y [`grades-summary.ts`](src/modules/chatbot/grades-summary.ts) (89, que **reutiliza la lógica pura de otro módulo**: importa `aggregateCourseScores`, `personalAverage`, `requiredOnRemaining` y `PASSING_GRADE` desde `../alerts/alerts.logic.js`). Su `index.ts` es un IIFE en vez de constantes sueltas, inyecta **otro service** en lugar del `eventBus` — `new ChatbotService(repository, scheduleService, readOwnTimeBlocksForAssistant)` (`chatbot/index.ts:12`), único caso de service que depende de service y que recibe además la función acotada de `time-blocks` (RS-BE-35) — y su controller **no delega los errores al `errorHandler`**: hace `try/catch` y devuelve 400/404/500/503 a mano (`chatbot.controller.ts:54-100`), además de filtrar prompt-injection con 5 regex.
 
 > **4 · `chat` no tiene `service.ts`.** Sus 7 archivos son routes, controller, logic, repository, schemas, types e index. El controller absorbe el rol del service: importa `db` directamente (`chat.controller.ts:1`) —violando `AGENTS.md:41`— y se construye su propio repositorio con un parámetro por defecto, `constructor(readonly repository = new ChatRepository(db)) {}` (`:21`). Su `index.ts` tiene 7 líneas y hace `new ChatController()` sin argumentos.
 
@@ -3054,20 +3054,20 @@ eso es éxito parcial, no fallo.
 | `R-NET-1` · `R-NET-2` | El carnet devuelve `{optIn, links}` del propietario, legible incluso con `optIn = false`. `PUT` reemplaza atómicamente opt-in y enlaces derivando el propietario de `JWT.sub`; `optIn: true` exige **exactamente un** enlace. | `networking.spec.md:42,55` |
 | `R-NET-3` | El enlace exige plataforma del enum, URL absoluta http(s) de 255 caracteres como máximo y **host que coincida con el dominio oficial** de la plataforma. `website` y `other` exigen `label` no vacía de 80 caracteres como máximo. | `networking.spec.md:71` |
 | `R-NET-4` | `networking_opt_in = false` **oculta** el carnet a terceros, no borra el enlace. PostgreSQL es la única fuente de verdad; no se usa `teacher.linkedin_link`. | `networking.spec.md:89` |
-| `BR-CB-04` | Clasificación **solo por palabras clave**, sin llamar a Cohere. La pregunta pasa a minúsculas y pierde las tildes (NFD) antes de buscar subcadenas en ocho dominios, `own_blocks` arrastra a `schedule` y, sin coincidencias, se usan `schedule`, `grades` y `curriculum`. | `chatbot.spec.md:220` |
-| `BR-CB-08` | Las notas personales viajan en el body como `localGrades` y el backend **no las persiste**. | `chatbot.spec.md:362` |
-| `BR-CB-09` | System prompt fijo de 13 reglas. Solo el bloque de datos del último mensaje es fuente, y los turnos previos no. Nunca inventar, y de otras personas nombrar **solo al delegado y al subdelegado** de las secciones del alumno, con su cargo, curso y sección (regla 4), sin atribuir mensajes del chat a nadie. No revelar IDs ni sugerir modificaciones. | `chatbot.spec.md:377,407` |
-| `BR-CB-10` | Guardrails: pregunta de 500 caracteres como máximo, rechazo de prompt injection (`<context>`, `[CONTEXTO]`, `[DATOS_`, `system:`, `assistant:`) con `400 INVALID_QUESTION` y timeout de 8 s. El último punto, **descartar respuestas con datos de otro `studentId`**, no está implementado, como en `main`, y choca con la regla 4 de BR-CB-09, así que espera la decisión del dueño. | `chatbot.spec.md:472-474,482` |
-| `BR-CB-12` | Los errores de Cohere (timeout, 429, 500) se traducen a `503` con mensaje genérico y sin guardar nada. Una transacción fallida da `500`, y una purga o una lectura de bloques propios que fallan no cortan la respuesta. Nunca se exponen al frontend. | `chatbot.spec.md:527` |
-| `BR-CB-13` | `todayISO()` fuerza `America/Lima`. El contexto incluye `today`, `academicPeriodCode`, `currentWeekNumber` y `nextWeekNumber`, y `dateContext` es obligatorio. | `chatbot.spec.md:551` |
-| `BR-CB-14` | Las evaluaciones se recortan a `[currentWeekNumber-1, currentWeekNumber+1]` **solo dentro del chatbot**; `GET /schedule/me/assessments` sigue devolviendo el ciclo completo. | `chatbot.spec.md:563` |
-| `BR-CB-15` | `chatbot.types.ts` **reexporta** `AssessmentResponse` de `schedule.types.ts` en vez de declarar el suyo, para que fecha, hora y aula vengan siempre de `ScheduleService`. | `chatbot.spec.md:569` |
-| `BR-CB-16` · `BR-CB-17` | Delegado y subdelegado de cada sección activa del alumno, de `section_representative` activo y, si falta, de `section_representative_claim`, etiquetados por curso y sección, o «sin delegado registrado». Ningún otro compañero llega a Cohere en un campo que arme el chatbot. | `chatbot.spec.md:576,670` |
-| `BR-CB-18` · `BR-CB-19` | El chatbot lee los bloques propios del alumno del token por `readOwnTimeBlocksForAssistant`, en una ventana de 14 días, con las horas de esta semana y la siguiente y las horas de clase por semana que suma el backend. | `chatbot.spec.md:713,805` |
-| `BR-CB-20` · `BR-CB-21` | El historial se lee antes de guardar, viaja una sola vez como turnos (los 10 últimos) y la pregunta y la respuesta se guardan juntas en una transacción, solo si Cohere respondió. | `chatbot.spec.md:855,885` |
-| `BR-CB-22` · `BR-CB-22b` | Retención por ciclo. Una purga perezosa borra las sesiones sin actividad desde el inicio del período activo, y al desplegar se borra una sola vez todo el historial previo al ajuste. La primera purga en producción exige conteo, respaldo y aprobación del dueño, y hasta entonces nadie corre la rama con el `DATABASE_URL` de producción. | `chatbot.spec.md:930,998,1082` |
-| `BR-CB-23` | El chat de la sección se lee solo con `chat` o `announcements`, sin remitente, con la fecha en hora de Lima y sin los mensajes borrados (esto último, pendiente de confirmación del dueño). | `chatbot.spec.md:1094` |
-| `BR-CB-24` | Mensaje de datos entre `DATOS DEL ALUMNO` y `FIN DE LOS DATOS`, con once bloques en orden fijo y la pregunta al final. Un bloque sin datos no sale, lectura que el dueño confirma o reemplaza por la enmienda recomendada antes del merge. | `chatbot.spec.md:1140,1159` |
+| `BR-CB-04` | Clasificación **solo por palabras clave**, sin llamar a Cohere. La pregunta pasa a minúsculas y pierde las tildes (NFD) antes de buscar subcadenas en ocho dominios y `own_blocks` arrastra a `schedule`. Sin coincidencias, la pregunta hereda los dominios de la pregunta anterior del alumno en la misma sesión, y sin pregunta anterior con palabras clave se usan `schedule`, `grades` y `curriculum`. | `chatbot.spec.md:250,275` |
+| `BR-CB-08` | Las notas personales viajan en el body como `localGrades` y el backend **no las persiste**. | `chatbot.spec.md:433` |
+| `BR-CB-09` | System prompt fijo de 13 reglas. Solo el bloque de datos del último mensaje es fuente, y los turnos previos no. Nunca inventar, y de otras personas nombrar **solo al delegado y al subdelegado** de las secciones del alumno, con su cargo, curso y sección (regla 4), sin atribuir mensajes del chat a nadie. No revelar IDs ni sugerir modificaciones. | `chatbot.spec.md:448,478` |
+| `BR-CB-10` | Guardrails: pregunta de 500 caracteres como máximo, rechazo de prompt injection (`<context>`, `[CONTEXTO]`, `[DATOS_`, `system:`, `assistant:`) con `400 INVALID_QUESTION` y timeout de 8 s. El último punto, **descartar respuestas con datos de otro `studentId`**, lleva desde el 2026-09-25 la excepción del delegado y el subdelegado por curso y sección, y sigue sin implementar, como en `main`. | `chatbot.spec.md:542-545,567` |
+| `BR-CB-12` | Los errores de Cohere (timeout, 429, 500) se traducen a `503` con mensaje genérico y sin guardar nada. Una transacción fallida da `500`, y una purga o una lectura de bloques propios que fallan no cortan la respuesta. Nunca se exponen al frontend. | `chatbot.spec.md:612` |
+| `BR-CB-13` | `todayISO()` fuerza `America/Lima`. El contexto incluye `today`, `academicPeriodCode`, `currentWeekNumber` y `nextWeekNumber`, y `dateContext` es obligatorio. | `chatbot.spec.md:636` |
+| `BR-CB-14` | Las evaluaciones se recortan a `[currentWeekNumber-1, currentWeekNumber+1]` **solo dentro del chatbot**; `GET /schedule/me/assessments` sigue devolviendo el ciclo completo. | `chatbot.spec.md:648` |
+| `BR-CB-15` | `chatbot.types.ts` **reexporta** `AssessmentResponse` de `schedule.types.ts` en vez de declarar el suyo, para que fecha, hora y aula vengan siempre de `ScheduleService`. | `chatbot.spec.md:654` |
+| `BR-CB-16` · `BR-CB-17` | Delegado y subdelegado de cada sección activa del alumno, de `section_representative` activo y, si falta, de `section_representative_claim`, etiquetados por curso y sección, o «sin delegado registrado». Ningún otro compañero llega a Cohere en un campo que arme el chatbot. | `chatbot.spec.md:661,755` |
+| `BR-CB-18` · `BR-CB-19` | El chatbot lee los bloques propios del alumno del token por `readOwnTimeBlocksForAssistant`, en una ventana de 14 días, con las horas de esta semana y la siguiente y las horas de clase por semana que suma el backend. | `chatbot.spec.md:798,886` |
+| `BR-CB-20` · `BR-CB-21` | El historial se lee antes de guardar, viaja una sola vez como turnos (los 10 últimos) y la pregunta y la respuesta se guardan juntas en una transacción, solo si Cohere respondió. | `chatbot.spec.md:940,970` |
+| `BR-CB-22` · `BR-CB-22b` | Retención por ciclo. Una purga perezosa borra las sesiones sin actividad desde el inicio del período activo, y al desplegar se borra una sola vez todo el historial previo al ajuste. La primera purga en producción exige conteo, respaldo y aprobación del dueño, y hasta entonces nadie corre la rama con el `DATABASE_URL` de producción. | `chatbot.spec.md:1015,1083,1167` |
+| `BR-CB-23` | El chat de la sección se lee solo con `chat` o `announcements`, sin remitente, con la fecha en hora de Lima y sin los mensajes borrados (esto último, confirmado por el dueño el 2026-09-25). El JSON del chat y de los anuncios escapa U+2028, U+2029 y U+0085. | `chatbot.spec.md:1179,1202` |
+| `BR-CB-24` | Mensaje de datos entre `DATOS DEL ALUMNO` y `FIN DE LOS DATOS`, con once bloques en orden fijo y la pregunta al final. Un dominio que se consultó sin datos manda su bloque con una línea de «no hay», y uno sin consultar o con la lectura fallida no manda bloque (decisión 8 del dueño, 2026-09-25). | `chatbot.spec.md:1239,1263` |
 
 ---
 
@@ -3120,13 +3120,13 @@ es la única fuente de verdad; la columna «Regla» dice qué la justifica.
 | Tasa | Rate limit de portal-sync | `5` importaciones por alumno por hora | `rate-limit.ts:50` | `portal-sync.spec.md:130` |
 | Tasa | Devolución de cupo de import | solo ante `PORTAL_LOGIN_REJECTED` | `rate-limit.ts:64-67` | `portal-sync.spec.md:174-178` |
 | Chatbot | Longitud máxima de la pregunta | `500` caracteres | `chatbot.schemas.ts:14` | `BR-CB-10` |
-| Chatbot | Timeout de Cohere Chat | `8000` ms | `chatbot.service.ts:133` | `BR-CB-10` |
-| Chatbot | Clasificación de intención | solo palabras clave sin tildes, sin llamar a Cohere | `intent-classifier.ts:7-32` | `BR-CB-04` |
-| Chatbot | Temperatura / `maxTokens` de Cohere | `0.3` / `1000` | `chatbot.service.ts:147-148` | — |
+| Chatbot | Timeout de Cohere Chat | `8000` ms | `chatbot.service.ts:136` | `BR-CB-10` |
+| Chatbot | Clasificación de intención | solo palabras clave sin tildes, sin llamar a Cohere | `intent-classifier.ts:7-32,76-86` | `BR-CB-04` |
+| Chatbot | Temperatura / `maxTokens` de Cohere | `0.3` / `1000` | `chatbot.service.ts:150-151` | — |
 | Chatbot | Historial que viaja como turnos | últimos `10` mensajes, una sola vez | `chatbot.service.ts:18` | `BR-CB-07`, `BR-CB-20` |
 | Chatbot | Retención del historial | sesiones sin actividad desde el inicio del período activo | `chatbot.repository.ts:153` | `BR-CB-22` |
 | Chatbot | Mensajes de chat leídos por sección | últimos `200` | `chat-search.ts:29` | `BR-CB-06` |
-| Chatbot | Secciones de respaldo si ninguna coincide | `3`, por nombre de curso y código de sección | `chat-search.ts:115,125` | `chatbot.spec.md:314` |
+| Chatbot | Secciones de respaldo si ninguna coincide | `3`, por nombre de curso y código de sección | `chat-search.ts:123,133` | `chatbot.spec.md:377` |
 | Chatbot | Título de sesión | `100` caracteres, `VARCHAR(100)` | — | `BR-CB-03` |
 | Chat | Pesos de rol | `100 / 90 / 70 / 60 / 10` | `chat.logic.ts:31-39` | `R-CHAT-2` |
 | Portal | Timeout de cada petición al portal | `8000` ms | `env.ts:80-83`, `app-config.ts:36` | `portal-sync.spec.md:185` |
@@ -3991,8 +3991,9 @@ caracteres, y cinco patrones anti prompt-injection —`/<context>/i`, `/\[CONTEX
    chequeo posterior. Si no aparece → `404 SESSION_NOT_FOUND`.
 3. `getRecentMessages(sessionId, 10)` lee los 10 últimos mensajes **antes de guardar nada**, así
    que el historial no trae la pregunta actual (BR-CB-20).
-4. `classifyByKeywords` elige los dominios y el servicio calcula la fecha de Lima con la semana
-   académica (BR-CB-04 y BR-CB-13).
+4. `classifyByKeywords` elige los dominios, con las preguntas anteriores del historial para la
+   herencia del tema, y el servicio calcula la fecha de Lima con la semana académica (BR-CB-04 y
+   BR-CB-13).
 5. `Promise.all` consulta solo las fuentes de los dominios activos. Ninguna corre siempre.
 6. `buildContext` arma `{ preamble, message }`, y `chatWithHistory` recibe los turnos previos y,
    al final, el mensaje de datos, con `AbortController` de **8 000 ms**, `temperature 0.3` y
@@ -4005,8 +4006,10 @@ caracteres, y cinco patrones anti prompt-injection —`/<context>/i`, `/\[CONTEX
 **El clasificador** ([`intent-classifier.ts`](src/modules/chatbot/intent-classifier.ts)) usa solo palabras clave (BR-CB-04). Pasa la
 pregunta a minúsculas, le quita las tildes con NFD y busca subcadenas de un mapa de ocho dominios,
 `grades`, `schedule`, `curriculum`, `alerts`, `announcements`, `delegates`, `own_blocks` y `chat`.
-Sin ninguna coincidencia devuelve `["schedule","grades","curriculum"]`, y `own_blocks` arrastra
-siempre a `schedule`. Desde el 2026-09-25 ya no llama a `POST /v1/classify`, que Cohere retiró, ni
+Sin ninguna coincidencia, la pregunta hereda los dominios de la pregunta anterior del alumno en la
+misma sesión, la más reciente del historial con palabras clave, así que «¿Y en Planeamiento?»
+después de una pregunta de delegados carga los delegados. Sin pregunta anterior con palabras clave
+devuelve `["schedule","grades","curriculum"]`, y `own_blocks` arrastra siempre a `schedule`. Desde el 2026-09-25 ya no llama a `POST /v1/classify`, que Cohere retiró, ni
 espera la carrera de 500 ms que antes caía siempre al respaldo.
 
 **Las fuentes que puede leer:**
@@ -4021,7 +4024,7 @@ espera la carrera de 500 ms que antes caía siempre al respaldo.
 | `own_blocks` | Con `own_blocks` | `time-blocks`, solo por `readOwnTimeBlocksForAssistant` | Bloques vigentes y futuros del alumno del token, en una ventana de 14 días, con sus cambios y las horas de esta semana y la siguiente, más las horas de clase por semana que suma el backend (BR-CB-18, BR-CB-19 y RS-BE-35) |
 | `grades` | Con `grades` | PostgreSQL | `student_score` de la matrícula activa, **incluyendo evaluaciones sin nota** por `LEFT JOIN`, para poder calcular cuánto falta |
 | `grades` · simulación | Con `grades` | **Body del request** (`localGrades`) | **No se persiste**: solo entra al contexto |
-| `chat` | Con `chat` o `announcements` | Firebase RTDB | Últimos **200 mensajes** por sección, **sin remitente** y sin los borrados, con la fecha en hora de Lima. Las secciones se filtran por código, nombre completo o tokens del nombre de más de 3 letras, con respaldo en las 3 primeras por curso y sección |
+| `chat` | Con `chat` o `announcements` | Firebase RTDB | Últimos **200 mensajes** por sección, **sin remitente** y sin los borrados, con la fecha en hora de Lima. Las secciones se filtran por código, nombre completo o tokens del nombre de más de 3 letras, con respaldo en las 3 primeras por curso y sección. Si ninguna lectura trae mensajes y alguna falló, el bloque no sale |
 
 > **Sin la lista plana de compañeros.** Hasta el 2026-09-25, el dominio `classmates` mandaba a
 > Cohere los nombres y cargos de los compañeros de todas las secciones del alumno, sin curso ni
@@ -4036,13 +4039,14 @@ curso y su sección, y las reglas 11 a 13 cubren los bloques propios, las sugere
 chat sin remitente. El mensaje de datos abre con `DATOS DEL ALUMNO (unica fuente de datos para
 responder):`, trae hasta once bloques en un orden fijo (perfil, fecha, horario, malla, alertas,
 anuncios, delegados, bloques propios, notas oficiales, simulación y chat), cierra con
-`FIN DE LOS DATOS` y termina con la pregunta, fuera del bloque. Cada bloque sale solo si su dominio
-está activo y tiene datos, y un arreglo vacío no cuenta, salvo en los bloques propios, que salen con
-`own_blocks` aunque no haya ninguno. Esa lectura de «tiene datos» espera la confirmación del dueño,
-porque quien pregunta por sus alertas sin tener ninguna recibe «No tengo esa informacion en este
-momento.» en vez de saber que no hay, y la revisión final recomienda enmendarla (BR-CB-24). Los
-nombres y los títulos de los bloques van en una sola línea y el chat va como JSON, así que ningún
-texto libre forma una línea propia que imite el cierre.
+`FIN DE LOS DATOS` y termina con la pregunta, fuera del bloque. Cada bloque sale si su dominio está
+activo y su dato se leyó. Desde la decisión 8 del dueño (2026-09-25), un dominio que se consultó sin
+datos manda igual su bloque con una línea de «no hay», como «- No tienes alertas registradas.», y
+uno que no se consultó o cuya lectura falló no manda bloque, así que el modelo distingue «no hay»
+de «no se consultó» (BR-CB-24). La simulación es la excepción y sale solo con datos. Los nombres y
+los títulos de los bloques van en una sola línea y el chat y los anuncios van como JSON, con
+U+2028, U+2029 y U+0085 escapados, así que ningún texto libre forma una línea propia que imite el
+cierre.
 
 > **Notas oficiales contra simulación.** La regla 9 del system prompt es explícita: las notas
 > oficiales de la base son **la única verdad**; la «SIMULACION NO OFICIAL» son escenarios de la
@@ -4073,9 +4077,9 @@ que nadie la corre contra esa base hasta que el dueño apruebe el conteo y el re
 original de `chatbot.spec.md` lo muestra. Desde el 2026-09-25 la spec anota que ese `CHECK` no
 existe en la base viva y que el ajuste no lo agrega. Hoy el valor solo lo garantiza el tipo de
 TypeScript. Y el último punto de BR-CB-10, que descarta la respuesta de Cohere si menciona datos
-de otro alumno, **no está implementado**, porque la respuesta se guarda sin inspección. Además
-choca con la regla 4 del prompt, que pide nombrar al delegado y al subdelegado, así que espera la
-decisión del dueño (enmendarlo con esa salvedad o retirarlo).
+de otro alumno, **no está implementado**, porque la respuesta se guarda sin inspección. El dueño
+lo enmienda el 2026-09-25 con la excepción del delegado y el subdelegado por curso y sección, y la
+anotación de BR-CB-10 dice qué se verifica (lo que entra a Cohere) y qué no (lo que sale).
 
 **Errores**: el mensaje crudo de Cohere **nunca llega al cliente**. Va a `console.error` y se
 traduce a `503 CHATBOT_UNAVAILABLE` con «Estoy teniendo dificultades tecnicas en este momento».
@@ -4288,13 +4292,13 @@ Se listan aquí porque copiarlas propagaría el error:
 | `portal-sync.spec.md:53` | Se lee `ul/servlets/ComandoVisualizarDatosPersonales` | **No existe** en `PORTAL_PATHS`. El nombre completo sale del consolidado de matrícula |
 | `portal-sync.spec.md:269` | Se hace *upsert* de una alerta «Impedimento de matrícula» | El código hace lo **contrario**: la **borra**. `parseImpedimentos` ya no se invoca desde la importación —retiro deliberado del 2026-09-04—, y `summary.alertsCreated` queda siempre en 0 |
 | `auth.spec.md:123` | `RESEND_FROM` usa un local-part `no-reply` | `env.ts:51-53` lo **prohíbe explícitamente** por ser señal de spam para Resend y Gmail |
-| `chatbot.spec.md:474` | Se descarta toda respuesta de Cohere con datos que no corresponden al `studentId` del JWT (último punto de BR-CB-10) | No está implementado, ni en la rama del ajuste ni en `main`, y choca con la regla 4 de BR-CB-09 y con BR-CB-16 y BR-CB-17, que hacen que la respuesta correcta sobre delegados traiga nombres de otros alumnos. El dueño lo enmienda con la salvedad de los delegados o lo retira antes del merge (`chatbot.spec.md:482`) |
+| `chatbot.spec.md:545` | Se descarta toda respuesta de Cohere con datos que no corresponden al `studentId` del JWT, salvo el delegado y el subdelegado por curso y sección (último punto de BR-CB-10, enmendado por el dueño el 2026-09-25) | No está implementado, ni en la rama del ajuste ni en `main`, porque la respuesta se guarda sin inspección. La enmienda cierra el choque con la regla 4 de BR-CB-09, pero la regla sigue sin decir cómo reconocer en texto libre un dato de otro alumno (`chatbot.spec.md:567`) |
 
 Hasta el 2026-09-25 la tabla traía además tres filas del chatbot, el dominio `grades` alimentado
 desde el body, un prompt de 8 reglas y `chat-search.ts` con Rerank. El ajuste de ese día alinea la
 spec con el código en los tres puntos (BR-CB-05, BR-CB-09 y «Arquitectura» de `chatbot.spec.md`),
 así que salen de la lista. La revisión final del mismo ajuste suma en cambio la fila del último
-punto de BR-CB-10, que choca con la regla 4 del prompt nuevo.
+punto de BR-CB-10, que el dueño enmienda en la ronda final y que sigue sin implementar.
 
 Y una verificación pendiente que no se cierra leyendo código (`portal-sync.spec.md:349`): **no
 está comprobado contra el host real que cactus acepte la sesión con solo las cookies LTPA**.
@@ -4400,10 +4404,10 @@ código: llevan prefijo `OBS-` y **ese prefijo es de este README, no del proyect
 | `OBS-SEG-6` | Seguridad | CORS restringible por `CORS_ORIGINS`. **Sin la variable cae a `*`**, y no hay evidencia en el repo de que esté definida en producción. | Observado · `BR-PLATFORM-08` | `server.ts:19`, `app-config.ts:28` |
 | `OBS-SEG-7` | Seguridad | Credenciales del portal (contraseña, TOTP, cookies) solo en memoria durante la petición: ni se persisten ni se registran. | Observado · `RS-BE-7` | [`src/services/portal.client.ts`](src/services/portal.client.ts) |
 | `OBS-SEG-8` | Seguridad | Guardas de pertenencia por recurso además del rol, para impedir enumerar `sectionId` y armar el padrón de delegados de la universidad. | Observado · `RS-20` | `course-detail.routes.ts:60-79` |
-| `OBS-SEG-9` | Seguridad | Guardrails de IA: pregunta acotada a 500 caracteres, rechazo de cinco patrones de prompt injection con `400 INVALID_QUESTION` y timeout de 8 s a Cohere. ⚠️ La cuarta regla de `BR-CB-10` —descartar la respuesta que contenga datos de otro `studentId`— **está especificada y no implementada**: `chatbot.service.ts:163` guarda la respuesta sin inspeccionarla. Además choca con la regla 4 de `BR-CB-09`, que pide nombrar al delegado y al subdelegado, y espera la decisión del dueño. | Observado · `BR-CB-09` · `BR-CB-10` parcial | `chatbot.controller.ts:5-11,66-75`, `chatbot.schemas.ts:14`; el hueco, en `chatbot.service.ts:64-185` |
+| `OBS-SEG-9` | Seguridad | Guardrails de IA: pregunta acotada a 500 caracteres, rechazo de cinco patrones de prompt injection con `400 INVALID_QUESTION` y timeout de 8 s a Cohere. ⚠️ La cuarta regla de `BR-CB-10` —descartar la respuesta que contenga datos de otro `studentId`, salvo el delegado y el subdelegado por curso y sección desde la enmienda del dueño del 2026-09-25— **está especificada y no implementada**: `chatbot.service.ts:166` guarda la respuesta sin inspeccionarla. | Observado · `BR-CB-09` · `BR-CB-10` parcial | `chatbot.controller.ts:5-11,66-75`, `chatbot.schemas.ts:14`; el hueco, en `chatbot.service.ts:64-185` |
 | `OBS-PERF-1` | Rendimiento | Una importación completa cabe en el presupuesto del cliente: medidas reales de **40.7 s** y **47.7 s** contra un corte de 90 s en Flutter. | Observado | `platform-runtime.spec.md:105`, `RS-9` |
 | `OBS-PERF-2` | Rendimiento | Toda petición saliente al portal lleva timeout de 8 s con `AbortController`; el flujo son 4 rondas secuenciales, ~32 s de tope teórico. | Observado | `env.ts:80-83` · `test/HU31_jeff/portal.client.test.ts` |
-| `OBS-PERF-3` | Rendimiento | El LLM nunca bloquea: 8 s de timeout en Chat, clasificación solo por **palabras clave en español**, sin llamar a Cohere desde el 2026-09-25, y un fallo de titulación no bloquea la respuesta. | Observado · `BR-CB-03/04/12` | `chatbot.service.ts:78,133,175-182` |
+| `OBS-PERF-3` | Rendimiento | El LLM nunca bloquea: 8 s de timeout en Chat, clasificación solo por **palabras clave en español**, sin llamar a Cohere desde el 2026-09-25, y un fallo de titulación no bloquea la respuesta. | Observado · `BR-CB-03/04/12` | `chatbot.service.ts:81,136,178-185` |
 | `OBS-PERF-4` | Rendimiento | La latencia dominante del import es el RTT a Neon: ~115 consultas × ~150 ms desde Lima ≈ 17 s. Es la razón de fijar la región `iad1`. | Observado | `portal-sync.spec.md:192`, `BR-PLATFORM-10` |
 | `OBS-DISP-1` | Disponibilidad | `GET /health` y `GET /version` públicos, sin `authMiddleware`, para verificar vida y commit desplegado sin credenciales. | Observado · `BR-PLATFORM-03` | `server.ts:48-60` |
 | `OBS-DISP-2` | Disponibilidad | Función pegada a `iad1` y sin `maxDuration` declarado: 300 s por defecto y por tope. | Observado · `BR-PLATFORM-10/11` | `vercel.json` |
@@ -4721,7 +4725,7 @@ carpeta de prueba en ese repo. Los tests del frontend viven en el otro repositor
 | **HU25** | Carnet de networking opt-in con una red social | Alumno · Docente | [`src/modules/networking`](src/modules/networking) | mel | 34 / 33 | Escenario 1 implementado |
 | **HU26** | Exportar a CSV la lista de impedidos | Docente | *(sin endpoint: el CSV se arma en el cliente)* | sam | — / 7 | **Implementado sin spec** |
 | **HU27** | *(histórico)* Carnet de networking | — | — | — | — | **Renumerada a HU25** |
-| **HU28** | Chatbot académico ULimaBot con IA | Alumno | [`src/modules/chatbot`](src/modules/chatbot) | ronald | 460 / — | Implementado; el ajuste del 2026-09-25 sigue sin mergear |
+| **HU28** | Chatbot académico ULimaBot con IA | Alumno | [`src/modules/chatbot`](src/modules/chatbot) | ronald | 502 / — | Implementado; el ajuste del 2026-09-25 sigue sin mergear |
 | **HU29** | Calificación oficial por evaluación | Docente titular | [`src/modules/official-grades`](src/modules/official-grades) | jeff | 12 / — | Implementado; **no figura en el `feature-index`** |
 | **HU30** | Notificar a los alumnos impedidos o en riesgo por faltas | Docente | [`src/modules/attendance-risk`](src/modules/attendance-risk) | sam | 10 / — | Implementado |
 | **HU31** | Cargar el ciclo desde el portal miUlima | Alumno | [`src/modules/portal-sync`](src/modules/portal-sync) | jeff | 425 / 43 | Implementado en backend; **verificación E2E manual pendiente** |
@@ -5909,7 +5913,7 @@ Escenario: Usuario inexistente
 | **Módulo** | [`src/modules/chatbot`](src/modules/chatbot) + [`src/services/cohere.client.ts`](src/services/cohere.client.ts) |
 | **Endpoints** | `POST /chatbot/sessions` · `GET /chatbot/sessions` · `GET /chatbot/sessions/:id` · `DELETE /chatbot/sessions/:id` · `POST /chatbot/sessions/:id/ask` |
 | **Reglas** | BR-CB-01 a BR-CB-24 y BR-CB-22b · [`specs/features/chatbot/chatbot.spec.md`](specs/features/chatbot/chatbot.spec.md). 20 preguntas por alumno y hora, 500 caracteres por pregunta, 8 s de timeout con Cohere, historial de 10 mensajes que viaja una sola vez como turnos, 200 mensajes de chat leídos por sección solo con preguntas sobre el chat o los avisos, evaluaciones de la semana actual ± 1, retención del historial por ciclo |
-| **Pruebas** | Los 17 archivos de [`test/HU28_ronald/`](test/HU28_ronald/), entre ellos [`chatbot.intent-classifier.test.ts`](test/HU28_ronald/chatbot.intent-classifier.test.ts), [`chatbot.system-prompt.test.ts`](test/HU28_ronald/chatbot.system-prompt.test.ts), [`chatbot.context-format.test.ts`](test/HU28_ronald/chatbot.context-format.test.ts), [`chatbot.service.test.ts`](test/HU28_ronald/chatbot.service.test.ts) y [`context.cajanegra.test.ts`](test/HU28_ronald/context.cajanegra.test.ts). Suman 460 casos, y los 37 de los dos `*.postgres.test.ts` se saltan sin `TEST_DATABASE_URL` |
+| **Pruebas** | Los 17 archivos de [`test/HU28_ronald/`](test/HU28_ronald/), entre ellos [`chatbot.intent-classifier.test.ts`](test/HU28_ronald/chatbot.intent-classifier.test.ts), [`chatbot.system-prompt.test.ts`](test/HU28_ronald/chatbot.system-prompt.test.ts), [`chatbot.context-format.test.ts`](test/HU28_ronald/chatbot.context-format.test.ts), [`chatbot.service.test.ts`](test/HU28_ronald/chatbot.service.test.ts) y [`context.cajanegra.test.ts`](test/HU28_ronald/context.cajanegra.test.ts). Suman 502 casos, y los 37 de los dos `*.postgres.test.ts` se saltan sin `TEST_DATABASE_URL` |
 
 **Criterios de aceptación**
 
@@ -5933,6 +5937,19 @@ Escenario: Clasificación solo por palabras clave
   Y si no coincide ninguna palabra clave se usan schedule, grades y curriculum
   Y si se activa own_blocks se activa también schedule
 
+Escenario: Una repregunta sin palabras clave hereda el tema
+  Dado que pregunté «¿Quiénes son los delegados de Seguridad de Sistemas?» en esta sesión
+  Cuando pregunto «¿Y en Planeamiento?», que no trae ninguna palabra clave
+  Entonces la pregunta hereda los dominios de mi pregunta anterior y se consultan los delegados
+  Y si es la primera pregunta de la sesión se usan schedule, grades y curriculum
+
+Escenario: Un dominio consultado sin datos dice que no hay
+  Dado que no tengo ninguna alerta
+  Cuando pregunto «¿Estoy en riesgo académico?»
+  Entonces el modelo recibe el bloque de alertas con «- No tienes alertas registradas.»
+  Y lo mismo pasa con el horario, la malla, los anuncios, los delegados, las notas oficiales y el chat vacíos
+  Y un dominio que no se consultó no manda ningún bloque
+
 Escenario: El chat de la sección solo con preguntas del chat o de los avisos
   Dado que la pregunta no activa chat ni announcements, como «¿Qué nota saqué en el parcial?»
   Cuando se recolectan los datos del contexto
@@ -5942,7 +5959,7 @@ Escenario: Mensajes del chat sin remitente
   Dado que la pregunta activa chat, como «¿Dijeron algo del examen en el chat?»
   Cuando se leen los últimos 200 mensajes de las secciones relevantes
   Entonces cada mensaje llega al modelo solo con su texto y su fecha en hora de Lima, sin remitente
-  Y los mensajes borrados no llegan, regla que el dueño confirma antes del merge
+  Y los mensajes borrados no llegan, regla que el dueño confirma el 2026-09-25
 
 Escenario: Selección de secciones relevantes
   Dado que la pregunta menciona software
