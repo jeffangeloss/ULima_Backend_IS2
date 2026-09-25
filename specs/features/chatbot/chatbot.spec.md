@@ -16,7 +16,7 @@ targets:
 Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje natural sobre su informacion academica y recibe respuestas directas basadas exclusivamente en sus datos reales. El backend actua como proxy seguro entre el frontend y Cohere, orquestando la recoleccion de datos, la clasificacion de intencion, ~~la busqueda semantica en chat~~ la lectura del chat de seccion *(sin Rerank ni remitentes desde el ajuste del 2026-09-25, BR-CB-06 y BR-CB-23)* y la generacion de respuestas.
 
 > Estado: **ajustada el 2026-09-25** con las decisiones del dueño de ese día sobre delegados,
-> bloques propios e historial, **pendiente de la aprobación del dueño**. Cambian BR-CB-02,
+> bloques propios e historial, **aprobada por el dueño el 2026-09-25**. Cambian BR-CB-02,
 > BR-CB-03, BR-CB-04, BR-CB-05, BR-CB-06, BR-CB-07, BR-CB-09 y BR-CB-12, y se agregan BR-CB-16
 > a BR-CB-24. Tres puntos son propuestas derivadas que el dueño confirma al aprobar, BR-CB-23
 > (de la decisión 1), el total de horas de clase de BR-CB-19 (de la decisión 2) y la condición
@@ -135,7 +135,7 @@ del ajuste)*
 
 ### BR-CB-04: Clasificacion de intencion
 
-> *Ajustada el 2026-09-25 (corrección 4), pendiente de la aprobación del dueño.* Reemplaza la
+> *Ajustada el 2026-09-25 (corrección 4), aprobada por el dueño el 2026-09-25.* Reemplaza la
 > versión con Cohere Classify y respaldo por palabras clave.
 
 - Antes de recolectar datos, la pregunta se clasifica en uno o más de estos dominios, `grades`,
@@ -200,7 +200,7 @@ dominios nuevos, a la normalización, al arrastre de `own_blocks` a `schedule` y
 
 ### BR-CB-05: Recoleccion de datos por intencion
 
-> *Ajustada el 2026-09-25, pendiente de la aprobación del dueño.* El chat deja de consultarse
+> *Ajustada el 2026-09-25, aprobada por el dueño el 2026-09-25.* El chat deja de consultarse
 > siempre (BR-CB-23), `classmates` sale (BR-CB-17) y entran `delegates` (BR-CB-16) y
 > `own_blocks` (BR-CB-18).
 
@@ -223,7 +223,7 @@ bloque «el chat se consulta SIEMPRE» pasa a exigir lo contrario)*
 
 ### BR-CB-06: Lectura del chat de la seccion
 
-> *Ajustada el 2026-09-25, pendiente de la aprobación del dueño.* El primer punto y el formato de
+> *Ajustada el 2026-09-25, aprobada por el dueño el 2026-09-25.* El primer punto y el formato de
 > los mensajes cambian según BR-CB-23, que deriva de la decisión 1 y el dueño confirma al aprobar.
 > El filtro de secciones no cambia, pero el código de hoy no lo cumple y el ajuste lo alinea.
 
@@ -244,7 +244,7 @@ BR-CB-23)*
 
 ### BR-CB-07: Ventana de contexto
 
-> *Ajustada el 2026-09-25 (corrección 5), pendiente de la aprobación del dueño.* El historial deja
+> *Ajustada el 2026-09-25 (corrección 5), aprobada por el dueño el 2026-09-25.* El historial deja
 > de ir dentro del mensaje de datos y viaja una sola vez, como turnos.
 
 - Lo que recibe Cohere Chat en cada pregunta tiene tres partes, en este orden.
@@ -285,7 +285,7 @@ el mensaje de datos ya no trae el historial)*
 
 ### BR-CB-09: System Prompt
 
-> *Ajustada el 2026-09-25 (corrección 6), pendiente de la aprobación del dueño.* La regla 4 de hoy
+> *Ajustada el 2026-09-25 (corrección 6), aprobada por el dueño el 2026-09-25.* La regla 4 de hoy
 > (`context-builder.ts:19-21`) prohíbe hablar de otros alumnos mientras el mismo mensaje trae sus
 > nombres, y la regla 1 (`context-builder.ts:9-11`) declara fuente a todo el contexto, historial
 > incluido. El prompt nuevo reconcilia la regla 4 con la decisión 1, separa los datos de la
@@ -391,7 +391,7 @@ declara que los turnos previos no son fuente, que trae las reglas 11 a 13, y que
 
 ### BR-CB-12: Manejo de errores Cohere
 
-> *Ajustada el 2026-09-25, pendiente de la aprobación del dueño.* Sale la fila de Classify, que
+> *Ajustada el 2026-09-25, aprobada por el dueño el 2026-09-25.* Sale la fila de Classify, que
 > ya no se llama (BR-CB-04). Un fallo de Cohere Chat no deja nada guardado (BR-CB-21). Entran las
 > filas de la purga del ciclo (BR-CB-22) y de los bloques propios (BR-CB-18).
 
@@ -436,7 +436,7 @@ fallo de Cohere sin escrituras y de purga fallida que no corta la petición)*
 
 ### BR-CB-16: Delegados y subdelegados por curso y sección
 
-> *Nueva el 2026-09-25 (decisión 1), pendiente de la aprobación del dueño.*
+> *Nueva el 2026-09-25 (decisión 1), aprobada por el dueño el 2026-09-25.*
 
 - **Qué secciones.** Las de matrícula activa del alumno (`enrollment.status = 'active'`) en el
   período activo (`academic_period.is_active = true`), una entrada por sección, ordenadas por
@@ -530,7 +530,7 @@ que no cambian el resultado)*
 
 ### BR-CB-17: Sin el bloque plano de compañeros
 
-> *Nueva el 2026-09-25 (decisión 1), pendiente de la aprobación del dueño.*
+> *Nueva el 2026-09-25 (decisión 1), aprobada por el dueño el 2026-09-25.*
 
 - Se borran `getClassmates` (`chatbot.repository.ts:282-320`), el tipo `ClassmateData`
   (`chatbot.types.ts:68-71`) y el bloque `DATOS DE COMPANEROS` (`context-builder.ts:121-124`). El
@@ -564,7 +564,7 @@ datos, contiene su nombre)*
 
 ### BR-CB-18: Bloques propios del alumno en el contexto
 
-> *Nueva el 2026-09-25 (decisión 2), pendiente de la aprobación del dueño.* Depende de RS-BE-35 de
+> *Nueva el 2026-09-25 (decisión 2), aprobada por el dueño el 2026-09-25.* Depende de RS-BE-35 de
 > `specs/features/time-blocks/time-blocks.spec.md`, ajustada el mismo día.
 
 - **Cuándo.** Solo si la pregunta activa `own_blocks` (BR-CB-04).
@@ -632,7 +632,7 @@ de la función, que quita también la línea de horas de clase)*
 
 ### BR-CB-19: Sugerencias de gestión del tiempo
 
-> *Nueva el 2026-09-25 (decisión 2), pendiente de la aprobación del dueño.* El total de horas de
+> *Nueva el 2026-09-25 (decisión 2), aprobada por el dueño el 2026-09-25.* El total de horas de
 > clase es una propuesta derivada de la decisión 2, para que el modelo no sume por su cuenta.
 
 - **Cuándo.** La pregunta activa `own_blocks` («organizar», «tiempo», «libre»), y el clasificador
@@ -670,7 +670,7 @@ sesiones, que `own_blocks` carga horario y bloques, y que el mensaje trae los do
 
 ### BR-CB-20: Historial como turnos, una sola vez
 
-> *Nueva el 2026-09-25 (corrección 5), pendiente de la aprobación del dueño.* Incluye un cambio de
+> *Nueva el 2026-09-25 (corrección 5), aprobada por el dueño el 2026-09-25.* Incluye un cambio de
 > base de datos que exige la aprobación de BD de `AGENTS.md`.
 
 - El servicio lee el historial **antes** de guardar nada de la pregunta actual, así que el
@@ -697,7 +697,7 @@ texto, como `migration-0012.test.ts`, y comprueba que solo crea ese índice con 
 
 ### BR-CB-21: Pregunta y respuesta atómicas
 
-> *Nueva el 2026-09-25 (corrección 5), pendiente de la aprobación del dueño.*
+> *Nueva el 2026-09-25 (corrección 5), aprobada por el dueño el 2026-09-25.*
 
 - El servicio guarda la pregunta y la respuesta juntas, después de que Cohere responde, en una sola
   transacción que inserta la pregunta, inserta la respuesta y actualiza
@@ -732,7 +732,7 @@ filas y la pregunta queda antes que la respuesta, y la sesión borrada a mitad d
 
 ### BR-CB-22: Retención por ciclo
 
-> *Nueva el 2026-09-25 (decisión 3), pendiente de la aprobación del dueño.* No cambia el esquema
+> *Nueva el 2026-09-25 (decisión 3), aprobada por el dueño el 2026-09-25.* No cambia el esquema
 > ni la configuración del despliegue, pero su primera ejecución en producción borra de una vez
 > datos vivos y exige antes del merge el paso de «Primera purga en producción». La condición
 > «Solo si el período ya empezó» es una propuesta derivada de la decisión 3 que el dueño confirma
@@ -855,6 +855,17 @@ que todavía no empieza, que no borra nada; sin período activo, nada; la fronte
 de Lima; `ask` sobre una sesión vencida, que responde 404; y la consulta de conteo de «Primera
 purga en producción», que devuelve el mismo número de sesiones y mensajes que borra la purga)*
 
+### BR-CB-22b: Borrado único del historial previo al ajuste
+
+> *Decisión del dueño del 2026-09-25, al aprobar esta spec.*
+
+Al desplegar este ajuste se borran una sola vez **todas** las sesiones y mensajes del chatbot que
+existan en ese momento, porque sus respuestas pueden traer nombres de compañeros de antes de
+BR-CB-17. Antes se toma un respaldo (`pg_dump` de `chatbot_session` y `chatbot_message`) y se
+cuentan las filas en solo lectura; el borrado va en una transacción y se registra en
+`MIGRATIONS.md` sin copiar contenido. Desde ahí rige la retención por ciclo de BR-CB-22. El
+respaldo no entra al repositorio y se descarta cuando el dueño lo indique.
+
 ### BR-CB-23: Búsqueda en el chat de sección, acotada
 
 > *Nueva el 2026-09-25 (corrección 7). **Derivada de la decisión 1**, así que el dueño la confirma
@@ -890,7 +901,7 @@ chat de BR-CB-24)*
 
 ### BR-CB-24: Formato del contexto que recibe el modelo
 
-> *Nueva el 2026-09-25, pendiente de la aprobación del dueño.* Fija el texto que arma
+> *Nueva el 2026-09-25, aprobada por el dueño el 2026-09-25.* Fija el texto que arma
 > `context-builder.ts` después del ajuste.
 
 - El *preamble* es el system prompt de BR-CB-09. Los turnos previos van antes, como turnos
@@ -1132,7 +1143,7 @@ Envia una pregunta dentro de una sesion existente y obtiene una respuesta del ch
 
 ## Base de Datos
 
-### Cambio del 2026-09-25: índice del historial (migración `0013`, pendiente de aprobación de BD)
+### Cambio del 2026-09-25: índice del historial (migración `0013`, aprobada por el dueño el 2026-09-25)
 
 > Cambio de base de datos que exige la aprobación explícita del dueño según `AGENTS.md`, aparte de
 > la aprobación de la spec. Lo aplica el dueño a mano con `bun run db:apply`, con respaldo previo y

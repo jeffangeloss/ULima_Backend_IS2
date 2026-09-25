@@ -574,7 +574,7 @@ Notas:
 
 Inteligencia artificial conversacional (Cohere) integrada como asistente académico para alumnos. Detalle en `specs/features/chatbot/chatbot.spec.md`.
 
-> **Ajuste del 2026-09-25, pendiente de la aprobación del dueño** (BR-CB-02 a BR-CB-24 de la spec). Ninguna ruta cambia de forma, de campos ni de códigos de error. Cambian dos comportamientos que la app ve. Las sesiones del ciclo anterior desaparecen cuando empieza el período activo, y una pregunta cuya respuesta falla (503) no queda guardada. La primera petición después del despliegue borra de una vez todas las sesiones de producción cuya última actividad es anterior al inicio del período activo (las 00:00 de Lima del 2026-08-24 si la base guarda el calendario publicado de 2026-2). Ese borrado masivo exige antes del merge la aprobación explícita del dueño, con un conteo en solo lectura y un respaldo, como la migración 0013 (BR-CB-22).
+> **Ajuste del 2026-09-25, aprobada por el dueño el 2026-09-25** (BR-CB-02 a BR-CB-24 de la spec). Ninguna ruta cambia de forma, de campos ni de códigos de error. Cambian dos comportamientos que la app ve. Las sesiones del ciclo anterior desaparecen cuando empieza el período activo, y una pregunta cuya respuesta falla (503) no queda guardada. La primera petición después del despliegue borra de una vez todas las sesiones de producción cuya última actividad es anterior al inicio del período activo (las 00:00 de Lima del 2026-08-24 si la base guarda el calendario publicado de 2026-2). Ese borrado masivo exige antes del merge la aprobación explícita del dueño, con un conteo en solo lectura y un respaldo, como la migración 0013 (BR-CB-22).
 
 ### Sesiones
 

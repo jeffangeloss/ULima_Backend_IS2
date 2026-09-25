@@ -18,7 +18,7 @@ targets:
 > Revisada el 2026-09-21 con las decisiones de la planificación: `PATCH` en el CORS, tope de
 > 20 bloques guardados, semanas enteras en `weeks` y la fecha exacta del horario (RS-BE-36).
 > Ajustada el 2026-09-23 con el arreglo del bloque sin días reales y la lista Mis bloques, aprobado por el dueño ese día.
-> **Ajustada el 2026-09-25, pendiente de la aprobación del dueño.** Por decisión suya de ese día,
+> **Ajustada el 2026-09-25, aprobada por el dueño el 2026-09-25.** Por decisión suya de ese día,
 > RS-BE-35 cambia y el chatbot lee los bloques del propio alumno por una función acotada; el resto
 > del módulo sigue sin exponerse al chatbot. Ningún otro requisito ni el contrato de `/time-blocks`
 > cambian.
