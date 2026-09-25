@@ -189,6 +189,24 @@ function pushBlock(blocks: string[], title: string, data: unknown, body: () => s
   blocks.push(...(hasData(data) ? body() : emptyLines));
 }
 
+/**
+ * BR-CB-23 (corrección 12 de la ronda final): el JSON de un bloque con texto
+ * de terceros, el del chat y el de los anuncios. `JSON.stringify` escapa los
+ * controles menores que U+0020, pero deja tal cual NEL (U+0085) y los
+ * separadores de línea (U+2028) y de párrafo (U+2029), que el corte de líneas
+ * de Unicode y `str.splitlines` de Python tratan como salto de línea. Esos tres
+ * solo aparecen dentro de las cadenas del JSON, así que escribirlos como
+ * `\u0085`, `\u2028` y `\u2029` deja un JSON válido con los mismos valores, y
+ * ningún mensaje ni anuncio abre una línea propia.
+ */
+const UNICODE_LINE_BREAKS = /[\u0085\u2028\u2029]/g;
+function thirdPartyJson(value: unknown): string {
+  return JSON.stringify(value, null, 2).replace(
+    UNICODE_LINE_BREAKS,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+}
+
 // BR-CB-24: las líneas de «no hay» de cada bloque leído sin datos. Van sin
 // tildes, como el resto del mensaje, y dicen lo que su consulta mira.
 const NO_SCHEDULE = "- No hay horario registrado para este ciclo.";
@@ -364,9 +382,10 @@ export function buildContext(params: {
       () => [JSON.stringify(params.alertsData, null, 2)], [NO_ALERTS]);
   }
 
+  // Los anuncios los escribe el delegado: texto de terceros (BR-CB-23).
   if (params.intents.includes("announcements")) {
     pushBlock(blocks, "DATOS DE ANUNCIOS:", params.announcementsData,
-      () => [JSON.stringify(params.announcementsData, null, 2)], [NO_ANNOUNCEMENTS]);
+      () => [thirdPartyJson(params.announcementsData)], [NO_ANNOUNCEMENTS]);
   }
 
   // BR-CB-16 y BR-CB-24 (bloque 7): una línea por sección, con el curso y la
@@ -415,11 +434,12 @@ export function buildContext(params: {
   }
 
   // BR-CB-23 y BR-CB-24 (bloque 11): solo con `chat` o `announcements`. Los
-  // mensajes van sin remitente y el JSON escapa sus saltos de línea y comillas.
-  // Con la lectura fallida (null, BR-CB-06) el bloque no sale.
+  // mensajes van sin remitente y el JSON escapa sus saltos de línea, sus
+  // comillas y los separadores de línea de Unicode. Con la lectura fallida
+  // (null, BR-CB-06) el bloque no sale.
   if (params.intents.includes("chat") || params.intents.includes("announcements")) {
     pushBlock(blocks, CHAT_TITLE, params.chatSearchResults,
-      () => [JSON.stringify(params.chatSearchResults, null, 2)], [NO_CHAT_MESSAGES]);
+      () => [thirdPartyJson(params.chatSearchResults)], [NO_CHAT_MESSAGES]);
   }
 
   // La pregunta va después del cierre, fuera del bloque de datos.

@@ -1204,7 +1204,7 @@ respaldo no entra al repositorio y se descarta cuando el dueño lo indique.
   U+000C y U+001C a U+001E, pero deja tal cual NEL (U+0085), el separador de línea (U+2028) y el
   separador de párrafo (U+2029), que el corte de líneas de Unicode (UAX #14), `str.splitlines` de
   Python y otros consumidores tratan como salto de línea. `context-builder.ts` los escribe como
-  `\u0085`, ` ` y ` ` en el JSON de los dos bloques con texto de terceros, el del chat
+  `\u0085`, `\u2028` y `\u2029` en el JSON de los dos bloques con texto de terceros, el del chat
   (bloque 11) y el de los anuncios (bloque 6). Esos tres caracteres solo pueden aparecer dentro de
   las cadenas del JSON, así que el texto sigue siendo JSON válido y describe los mismos valores, y
   ningún mensaje ni anuncio forma una línea propia tampoco para esos consumidores. Los demás
