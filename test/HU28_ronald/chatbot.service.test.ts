@@ -4,7 +4,15 @@ afterAll(() => {
   mock.restore();
 });
 
-const saveMessageCalls: Array<{ sessionId: string; role: string; content: string }> = [];
+// Escrituras y lecturas del historial que hizo el servicio, en orden (BR-CB-03,
+// BR-CB-20 y BR-CB-21).
+const llamadasRepo: string[] = [];
+// Lo que devuelve `getRecentMessages` en la próxima pregunta.
+let historialFalso: Array<{ id: string; sessionId: string; role: "user" | "assistant"; content: string; createdAt: Date }> = [];
+// Títulos que se pidieron a Cohere y si esa llamada o su guardado fallan (BR-CB-03).
+const titulosPedidos: string[] = [];
+let tituloFalla = false;
+let guardarTituloFalla = false;
 const searchChatCalls: Array<{ question: string }> = [];
 // Fuentes de datos que el servicio consultó en cada pregunta (BR-CB-05).
 const fuentesConsultadas: string[] = [];
@@ -38,7 +46,12 @@ mock.module("../../src/services/cohere.client.js", () => ({
       enviosACohere.push(JSON.stringify({ preamble: options?.preamble ?? "", messages }));
       return "respuesta del bot";
     },
-    generateTitle: async () => "titulo",
+    generateTitle: async (question: string) => {
+      titulosPedidos.push(question);
+      llamadasRepo.push("generateTitle");
+      if (tituloFalla) throw new Error("Cohere generate error inventado");
+      return "titulo";
+    },
   },
 }));
 
@@ -50,18 +63,18 @@ const fakeRepo = {
     createdAt: new Date(),
     updatedAt: new Date(),
   }),
-  saveMessage: async (sessionId: string, role: "user" | "assistant", content: string) => {
-    saveMessageCalls.push({ sessionId, role, content });
-    return {
-      id: "m1",
-      sessionId,
-      role,
-      content,
-      createdAt: new Date(),
-    };
+  purgeSessionsBeforeActivePeriod: async () => {},
+  getRecentMessages: async (_sessionId: string, _limit: number) => {
+    llamadasRepo.push("getRecentMessages");
+    return historialFalso;
   },
-  touchSession: async () => {},
-  getMessages: async () => [],
+  saveExchange: async (sessionId: string, question: string, answer: string) => {
+    llamadasRepo.push(`saveExchange(${sessionId}, ${question}, ${answer})`);
+  },
+  updateSessionTitle: async (sessionId: string, title: string) => {
+    llamadasRepo.push(`updateSessionTitle(${sessionId}, ${title})`);
+    if (guardarTituloFalla) throw new Error("falla inventada al guardar el título");
+  },
   getStudentInfo: async () => ({
     fullName: "LUCIA INVENTADA PAREDES",
     careerName: "Ing de Sistemas",
@@ -167,7 +180,6 @@ const { ChatbotService } = await import("../../src/modules/chatbot/chatbot.servi
 
 describe("ChatbotService.ask - el chat solo con chat o announcements (BR-CB-06 y BR-CB-23)", () => {
   beforeEach(() => {
-    saveMessageCalls.length = 0;
     searchChatCalls.length = 0;
     enviosACohere.length = 0;
   });
@@ -345,5 +357,61 @@ describe("ChatbotService.ask - el bug reportado: cada curso con sus delegados (B
     const mensaje = ultimoMensajeDeDatos();
     expect(mensaje).not.toContain(TITULO);
     expect(mensaje).not.toContain("ANA FICTICIA ROJAS");
+  });
+});
+
+describe("ChatbotService.ask - título automático (BR-CB-03 ajustada)", () => {
+  beforeEach(() => {
+    llamadasRepo.length = 0;
+    titulosPedidos.length = 0;
+    historialFalso = [];
+    tituloFalla = false;
+    guardarTituloFalla = false;
+  });
+
+  const PREGUNTA = "¿Qué nota saqué en el parcial?";
+  const preguntar = async () => {
+    const service = new ChatbotService(fakeRepo, fakeScheduleService, fakeReadOwnBlocks, stubSearchChat);
+    return service.ask("s1", 2, { question: PREGUNTA });
+  };
+
+  test("con el historial vacío genera el título con la pregunta, después de guardar el par", async () => {
+    await preguntar();
+    expect(titulosPedidos).toEqual([PREGUNTA]);
+    expect(llamadasRepo).toEqual([
+      "getRecentMessages",
+      `saveExchange(s1, ${PREGUNTA}, respuesta del bot)`,
+      "generateTitle",
+      "updateSessionTitle(s1, titulo)",
+    ]);
+  });
+
+  test("con un solo mensaje previo ya no es la primera pregunta: no genera título", async () => {
+    historialFalso = [{ id: "h1", sessionId: "s1", role: "user", content: "Hola", createdAt: new Date() }];
+    await preguntar();
+    expect(titulosPedidos).toEqual([]);
+    expect(llamadasRepo.some((l) => l.startsWith("updateSessionTitle"))).toBe(false);
+  });
+
+  test("con historial de pregunta y respuesta tampoco genera título", async () => {
+    historialFalso = [
+      { id: "h1", sessionId: "s1", role: "user", content: "Hola", createdAt: new Date() },
+      { id: "h2", sessionId: "s1", role: "assistant", content: "Hola, soy ULimaBot.", createdAt: new Date() },
+    ];
+    await preguntar();
+    expect(titulosPedidos).toEqual([]);
+  });
+
+  test("si falla la generación del título, la respuesta sale igual y el par guardado no se deshace", async () => {
+    tituloFalla = true;
+    expect(await preguntar()).toEqual({ answer: "respuesta del bot", sessionId: "s1" });
+    expect(llamadasRepo.filter((l) => l.startsWith("saveExchange")).length).toBe(1);
+    expect(llamadasRepo.some((l) => l.startsWith("updateSessionTitle"))).toBe(false);
+  });
+
+  test("si falla el guardado del título, la respuesta sale igual", async () => {
+    guardarTituloFalla = true;
+    expect(await preguntar()).toEqual({ answer: "respuesta del bot", sessionId: "s1" });
+    expect(llamadasRepo.filter((l) => l.startsWith("saveExchange")).length).toBe(1);
   });
 });

@@ -100,7 +100,6 @@ const armar = (over: Partial<Parameters<typeof buildContext>[0]> = {}) =>
     studentName: "LUCIA INVENTADA PAREDES",
     careerName: "Ingenieria de Sistemas",
     currentLevel: 8,
-    history: [],
     intents: ["own_blocks", "schedule"] as ChatbotIntent[],
     dateContext: { today: "2026-09-25", academicPeriodCode: "2026-2" },
     scheduleData: { sessions: SESIONES_16H, assessments: [] },

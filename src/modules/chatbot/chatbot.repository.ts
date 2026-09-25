@@ -12,6 +12,14 @@ import type {
   SectionRepresentativesData,
 } from "./chatbot.types.js";
 
+const toMessageRow = (r: Record<string, unknown>): ChatbotMessageRow => ({
+  id: r.id as string,
+  sessionId: r.session_id as string,
+  role: r.role as "user" | "assistant",
+  content: r.content as string,
+  createdAt: new Date(r.created_at as string),
+});
+
 export class ChatbotRepository {
   constructor(readonly database: typeof db) {}
 
@@ -80,14 +88,7 @@ export class ChatbotRepository {
     `);
   }
 
-  async touchSession(sessionId: string): Promise<void> {
-    await this.database.execute(sql`
-      UPDATE chatbot_session
-      SET updated_at = now()
-      WHERE id = ${sessionId}
-    `);
-  }
-
+  /** La sesión entera, para `GET /chatbot/sessions/:id`. `ask` usa `getRecentMessages`. */
   async getMessages(sessionId: string): Promise<ChatbotMessageRow[]> {
     const rows = await this.database.execute(sql`
       SELECT id, session_id, role, content, created_at
@@ -95,29 +96,69 @@ export class ChatbotRepository {
       WHERE session_id = ${sessionId}
       ORDER BY created_at ASC
     `) as unknown as Record<string, unknown>[];
-    return rows.map((r) => ({
-      id: r.id as string,
-      sessionId: r.session_id as string,
-      role: r.role as "user" | "assistant",
-      content: r.content as string,
-      createdAt: new Date(r.created_at as string),
-    }));
+    return rows.map(toMessageRow);
   }
 
-  async saveMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<ChatbotMessageRow> {
+  /**
+   * BR-CB-20: los `limit` mensajes más recientes de la sesión, en orden
+   * cronológico. La consulta los pide del más nuevo al más viejo para que
+   * `idx_chatbot_message_session_created` (migración 0013) corte en `limit` sin
+   * ordenar la sesión entera, y el código los devuelve al orden de la
+   * conversación.
+   */
+  async getRecentMessages(sessionId: string, limit: number): Promise<ChatbotMessageRow[]> {
     const rows = await this.database.execute(sql`
-      INSERT INTO chatbot_message (session_id, role, content)
-      VALUES (${sessionId}, ${role}, ${content})
-      RETURNING id, session_id, role, content, created_at
+      SELECT id, session_id, role, content, created_at
+      FROM chatbot_message
+      WHERE session_id = ${sessionId}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `) as unknown as Record<string, unknown>[];
+    return rows.map(toMessageRow).reverse();
+  }
+
+  /**
+   * BR-CB-21: guarda la pregunta y la respuesta juntas, en una transacción, y
+   * marca la actividad de la sesión. Si una sentencia falla no queda ninguna de
+   * las dos filas. Las dos toman `clock_timestamp()`, que avanza dentro de la
+   * transacción, para que la pregunta quede antes que la respuesta en el
+   * `ORDER BY created_at`; con `now()` empatarían. Si la sesión ya no existe, la
+   * primera inserción falla con la violación de llave foránea 23503.
+   */
+  async saveExchange(sessionId: string, question: string, answer: string): Promise<void> {
+    await this.database.transaction(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO chatbot_message (session_id, role, content, created_at)
+        VALUES (${sessionId}, ${"user"}, ${question}, clock_timestamp())
+      `);
+      await tx.execute(sql`
+        INSERT INTO chatbot_message (session_id, role, content, created_at)
+        VALUES (${sessionId}, ${"assistant"}, ${answer}, clock_timestamp())
+      `);
+      await tx.execute(sql`
+        UPDATE chatbot_session SET updated_at = now() WHERE id = ${sessionId}
+      `);
+    });
+  }
+
+  /**
+   * BR-CB-22: borra, de todos los alumnos, las sesiones cuya última actividad
+   * es anterior a las 00:00 de Lima del `start_date` del período activo, con sus
+   * mensajes por la cascada de `chatbot_message.session_id`. Solo corre si hoy,
+   * en Lima, el período ya empezó; sin período activo no borra nada.
+   * `updated_at` es `timestamp` sin zona y guarda la hora de pared de la zona de
+   * la sesión de la base (la de `now()` al escribir), así que la medianoche de
+   * Lima se lleva a esa misma zona. La sentencia es, tal cual, la de la spec.
+   */
+  async purgeSessionsBeforeActivePeriod(): Promise<void> {
+    await this.database.execute(sql`
+      DELETE FROM chatbot_session cs
+      USING academic_period ap
+      WHERE ap.is_active = true
+        AND (now() AT TIME ZONE 'America/Lima')::date >= ap.start_date
+        AND cs.updated_at < ((ap.start_date::timestamp AT TIME ZONE 'America/Lima')
+                             AT TIME ZONE current_setting('TimeZone'))
     `);
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      sessionId: r.session_id as string,
-      role: r.role as "user" | "assistant",
-      content: r.content as string,
-      createdAt: new Date(r.created_at as string),
-    };
   }
 
   async getSessionsCount(studentId: number): Promise<number> {

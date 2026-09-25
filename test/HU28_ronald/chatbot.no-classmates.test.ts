@@ -109,16 +109,11 @@ const repositorioFalso = {
     createdAt: new Date(),
     updatedAt: new Date(),
   }),
-  saveMessage: async (sessionId: string, role: "user" | "assistant", content: string) => ({
-    id: "m",
-    sessionId,
-    role,
-    content,
-    createdAt: new Date(),
-  }),
-  touchSession: async () => {},
+  purgeSessionsBeforeActivePeriod: async () => {},
+  saveExchange: async () => {},
   updateSessionTitle: async () => {},
-  getMessages: async () => HISTORIAL,
+  // BR-CB-20: los turnos previos se leen con getRecentMessages, antes de guardar.
+  getRecentMessages: async () => HISTORIAL,
   getStudentInfo: async () => ({ fullName: ALUMNA, careerName: "Ingenieria de Sistemas", currentLevel: 8 }),
   getActiveAcademicPeriod: async () => ({ id: 1, code: "2026-2" }),
   getAcademicWeeksForActivePeriod: async () => [

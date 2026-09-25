@@ -6,9 +6,11 @@ import type { ChatbotIntent, ChatbotMessageRow } from "../../src/modules/chatbot
 // CAJA NEGRA — buildContext() del chatbot ULimaBot (HU28, itsRon4ld)
 // ----------------------------------------------------------------------------
 // Funcionalidad con 15 campos de entrada (> 4):
-//   studentName, careerName, currentLevel, history, intents, dateContext,
+//   studentName, careerName, currentLevel, intents, dateContext,
 //   scheduleData, curriculumData, alertsData, announcementsData,
-//   delegatesData, chatSearchResults, officialGrades, localGrades, question.
+//   delegatesData, ownBlocks, chatSearchResults, officialGrades, localGrades,
+//   question. `history` dejó de ser campo el 2026-09-25: los turnos previos
+//   viajan aparte, como turnos de Cohere (BR-CB-07 y BR-CB-20).
 //
 // Se prueba por PARTICION DE EQUIVALENCIA y VALORES LIMITE sin conocer la
 // implementacion, observando solo el texto del contexto que arma la funcion.
@@ -25,7 +27,6 @@ function make(over: Partial<Parameters<typeof buildContext>[0]> = {}) {
     studentName: "Ana Torres",
     careerName: "Ingenieria de Sistemas",
     currentLevel: 5,
-    history: [] as ChatbotMessageRow[],
     intents: [] as ChatbotIntent[],
     dateContext: baseDate,
     question: "Hola",
@@ -137,31 +138,34 @@ describe("[CAJA NEGRA] buildContext — chatSearchResults (intent 'chat' o 'anno
   });
 });
 
-describe("[CAJA NEGRA] buildContext — history (bloque de conversacion y valor limite slice -10)", () => {
-  test("CV7 history con mensajes: aparece el historial con roles traducidos", () => {
+describe("[CAJA NEGRA] buildContext — sin historial (BR-CB-07 y BR-CB-20, ajuste del 2026-09-25)", () => {
+  // Antes del ajuste, `history` era un campo y sus 10 ultimos mensajes se
+  // pegaban en el mensaje de datos bajo HISTORIAL DE LA CONVERSACION. Ahora los
+  // turnos previos viajan una sola vez, como turnos de Cohere, y el limite de 10
+  // es de `getRecentMessages` (ver chatbot.history-turns.test.ts).
+  test("CV7 con cualquier dominio, el mensaje de datos no trae el bloque de historial", () => {
+    const { message } = make({ intents: ["grades", "schedule", "curriculum"] as ChatbotIntent[] });
+    expect(message).not.toContain("HISTORIAL DE LA CONVERSACION");
+    expect(message).not.toContain("ULimaBot:");
+  });
+
+  test("CNV5 un history de mas (campo retirado) no llega al mensaje de datos", () => {
     const history: ChatbotMessageRow[] = [
       { role: "user", content: "que nota saque" } as ChatbotMessageRow,
       { role: "assistant", content: "tu promedio es 14" } as ChatbotMessageRow,
     ];
-    const { message } = make({ history });
-    expect(message).toContain("HISTORIAL DE LA CONVERSACION");
-    expect(message).toContain("Alumno: que nota saque");
-    expect(message).toContain("ULimaBot: tu promedio es 14");
-  });
-
-  test("CNV5 history vacio: no se agrega bloque de historial", () => {
-    const { message } = make({ history: [] });
+    const { message } = buildContext({
+      studentName: "Ana Torres",
+      careerName: "Ingenieria de Sistemas",
+      currentLevel: 5,
+      intents: [] as ChatbotIntent[],
+      dateContext: baseDate,
+      question: "Hola",
+      history,
+    } as Parameters<typeof buildContext>[0]);
+    expect(message).not.toContain("que nota saque");
+    expect(message).not.toContain("tu promedio es 14");
     expect(message).not.toContain("HISTORIAL DE LA CONVERSACION");
-  });
-
-  test("LIMITE history de 11 mensajes: solo se conservan los ultimos 10 (el mas viejo se descarta)", () => {
-    const history: ChatbotMessageRow[] = Array.from({ length: 11 }, (_, i) =>
-      ({ role: "user", content: `msg-${i}` }) as ChatbotMessageRow,
-    );
-    const { message } = make({ history });
-    expect(message).not.toContain("msg-0");
-    expect(message).toContain("msg-1");
-    expect(message).toContain("msg-10");
   });
 });
 

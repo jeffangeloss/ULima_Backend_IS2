@@ -1,6 +1,5 @@
 import type {
   ChatbotIntent,
-  ChatbotMessageRow,
   OfficialCourseGrades,
   ScheduleData,
   SectionRepresentativePerson,
@@ -211,7 +210,6 @@ export function buildContext(params: {
   studentName: string;
   careerName: string;
   currentLevel: number | null;
-  history: ChatbotMessageRow[];
   intents: ChatbotIntent[];
   dateContext: DateContext;
   scheduleData?: unknown;
@@ -247,14 +245,8 @@ export function buildContext(params: {
     blocks.push(`- Semana siguiente: ${params.dateContext.nextWeekNumber} (${params.dateContext.nextWeekRange})`);
   }
 
-  if (params.history.length > 0) {
-    const recent = params.history.slice(-10);
-    blocks.push(`\nHISTORIAL DE LA CONVERSACION (ultimos mensajes):`);
-    for (const msg of recent) {
-      const role = msg.role === "user" ? "Alumno" : "ULimaBot";
-      blocks.push(`${role}: ${msg.content}`);
-    }
-  }
+  // BR-CB-07 y BR-CB-20: el historial ya no va dentro de este mensaje. Los
+  // turnos previos viajan una sola vez, como turnos de `chatWithHistory`.
 
   if (params.intents.includes("schedule") && params.scheduleData) {
     blocks.push(`\nDATOS DE HORARIO Y EVALUACIONES:`);

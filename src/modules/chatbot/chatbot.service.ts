@@ -14,6 +14,12 @@ import type { AskInput } from "./chatbot.schemas.js";
 
 const WEEK_RANGE_RADIUS = 1;
 
+/** BR-CB-07 y BR-CB-20: turnos previos que viajan a Cohere en cada pregunta. */
+const HISTORY_LIMIT = 10;
+
+/** Violación de llave foránea de PostgreSQL. */
+const FOREIGN_KEY_VIOLATION = "23503";
+
 export class ChatbotService {
   constructor(
     private readonly repository: ChatbotRepository,
@@ -27,36 +33,49 @@ export class ChatbotService {
   ) {}
 
   async createSession(studentId: number): Promise<ChatbotSessionRow> {
+    await this.purgeExpiredSessions();
     return this.repository.createSession(studentId);
   }
 
   async listSessions(studentId: number): Promise<ChatbotSessionRow[]> {
+    await this.purgeExpiredSessions();
     return this.repository.listSessions(studentId);
   }
 
   async getSession(sessionId: string, studentId: number): Promise<{ session: ChatbotSessionRow; messages: ChatbotMessageRow[] } | null> {
+    // BR-CB-22: una sesión del ciclo anterior se borra primero y la ruta da 404.
+    await this.purgeExpiredSessions();
     const session = await this.repository.findSessionById(sessionId, studentId);
     if (!session) return null;
     const messages = await this.repository.getMessages(sessionId);
     return { session, messages };
   }
 
+  /** BR-CB-22: `deleteSession` no corre la purga. */
   async deleteSession(sessionId: string, studentId: number): Promise<boolean> {
     return this.repository.deleteSession(sessionId, studentId);
   }
 
+  /**
+   * Orden de BR-CB-21: purga del ciclo, sesión del alumno, los 10 últimos
+   * mensajes, clasificación y fecha, recolección, Cohere, guardado atómico del
+   * par y, si el historial estaba vacío, el título.
+   */
   async ask(sessionId: string, studentId: number, input: AskInput): Promise<{ answer: string; sessionId: string }> {
+    // BR-CB-22: una sesión del ciclo anterior se borra aquí y responde 404.
+    await this.purgeExpiredSessions();
+
     const session = await this.repository.findSessionById(sessionId, studentId);
     if (!session) {
-      throw Object.assign(new Error("SESSION_NOT_FOUND"), { statusCode: 404 });
+      throw sessionNotFound();
     }
 
-    await this.repository.saveMessage(sessionId, "user", input.question);
-    await this.repository.touchSession(sessionId);
+    // BR-CB-20: el historial se lee ANTES de guardar nada, así que no trae la
+    // pregunta actual. Viaja una sola vez, como turnos.
+    const history = await this.repository.getRecentMessages(sessionId, HISTORY_LIMIT);
 
     // BR-CB-04: solo palabras clave, sin esperar a Cohere.
     const intents = classifyByKeywords(input.question);
-    const history = await this.repository.getMessages(sessionId);
     const studentInfo = await this.repository.getStudentInfo(studentId);
 
     const dateContext = await this.computeDateContext();
@@ -96,7 +115,6 @@ export class ChatbotService {
       studentName: studentInfo?.fullName ?? "Alumno",
       careerName: studentInfo?.careerName ?? "Desconocida",
       currentLevel: studentInfo?.currentLevel ?? null,
-      history,
       intents,
       dateContext,
       scheduleData,
@@ -116,8 +134,9 @@ export class ChatbotService {
 
     let answer: string;
     try {
-      const historyMessages = history.slice(-10).map((m) => ({
-        role: m.role as "user" | "assistant",
+      // BR-CB-07 y BR-CB-20: los turnos previos y, al final, el mensaje de datos.
+      const historyMessages = history.map((m) => ({
+        role: m.role,
         content: m.content,
       }));
 
@@ -138,20 +157,44 @@ export class ChatbotService {
     }
     clearTimeout(timeout);
 
-    await this.repository.saveMessage(sessionId, "assistant", answer);
-    await this.repository.touchSession(sessionId);
+    // BR-CB-21: pregunta y respuesta juntas, solo después de que Cohere
+    // respondió. Si Cohere falló, arriba ya salió el 503 sin escribir nada.
+    try {
+      await this.repository.saveExchange(sessionId, input.question, answer);
+    } catch (error) {
+      // La sesión se borró mientras el alumno esperaba la respuesta.
+      if (hasPostgresCode(error, FOREIGN_KEY_VIOLATION)) {
+        throw sessionNotFound();
+      }
+      // Cualquier otro fallo sale como 500 genérico desde el controlador.
+      throw error;
+    }
 
-    const isFirstMessage = history.filter((m) => m.role === "user").length === 1;
-    if (isFirstMessage) {
+    // BR-CB-03: «primera pregunta» es que la sesión no tenía mensajes. El
+    // fallo del título no deshace el par ya guardado.
+    if (history.length === 0) {
       try {
         const title = await cohereClient.generateTitle(input.question);
         await this.repository.updateSessionTitle(sessionId, title);
       } catch {
-        // Keep default title
+        // Se queda el título por defecto.
       }
     }
 
     return { answer, sessionId };
+  }
+
+  /**
+   * BR-CB-22 y BR-CB-12: la purga perezosa del ciclo. Si falla, se registra y la
+   * petición sigue; la próxima petición la reintenta.
+   */
+  private async purgeExpiredSessions(): Promise<void> {
+    try {
+      await this.repository.purgeSessionsBeforeActivePeriod();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error("No se pudo purgar el historial del chatbot del ciclo anterior:", detail);
+    }
   }
 
   private async getScheduleData(studentId: number, dateContext: DateContext) {
@@ -238,6 +281,21 @@ export class ChatbotService {
     return dateContext;
   }
 }
+
+const sessionNotFound = () => Object.assign(new Error("SESSION_NOT_FOUND"), { statusCode: 404 });
+
+/**
+ * Busca el código de PostgreSQL en el error o en su cadena de `cause`: Drizzle
+ * 0.45 envuelve el error de postgres.js en `DrizzleQueryError`.
+ */
+const hasPostgresCode = (error: unknown, code: string): boolean => {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && typeof current === "object" && current !== null; depth++) {
+    if ((current as { code?: unknown }).code === code) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+};
 
 type AcademicWeekRow = { weekNumber: number; startDate: string; endDate: string };
 
