@@ -31,6 +31,9 @@ const COMPANERA_NO_REPRESENTANTE = "Valeria Quispe Inventada";
 let falloDeCohere: Error | "timeout" | null = null;
 let falloDeGuardado: Error | null = null;
 let purgaFalla = false;
+// Lo que devuelve `getSchedule`. Vacío por omisión, así que el bloque 3 no sale
+// (BR-CB-24: un bloque sale solo si tiene datos).
+let horarioFalso: unknown[] = [];
 
 mock.module("../../src/services/cohere.client.js", () => ({
   cohereClient: {
@@ -103,7 +106,7 @@ const fakeRepo = {
   ],
   getSchedule: async () => {
     fuentesConsultadas.push("schedule");
-    return [];
+    return horarioFalso;
   },
   getCurriculum: async () => {
     fuentesConsultadas.push("curriculum");
@@ -320,6 +323,17 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
     await preguntar("hola, ¿cómo estás?");
     expect([...fuentesConsultadas].sort()).toEqual(["curriculum", "grades", "schedule"]);
   });
+
+  test("sin palabras clave y con el horario, las notas y la malla vacíos, ningún bloque de datos sale (BR-CB-24)", async () => {
+    await preguntar("hola, ¿cómo estás?");
+    const mensaje = ultimoMensajeDeDatos();
+    for (const titulo of ["DATOS DE HORARIO Y EVALUACIONES:", "DATOS DE MALLA CURRICULAR:", "NOTAS OFICIALES", "SIMULACION NO OFICIAL"]) {
+      expect(mensaje).not.toContain(titulo);
+    }
+    expect(mensaje.split("\n")).not.toContain("[]");
+    expect(mensaje).toContain("PERFIL DEL ALUMNO:");
+    expect(mensaje).toContain("FECHA Y SEMANA ACTUAL:");
+  });
 });
 
 describe("ChatbotService.ask - el bug reportado: cada curso con sus delegados (BR-CB-16 y BR-CB-24)", () => {
@@ -499,6 +513,7 @@ describe("ChatbotService.ask - errores de Cohere, del guardado, de la purga y de
     falloDeCohere = null;
     falloDeGuardado = null;
     purgaFalla = false;
+    horarioFalso = [];
   });
 
   test("Cohere que no responde en 8 s: el servicio aborta la llamada, responde 503 y no guarda nada", async () => {
@@ -558,6 +573,17 @@ describe("ChatbotService.ask - errores de Cohere, del guardado, de la purga y de
 
   test("la purga y la lectura de bloques propios fallan a la vez: la respuesta sale igual, con un console.error y un console.warn", async () => {
     purgaFalla = true;
+    // Un horario con una sesión, para que el bloque 3 tenga datos y salga.
+    horarioFalso = [
+      {
+        day_name: "Lunes",
+        start_time: "08:00:00",
+        end_time: "10:00:00",
+        course_name: "CURSO INVENTADO",
+        section_code: "801",
+        classroom: "A-101",
+      },
+    ];
     const bloquesQueFallan = async () => {
       throw new Error("falla inventada de los bloques");
     };

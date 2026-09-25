@@ -197,3 +197,127 @@ describe("buildContext - bloque de delegados (BR-CB-16 y BR-CB-24)", () => {
     expect(armar()).not.toContain("DATOS DE COMPANEROS");
   });
 });
+
+// ============================================================================
+// BR-CB-24: un bloque sale solo si su dominio está activo y tiene datos. La
+// única excepción es el bloque 8 (bloques propios), que sale con `own_blocks`
+// aunque no haya bloques. Un arreglo vacío no es dato, así que los bloques 3 a 6,
+// 10 y 11 no salen con `[]`, y el horario no sale si no trae ninguna sesión ni
+// ninguna evaluación.
+// ============================================================================
+
+const SESION_INVENTADA = {
+  day_name: "Lunes",
+  start_time: "08:00:00",
+  end_time: "10:00:00",
+  course_name: "CURSO INVENTADO",
+  section_code: "801",
+  classroom: "A-101",
+};
+
+const EVALUACION_INVENTADA = { title: "Practica calificada inventada", weekNumber: 6, date: "2026-09-24" };
+
+describe("buildContext - un bloque sin datos no sale (BR-CB-24)", () => {
+  const conDominios = (over: Partial<Parameters<typeof buildContext>[0]>) =>
+    armar({ intents: [], delegatesData: null, question: "Hola", ...over });
+
+  const casos: Array<{ bloque: string; titulo: string; over: Partial<Parameters<typeof buildContext>[0]> }> = [
+    {
+      bloque: "3",
+      titulo: "DATOS DE HORARIO Y EVALUACIONES:",
+      over: { intents: ["schedule"], scheduleData: { sessions: [], assessments: [] } },
+    },
+    { bloque: "4", titulo: "DATOS DE MALLA CURRICULAR:", over: { intents: ["curriculum"], curriculumData: [] } },
+    { bloque: "5", titulo: "DATOS DE ALERTAS:", over: { intents: ["alerts"], alertsData: [] } },
+    { bloque: "6", titulo: "DATOS DE ANUNCIOS:", over: { intents: ["announcements"], announcementsData: [] } },
+    { bloque: "10", titulo: "SIMULACION NO OFICIAL", over: { intents: ["grades"], localGrades: [] } },
+    {
+      bloque: "11",
+      titulo: "MENSAJES DEL CHAT DE LA SECCION",
+      over: { intents: ["chat"], chatSearchResults: [] },
+    },
+  ];
+
+  for (const { bloque, titulo, over } of casos) {
+    test(`el bloque ${bloque} no sale con su dominio activo y los datos vacíos`, () => {
+      const mensaje = conDominios(over);
+      expect(mensaje).not.toContain(titulo);
+      // Ningún arreglo vacío queda suelto en el mensaje.
+      expect(mensaje.split("\n")).not.toContain("[]");
+      expect(mensaje).not.toContain('"sessions": []');
+    });
+  }
+
+  test("«Hola» con el respaldo schedule, grades y curriculum y todo vacío deja solo el perfil, la fecha y la pregunta", () => {
+    const mensaje = conDominios({
+      intents: ["schedule", "grades", "curriculum"],
+      scheduleData: { sessions: [], assessments: [] },
+      curriculumData: [],
+      officialGrades: [],
+      localGrades: [],
+    });
+    expect(mensaje).toBe(
+      [
+        "DATOS DEL ALUMNO (unica fuente de datos para responder):",
+        "",
+        "PERFIL DEL ALUMNO:",
+        "- Nombre: LUCIA INVENTADA PAREDES",
+        "- Carrera: Ingenieria de Sistemas",
+        "- Ciclo actual: 8",
+        "",
+        "FECHA Y SEMANA ACTUAL:",
+        "- Hoy: 2026-09-25",
+        "",
+        "FIN DE LOS DATOS",
+        "",
+        "PREGUNTA DEL ALUMNO:",
+        "Hola",
+      ].join("\n"),
+    );
+  });
+
+  test("el horario con sesiones y sin evaluaciones sí sale, con el JSON sin cambios", () => {
+    const datos = { sessions: [SESION_INVENTADA], assessments: [] };
+    const mensaje = conDominios({ intents: ["schedule"], scheduleData: datos });
+    expect(mensaje).toContain(`DATOS DE HORARIO Y EVALUACIONES:\n${JSON.stringify(datos, null, 2)}`);
+  });
+
+  test("el horario con evaluaciones y sin sesiones sí sale, con el JSON sin cambios", () => {
+    const datos = { sessions: [], assessments: [EVALUACION_INVENTADA] };
+    const mensaje = conDominios({ intents: ["schedule"], scheduleData: datos });
+    expect(mensaje).toContain(`DATOS DE HORARIO Y EVALUACIONES:\n${JSON.stringify(datos, null, 2)}`);
+  });
+
+  test("las alertas, la malla, los anuncios, la simulación y el chat con un elemento sí salen", () => {
+    const mensaje = conDominios({
+      intents: ["curriculum", "alerts", "announcements", "grades", "chat"],
+      curriculumData: [{ courseName: "CURSO INVENTADO", cycle: 8, status: "in_progress", credit: 4 }],
+      alertsData: [{ tipo: "academic_risk" }],
+      announcementsData: [{ title: "Aviso inventado" }],
+      localGrades: [{ id: "c1", nombre: "CURSO INVENTADO", notas: [] }],
+      chatSearchResults: CHAT_DE_PRUEBA,
+    });
+    for (const titulo of [
+      "DATOS DE MALLA CURRICULAR:",
+      "DATOS DE ALERTAS:",
+      "DATOS DE ANUNCIOS:",
+      "SIMULACION NO OFICIAL",
+      "MENSAJES DEL CHAT DE LA SECCION",
+    ]) {
+      expect(mensaje).toContain(titulo);
+    }
+  });
+
+  test("el bloque 8 sigue saliendo con `own_blocks` aunque no haya bloques, y el 3 no sale con el horario vacío", () => {
+    const mensaje = conDominios({
+      intents: ["schedule", "own_blocks"],
+      scheduleData: { sessions: [], assessments: [] },
+      ownBlocks: { window: { from: "2026-09-21", to: "2026-10-04" }, blocks: [], weeks: [] },
+    });
+    expect(mensaje).not.toContain("DATOS DE HORARIO Y EVALUACIONES:");
+    expect(mensaje).toContain("TUS BLOQUES DE HORARIO PROPIOS");
+    expect(mensaje).toContain("- No registraste bloques propios vigentes.");
+    // El horario se leyó sin sesiones, así que las horas de clase son 0 h (BR-CB-19).
+    expect(mensaje).toContain("- Horas de clase por semana segun tu horario: 0 h.");
+  });
+});

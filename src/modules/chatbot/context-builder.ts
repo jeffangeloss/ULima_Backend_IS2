@@ -163,6 +163,20 @@ export function weeklyClassHours(sessions: readonly Pick<ScheduleData, "start_ti
 }
 
 /**
+ * BR-CB-24: un bloque sale solo si su dominio está activo y tiene datos. Un
+ * arreglo vacío no es dato, y un objeto tiene datos si alguno de sus campos los
+ * tiene, así que el horario `{ sessions: [], assessments: [] }` no cuenta y el
+ * que trae una sesión o una evaluación sí. La única excepción es el bloque 8,
+ * que sale con `own_blocks` aunque no haya bloques (BR-CB-18).
+ */
+function hasData(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.values(value).some(hasData);
+  return true;
+}
+
+/**
  * Las sesiones del bloque de horario (`{ sessions, assessments }`), o null si
  * el horario no se cargó. Con null, el bloque 8 sale sin la línea de horas de
  * clase (BR-CB-19).
@@ -277,22 +291,25 @@ export function buildContext(params: {
   // BR-CB-07 y BR-CB-20: el historial ya no va dentro de este mensaje. Los
   // turnos previos viajan una sola vez, como turnos de `chatWithHistory`.
 
-  if (params.intents.includes("schedule") && params.scheduleData) {
+  // BR-CB-24: los bloques 3 a 6, 10 y 11 no salen con los datos vacíos. El
+  // bloque 8 lee las sesiones aparte, así que un horario leído sin sesiones no
+  // sale como bloque 3 y aun así da «0 h» de clase (BR-CB-19).
+  if (params.intents.includes("schedule") && hasData(params.scheduleData)) {
     blocks.push(`\nDATOS DE HORARIO Y EVALUACIONES:`);
     blocks.push(JSON.stringify(params.scheduleData, null, 2));
   }
 
-  if (params.intents.includes("curriculum") && params.curriculumData) {
+  if (params.intents.includes("curriculum") && hasData(params.curriculumData)) {
     blocks.push(`\nDATOS DE MALLA CURRICULAR:`);
     blocks.push(JSON.stringify(params.curriculumData, null, 2));
   }
 
-  if (params.intents.includes("alerts") && params.alertsData) {
+  if (params.intents.includes("alerts") && hasData(params.alertsData)) {
     blocks.push(`\nDATOS DE ALERTAS:`);
     blocks.push(JSON.stringify(params.alertsData, null, 2));
   }
 
-  if (params.intents.includes("announcements") && params.announcementsData) {
+  if (params.intents.includes("announcements") && hasData(params.announcementsData)) {
     blocks.push(`\nDATOS DE ANUNCIOS:`);
     blocks.push(JSON.stringify(params.announcementsData, null, 2));
   }
@@ -340,7 +357,7 @@ export function buildContext(params: {
     }
   }
 
-  if (params.intents.includes("grades") && params.localGrades) {
+  if (params.intents.includes("grades") && hasData(params.localGrades)) {
     blocks.push(`\nSIMULACION NO OFICIAL (escenario que el alumno arma en la calculadora; NO son notas reales; usar solo si pregunta un "que pasaria si"):`);
     blocks.push(JSON.stringify(params.localGrades, null, 2));
   }
@@ -348,7 +365,7 @@ export function buildContext(params: {
   // BR-CB-23 y BR-CB-24 (bloque 11): solo con `chat` o `announcements`. Los
   // mensajes van sin remitente y el JSON escapa sus saltos de línea y comillas.
   const chatActive = params.intents.includes("chat") || params.intents.includes("announcements");
-  if (chatActive && params.chatSearchResults) {
+  if (chatActive && hasData(params.chatSearchResults)) {
     blocks.push(`\n${CHAT_TITLE}`);
     blocks.push(JSON.stringify(params.chatSearchResults, null, 2));
   }
