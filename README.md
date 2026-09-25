@@ -416,7 +416,7 @@ El patrón no es uniforme, y conviene decirlo antes de que alguien abra `chat/` 
 
 > **2 · `advising` es el único módulo con submódulos.** Su [`index.ts`](src/modules/advising/index.ts) tiene **11 líneas** y no es una raíz de composición: es un agregador que crea un `Hono` propio y monta dos sub-apps completas — `app.route("/me", teacherRoutes)` (`:6`) y `app.route("/", studentRoutes)` (`:7`). Por eso las rutas docentes viven bajo `/advising/me/*` y las de alumno bajo `/advising/section/:sectionId` y `/advising/:sessionId/rsvp`. Cada submódulo tiene sus **8 archivos** y **su propia raíz de composición** (`advising/teacher/index.ts:8-12`, `advising/student/index.ts:8-12`), y hasta guardas distintas: teacher usa `app.use("*", authMiddleware)` + `requireRole("teacher")`, student las declara ruta por ruta. Total recursivo: **17 archivos**.
 
-> **3 · `chatbot` tiene 4 archivos sueltos fuera del patrón.** Además de los 7 canónicos: [`intent-classifier.ts`](src/modules/chatbot/intent-classifier.ts) (65 líneas, `KEYWORD_MAP` con 8 dominios y palabras clave sin tildes), [`context-builder.ts`](src/modules/chatbot/context-builder.ts) (365, el `SYSTEM_PROMPT` de 13 reglas de «ULimaBot» y el mensaje de datos de BR-CB-24), [`chat-search.ts`](src/modules/chatbot/chat-search.ts) (126, lee los mensajes de Firebase sin remitente) y [`grades-summary.ts`](src/modules/chatbot/grades-summary.ts) (89, que **reutiliza la lógica pura de otro módulo**: importa `aggregateCourseScores`, `personalAverage`, `requiredOnRemaining` y `PASSING_GRADE` desde `../alerts/alerts.logic.js`). Su `index.ts` es un IIFE en vez de constantes sueltas, inyecta **otro service** en lugar del `eventBus` — `new ChatbotService(repository, scheduleService, readOwnTimeBlocksForAssistant)` (`chatbot/index.ts:12`), único caso de service que depende de service y que recibe además la función acotada de `time-blocks` (RS-BE-35) — y su controller **no delega los errores al `errorHandler`**: hace `try/catch` y devuelve 400/404/500/503 a mano (`chatbot.controller.ts:54-100`), además de filtrar prompt-injection con 5 regex.
+> **3 · `chatbot` tiene 4 archivos sueltos fuera del patrón.** Además de los 7 canónicos: [`intent-classifier.ts`](src/modules/chatbot/intent-classifier.ts) (65 líneas, `KEYWORD_MAP` con 8 dominios y palabras clave sin tildes), [`context-builder.ts`](src/modules/chatbot/context-builder.ts) (382, el `SYSTEM_PROMPT` de 13 reglas de «ULimaBot» y el mensaje de datos de BR-CB-24), [`chat-search.ts`](src/modules/chatbot/chat-search.ts) (126, lee los mensajes de Firebase sin remitente) y [`grades-summary.ts`](src/modules/chatbot/grades-summary.ts) (89, que **reutiliza la lógica pura de otro módulo**: importa `aggregateCourseScores`, `personalAverage`, `requiredOnRemaining` y `PASSING_GRADE` desde `../alerts/alerts.logic.js`). Su `index.ts` es un IIFE en vez de constantes sueltas, inyecta **otro service** en lugar del `eventBus` — `new ChatbotService(repository, scheduleService, readOwnTimeBlocksForAssistant)` (`chatbot/index.ts:12`), único caso de service que depende de service y que recibe además la función acotada de `time-blocks` (RS-BE-35) — y su controller **no delega los errores al `errorHandler`**: hace `try/catch` y devuelve 400/404/500/503 a mano (`chatbot.controller.ts:54-100`), además de filtrar prompt-injection con 5 regex.
 
 > **4 · `chat` no tiene `service.ts`.** Sus 7 archivos son routes, controller, logic, repository, schemas, types e index. El controller absorbe el rol del service: importa `db` directamente (`chat.controller.ts:1`) —violando `AGENTS.md:41`— y se construye su propio repositorio con un parámetro por defecto, `constructor(readonly repository = new ChatRepository(db)) {}` (`:21`). Su `index.ts` tiene 7 líneas y hace `new ChatController()` sin argumentos.
 
@@ -630,7 +630,7 @@ ULima_Backend_IS2/
 │   │   ├── section-management/       # 747 · delegado y subdelegado: representantes, anuncios y estadísticas
 │   │   ├── advising/                 # 1 013 · ÚNICO módulo con submódulos: teacher/ y student/, 8 archivos cada uno
 │   │   ├── chat/                     # 377 · puente a Firebase; ÚNICO módulo sin `service.ts`
-│   │   ├── chatbot/                  # 1 688 · «ULimaBot» sobre Cohere, anclado al contexto académico real
+│   │   ├── chatbot/                  # 1 705 · «ULimaBot» sobre Cohere, anclado al contexto académico real
 │   │   ├── attendance-risk/          # 386 · vista docente de alumnos impedidos y en riesgo por inasistencias
 │   │   ├── networking/               # 495 · carnet de redes sociales con opt-in explícito
 │   │   ├── portal-sync/              # 2 388 · el módulo más grande: 7 archivos de nivel 1 + parsers/ con 10
@@ -2122,7 +2122,8 @@ Dominios soportados desde el 2026-09-25: `grades`, `schedule`, `curriculum`, `al
 > formato anterior del prompt. Desde el 2026-09-25 el mensaje de datos abre con `DATOS DEL
 > ALUMNO` y cierra con `FIN DE LOS DATOS` (BR-CB-24), y la pregunta va después del cierre, fuera
 > del bloque. Ningún patrón filtra esas dos líneas, porque BR-CB-10 no lo pide, así que una
-> pregunta puede escribirlas.
+> pregunta puede escribirlas. Sumar esos patrones queda pendiente de la decisión del dueño
+> (anotación de BR-CB-10).
 
 #### 13 · `/attendance-risk` — 3 endpoints (HU22 / HU30)
 
@@ -4028,7 +4029,9 @@ curso y su sección, y las reglas 11 a 13 cubren los bloques propios, las sugere
 chat sin remitente. El mensaje de datos abre con `DATOS DEL ALUMNO (unica fuente de datos para
 responder):`, trae hasta once bloques en un orden fijo (perfil, fecha, horario, malla, alertas,
 anuncios, delegados, bloques propios, notas oficiales, simulación y chat), cierra con
-`FIN DE LOS DATOS` y termina con la pregunta, fuera del bloque. Los nombres y los títulos de los
+`FIN DE LOS DATOS` y termina con la pregunta, fuera del bloque. Cada bloque sale solo si su dominio
+está activo y tiene datos, y un arreglo vacío no cuenta, salvo en los bloques propios, que salen con
+`own_blocks` aunque no haya ninguno. Los nombres y los títulos de los
 bloques van en una sola línea y el chat va como JSON, así que ningún texto libre forma una línea
 propia que imite el cierre.
 
@@ -4052,7 +4055,9 @@ y la respuesta con `clock_timestamp()` y actualiza `updated_at` en una transacci
 `idx_chatbot_message_session_created` de la migración `0013`, **pendiente de aplicar**, sirve a
 `getRecentMessages`. La purga perezosa borra las sesiones cuyo `updated_at` es anterior a las
 00:00 de Lima del `start_date` del período activo, al empezar `listSessions`, `getSession`,
-`createSession` y `ask`, sin cron.
+`createSession` y `ask`, sin cron. Un despliegue de vista previa que use el `DATABASE_URL` de
+producción también la dispara, así que antes de subir la rama se comprueba que ninguno lo use
+(BR-CB-22, «Primera purga en producción»).
 
 ⚠️ El esquema Drizzle declara `role varchar(10)` **sin `CHECK`**, aunque el bloque de tablas
 original de `chatbot.spec.md` lo muestra. Desde el 2026-09-25 la spec anota que ese `CHECK` no
@@ -4702,7 +4707,7 @@ carpeta de prueba en ese repo. Los tests del frontend viven en el otro repositor
 | **HU25** | Carnet de networking opt-in con una red social | Alumno · Docente | [`src/modules/networking`](src/modules/networking) | mel | 34 / 33 | Escenario 1 implementado |
 | **HU26** | Exportar a CSV la lista de impedidos | Docente | *(sin endpoint: el CSV se arma en el cliente)* | sam | — / 7 | **Implementado sin spec** |
 | **HU27** | *(histórico)* Carnet de networking | — | — | — | — | **Renumerada a HU25** |
-| **HU28** | Chatbot académico ULimaBot con IA | Alumno | [`src/modules/chatbot`](src/modules/chatbot) | ronald | 448 / — | Implementado; el ajuste del 2026-09-25 sigue sin mergear |
+| **HU28** | Chatbot académico ULimaBot con IA | Alumno | [`src/modules/chatbot`](src/modules/chatbot) | ronald | 460 / — | Implementado; el ajuste del 2026-09-25 sigue sin mergear |
 | **HU29** | Calificación oficial por evaluación | Docente titular | [`src/modules/official-grades`](src/modules/official-grades) | jeff | 12 / — | Implementado; **no figura en el `feature-index`** |
 | **HU30** | Notificar a los alumnos impedidos o en riesgo por faltas | Docente | [`src/modules/attendance-risk`](src/modules/attendance-risk) | sam | 10 / — | Implementado |
 | **HU31** | Cargar el ciclo desde el portal miUlima | Alumno | [`src/modules/portal-sync`](src/modules/portal-sync) | jeff | 425 / 43 | Implementado en backend; **verificación E2E manual pendiente** |
@@ -5890,7 +5895,7 @@ Escenario: Usuario inexistente
 | **Módulo** | [`src/modules/chatbot`](src/modules/chatbot) + [`src/services/cohere.client.ts`](src/services/cohere.client.ts) |
 | **Endpoints** | `POST /chatbot/sessions` · `GET /chatbot/sessions` · `GET /chatbot/sessions/:id` · `DELETE /chatbot/sessions/:id` · `POST /chatbot/sessions/:id/ask` |
 | **Reglas** | BR-CB-01 a BR-CB-24 y BR-CB-22b · [`specs/features/chatbot/chatbot.spec.md`](specs/features/chatbot/chatbot.spec.md). 20 preguntas por alumno y hora, 500 caracteres por pregunta, 8 s de timeout con Cohere, historial de 10 mensajes que viaja una sola vez como turnos, 200 mensajes de chat leídos por sección solo con preguntas sobre el chat o los avisos, evaluaciones de la semana actual ± 1, retención del historial por ciclo |
-| **Pruebas** | Los 17 archivos de [`test/HU28_ronald/`](test/HU28_ronald/), entre ellos [`chatbot.intent-classifier.test.ts`](test/HU28_ronald/chatbot.intent-classifier.test.ts), [`chatbot.system-prompt.test.ts`](test/HU28_ronald/chatbot.system-prompt.test.ts), [`chatbot.context-format.test.ts`](test/HU28_ronald/chatbot.context-format.test.ts), [`chatbot.service.test.ts`](test/HU28_ronald/chatbot.service.test.ts) y [`context.cajanegra.test.ts`](test/HU28_ronald/context.cajanegra.test.ts). Suman 448 casos, y los 37 de los dos `*.postgres.test.ts` se saltan sin `TEST_DATABASE_URL` |
+| **Pruebas** | Los 17 archivos de [`test/HU28_ronald/`](test/HU28_ronald/), entre ellos [`chatbot.intent-classifier.test.ts`](test/HU28_ronald/chatbot.intent-classifier.test.ts), [`chatbot.system-prompt.test.ts`](test/HU28_ronald/chatbot.system-prompt.test.ts), [`chatbot.context-format.test.ts`](test/HU28_ronald/chatbot.context-format.test.ts), [`chatbot.service.test.ts`](test/HU28_ronald/chatbot.service.test.ts) y [`context.cajanegra.test.ts`](test/HU28_ronald/context.cajanegra.test.ts). Suman 460 casos, y los 37 de los dos `*.postgres.test.ts` se saltan sin `TEST_DATABASE_URL` |
 
 **Criterios de aceptación**
 

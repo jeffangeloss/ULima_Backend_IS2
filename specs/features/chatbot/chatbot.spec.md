@@ -17,7 +17,8 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 
 > Estado: **ajustada el 2026-09-25** con las decisiones del dueño de ese día sobre delegados,
 > bloques propios e historial, **aprobada por el dueño el 2026-09-25 e implementada** en la rama
-> `fix/chatbot-delegados-bloques`. Cambian BR-CB-02,
+> `fix/chatbot-delegados-bloques`, salvo el último punto de BR-CB-10, que tampoco está implementado
+> en `main` (ver BR-CB-10). Cambian BR-CB-02,
 > BR-CB-03, BR-CB-04, BR-CB-05, BR-CB-06, BR-CB-07, BR-CB-09 y BR-CB-12, y se agregan BR-CB-16
 > a BR-CB-24. Tres puntos son propuestas derivadas que el dueño confirma al aprobar, BR-CB-23
 > (de la decisión 1), el total de horas de clase de BR-CB-19 (de la decisión 2) y la condición
@@ -28,9 +29,12 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > producción cuya última actividad es anterior al inicio del período activo** (las 00:00 de Lima
 > del 2026-08-24, si la base guarda el calendario publicado de 2026-2). Ese borrado masivo de
 > datos vivos exige la aprobación explícita del dueño, con un conteo en solo lectura y un respaldo
-> antes del merge, como la migración 0013 (BR-CB-22, «Primera purga en producción»). BR-CB-17
-> deja además dos residuos de texto libre para que el dueño los acepte o decida otra salida. Los
-> ejemplos usan datos inventados.
+> antes del merge, como la migración 0013 (BR-CB-22, «Primera purga en producción»). Un despliegue
+> de vista previa de Vercel que use el `DATABASE_URL` de producción correría esa purga en su primera
+> petición al chatbot, antes de la aprobación, así que el dueño descarta ese caso antes de subir la
+> rama al remoto o de abrir el PR (paso 1 de ese apartado). De los dos residuos de texto libre de
+> BR-CB-17, el primero lo resuelve el borrado único de BR-CB-22b, que el dueño decide al aprobar, y
+> el segundo queda aceptado con esa aprobación. Los ejemplos usan datos inventados.
 > La revisión de la Tarea 2 del mismo día agrega a BR-CB-23 la omisión de los mensajes borrados,
 > pendiente de confirmación del dueño, y aclara la lista de artículos y preposiciones de BR-CB-06.
 > La revisión de la Tarea 3 aclara, para que el dueño lo confirme, contra qué fecha se mide la
@@ -43,10 +47,16 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > ningún requisito.
 > El cierre de la Tarea 5 implementa el prompt de BR-CB-09 y el formato de BR-CB-24, suma los casos
 > de error de BR-CB-12 a `chatbot.service.test.ts` y deja cada `[@test]` apuntando a un archivo que
-> existe. La implementación no cumple por sí sola las condiciones del despliegue. Antes del merge
-> siguen pendientes la aplicación de la `0013` con la aprobación de BD, el conteo, el respaldo y la
-> aprobación de «Primera purga en producción» (BR-CB-22) y el borrado único de BR-CB-22b, que
-> `MIGRATIONS.md` registra como pendientes.
+> existe. La implementación no cumple por sí sola las condiciones del despliegue. Antes de subir la
+> rama o de abrir el PR, el dueño comprueba que ningún despliegue de vista previa use la base de
+> producción. Antes del merge siguen pendientes la aplicación de la `0013` con la aprobación de BD,
+> el conteo, el respaldo y la aprobación de «Primera purga en producción» (BR-CB-22) y el borrado
+> único de BR-CB-22b, que `MIGRATIONS.md` registra como pendientes.
+> La revisión del cierre de la Tarea 5 hace que un bloque sin datos no salga del mensaje de datos,
+> como pide BR-CB-24, y aclara qué cuenta como dato, para que el dueño lo confirme. Anota además en
+> BR-CB-10 que su último punto no está implementado ni probado y que sumar patrones para las dos
+> líneas del marco de BR-CB-24 queda pendiente de la decisión del dueño, y en BR-CB-22 el riesgo de
+> un despliegue de vista previa con la base de producción.
 > Contraparte en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-35, ajustada el mismo
 > día). El récord académico sigue fuera del chatbot (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -418,6 +428,24 @@ que trae las reglas 11 a 13, y que ya no contiene «NO respondas preguntas sobre
 - Timeout de 8 segundos para la llamada a Cohere Chat.
 - Si Cohere responde con texto que contiene IDs o datos que no corresponden al `studentId` del JWT, se descarta la respuesta y se retorna error 500 generico (no se guarda en BD).
 
+> *Anotación del 2026-09-25, en la revisión del cierre de la Tarea 5. No cambia la regla.*
+
+- **El último punto no está implementado.** `ChatbotService.ask` guarda la respuesta de Cohere sin
+  inspeccionarla, igual que `main` 38024d4, y ninguna prueba cubre ese descarte. La brecha es
+  anterior al ajuste del 2026-09-25 y sigue abierta, porque la regla no dice cómo reconocer en
+  texto libre un dato de otro alumno.
+- **Patrones del formato nuevo, pendientes de la decisión del dueño.** Los cinco patrones son los
+  delimitadores del formato anterior y no cubren `DATOS DEL ALUMNO` ni `FIN DE LOS DATOS`, las dos
+  líneas del marco de BR-CB-24. La pregunta va después del cierre real y no puede cerrarlo, pero sí
+  puede escribir un segundo bloque de datos falso que la regla 1 del prompt (BR-CB-09) tomaría como
+  fuente. El efecto se queda en la respuesta del propio alumno, porque ese bloque solo trae lo que
+  él mismo escribe.
+  - Si el dueño lo aprueba, la regla suma dos patrones sin distinguir mayúsculas, una línea que
+    empieza con `DATOS DEL ALUMNO` y una línea que es solo `FIN DE LOS DATOS`, con el mismo
+    `400 INVALID_QUESTION`. Una pregunta genuina que empiece con «datos del alumno» recibiría
+    también ese 400.
+  - Mientras el dueño no lo decida, el código aplica solo los cinco patrones de arriba.
+
 ### BR-CB-11: Rate Limiting
 
 - Maximo 20 preguntas por alumno por hora (configurable via `CHATBOT_RATE_LIMIT` en env).
@@ -584,18 +612,21 @@ que no cambian el resultado)*
   anuncios siguen como hoy, etiquetados por curso y sección y sin proyectar quién los publica
   (`chatbot.repository.ts:255-279`), y el chat de sección deja de mandar remitentes (BR-CB-23).
 - **Dos residuos de texto libre.** *Para que el dueño los acepte al aprobar o decida otra
-  salida.* El punto anterior cubre los campos que arma el chatbot, pero dos textos libres pueden
-  seguir llevando a Cohere nombres de compañeros que no son representantes.
+  salida. Actualizado el 2026-09-25, en la revisión del cierre de la Tarea 5, con lo que el dueño
+  decide al aprobar.* El punto anterior cubre los campos que arma el chatbot, pero dos textos
+  libres pueden seguir llevando a Cohere nombres de compañeros que no son representantes.
   1. Las respuestas del bot anteriores al ajuste, que ya traen nombres de compañeros tomados del
      bloque plano, siguen guardadas y viajan como turnos previos (BR-CB-20) mientras viva su
      sesión. La primera purga (BR-CB-22) solo borra las sesiones sin actividad desde el inicio de
-     2026-2, así que las demás siguen hasta la purga del ciclo siguiente. Una salida posible es
-     purgar una sola vez, al desplegar, todas las sesiones anteriores al despliegue, que es otro
-     borrado masivo con su aprobación, su conteo en solo lectura y su respaldo, como la primera
-     purga de BR-CB-22.
+     2026-2, así que las demás siguen hasta la purga del ciclo siguiente. **Resuelto por
+     BR-CB-22b.** Al aprobar, el dueño elige la salida que esta regla proponía, purgar una sola
+     vez, al desplegar, todas las sesiones anteriores al despliegue, con su conteo en solo lectura
+     y su respaldo. Desde ese borrado ya no queda guardada ninguna respuesta tomada del bloque
+     plano.
   2. El cuerpo de los mensajes del chat (BR-CB-23) y el de los anuncios lo escriben personas y
      puede nombrar a terceros aunque ya no viajen el remitente ni el autor. El chatbot no filtra
-     texto libre.
+     texto libre. **Aceptado al aprobar.** El dueño aprueba la spec sin decidir otra salida para
+     este residuo, como ya registra `docs/specs/api-contracts.md`.
 - Una pregunta como «¿quiénes están en mi sección?» activa `delegates` y se responde con los
   delegados de esa sección y con la regla 4 del prompt (BR-CB-09).
 
@@ -821,7 +852,9 @@ Cohere responde da 404 sin guardar nada)*
 
 > *Nueva el 2026-09-25 (decisión 3), aprobada por el dueño el 2026-09-25.* No cambia el esquema
 > ni la configuración del despliegue, pero su primera ejecución en producción borra de una vez
-> datos vivos y exige antes del merge el paso de «Primera purga en producción». La condición
+> datos vivos y exige antes del merge el paso de «Primera purga en producción». Un despliegue de
+> vista previa que use la base de producción también la ejecuta, y el paso 1 de ese apartado lo
+> descarta antes de subir la rama. La condición
 > «Solo si el período ya empezó» es una propuesta derivada de la decisión 3 que el dueño confirma
 > al aprobar.
 
@@ -900,20 +933,30 @@ Cohere responde da 404 sin guardar nada)*
   2026-08-24 si la fila de 2026-2 guarda el calendario publicado (`portal-sync.repository.ts:65`).
   Son todas las conversaciones sin actividad desde ese día, de todos los alumnos. Como 2026-2 ya
   empezó, la condición de fecha se cumple y la purga corre
-  entera en esa primera petición.
-  1. Antes del merge, el dueño corre en una transacción de solo lectura la consulta de abajo, que
+  entera en esa primera petición. Un despliegue de vista previa que use la base de producción la
+  corre antes, en su propia primera petición al chatbot (paso 1).
+  1. *Agregado el 2026-09-25, en la revisión del cierre de la Tarea 5.* Antes de subir la rama al
+     remoto o de abrir el PR, el dueño comprueba en Vercel que ningún despliegue de vista previa
+     (entorno *Preview*) use el `DATABASE_URL` de producción, o desactiva esos despliegues para esta
+     rama. Si el proyecto tiene activa la integración de Git de Vercel, cada push de una rama que no
+     es la de producción arma por defecto un despliegue de vista previa, y `vercel.json` no lo
+     impide. Si ese despliegue lee el `DATABASE_URL` de producción, su primera petición al chatbot
+     corre `purgeSessionsBeforeActivePeriod` contra la base real, antes del conteo, del respaldo y
+     de la aprobación de los pasos siguientes. Esta spec no verifica esa configuración, y desactivar
+     los previews en `vercel.json` sería un cambio del despliegue con su propia aprobación.
+  2. Antes del merge, el dueño corre en una transacción de solo lectura la consulta de abajo, que
      devuelve el código y el `start_date` del período activo y cuántas sesiones, mensajes y
      alumnos borraría la purga. Si el `start_date` no coincide con el calendario publicado del
      ciclo (2026-08-24 para 2026-2), no se mergea hasta que el dueño decida (ver «Dependencia del
      calendario»).
-  2. Respaldo previo con `pg_dump` de al menos `chatbot_session` y `chatbot_message`, fuera de git,
+  3. Respaldo previo con `pg_dump` de al menos `chatbot_session` y `chatbot_message`, fuera de git,
      como el de la `0012`. Mientras ese respaldo exista, las conversaciones que la purga borra
      siguen guardadas fuera de la base, así que el dueño decide cuándo lo descarta (RQ-7).
-  3. El dueño aprueba de forma explícita el conteo y el respaldo, y recién entonces se mergea. El
+  4. El dueño aprueba de forma explícita el conteo y el respaldo, y recién entonces se mergea. El
      número real puede ser menor que el del conteo, nunca mayor, porque `updated_at` solo avanza
      y una sesión que recibe una pregunta después del conteo sale del corte.
-  4. El conteo, el respaldo y la fecha del despliegue se registran en `MIGRATIONS.md` junto a la
-     `0013`.
+  5. La comprobación de los despliegues de vista previa, el conteo, el respaldo y la fecha del
+     despliegue se registran en `MIGRATIONS.md` junto a la `0013`.
 
   ```sql
   BEGIN READ ONLY;
@@ -1028,6 +1071,20 @@ BR-CB-24)*
   | 10 | `SIMULACION NO OFICIAL (…):` | `grades` con `localGrades`. Sin cambios |
   | 11 | `MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):` | `chat` o `announcements` (BR-CB-23). JSON de `JSON.stringify(chatSearchResults, null, 2)`, con `[{ sectionName, messages: [{ body, date }] }]` |
 
+- *Aclaración del 2026-09-25, en la revisión del cierre de la Tarea 5, que el dueño confirma.*
+  «Tiene datos» quiere decir que el bloque trae al menos un elemento. Un arreglo vacío no es dato,
+  así que la malla, las alertas, los anuncios, la simulación y el chat no salen con `[]`, y el
+  horario no sale si no trae ninguna sesión ni ninguna evaluación. «JSON sin cambios» describe el
+  formato del bloque cuando sale y no su condición, y la excepción de los bloques propios, los
+  únicos que salen «aunque no haya bloques», confirma esa lectura.
+  - Un «Hola», que cae en el respaldo `schedule`, `grades` y `curriculum` (BR-CB-04), llega sin
+    ningún bloque de datos si esas tres fuentes vienen vacías, solo con el perfil y la fecha.
+  - Si el alumno pregunta por sus alertas y no tiene ninguna, el mensaje llega sin ese bloque y el
+    modelo responde con la frase de la regla 1 de BR-CB-09. Si el dueño prefiere que diga que no
+    tiene alertas, la salida es enmendar esta regla para que esos bloques salgan con el arreglo
+    vacío, como los bloques propios.
+  - Un horario leído sin sesiones no sale como bloque 3, pero el bloque 8 lee las sesiones aparte
+    y sigue diciendo «0 h» de clase (BR-CB-19).
 - Desaparecen `HISTORIAL DE LA CONVERSACION` (BR-CB-07) y `DATOS DE COMPANEROS` (BR-CB-17).
 - **Ejemplo inventado.** La alumna ficticia LUCIA INVENTADA PAREDES pregunta, en una sesión con
   dos mensajes previos, «¿Quiénes son los delegados de Seguridad de Sistemas y a qué hora tengo
@@ -1114,7 +1171,12 @@ BR-CB-24)*
 
 `[@test] ../../../test/HU28_ronald/chatbot.context-builder.test.ts` *(existe; el bloque 7 del
 ejemplo línea por línea, su lugar entre los anuncios y las notas oficiales, y el bloque 11 solo con
-`chat` o `announcements`)*
+`chat` o `announcements`. Desde la revisión del cierre de la Tarea 5 fija además que los bloques 3
+a 6, 10 y 11 no salen con los datos vacíos y que un «Hola» sin datos deja solo el perfil, la fecha
+y la pregunta. También fija que el horario con solo sesiones o solo evaluaciones sí sale y que el
+bloque 8 sale sin bloques)*
+`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; una pregunta sin palabras
+clave, con el horario, las notas y la malla vacíos, no manda ningún bloque de datos)*
 `[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts` *(existe; lee el ejemplo de
 esta regla, arma el mensaje con datos falsos y lo compara línea por línea, con la línea abreviada
 del horario reemplazada por su JSON, y comprueba el orden de los bloques de la tabla y que no
@@ -1344,8 +1406,10 @@ CHATBOT_RATE_LIMIT=20   # Preguntas por alumno por hora (opcional, default 20)
 - *Agregado el 2026-09-25.* NO se clasifica con ningún endpoint de Cohere. Si más adelante se
   quiere volver a Cohere, hace falta un endpoint vigente y otra revisión de esta spec.
 - *Agregado el 2026-09-25.* NO se mandan nombres de compañeros que no sean delegado o subdelegado
-  en ningún campo que arme el chatbot, ni remitentes del chat (BR-CB-17 y BR-CB-23). Quedan los
-  dos residuos de texto libre de BR-CB-17, pendientes de que el dueño los acepte.
+  en ningún campo que arme el chatbot, ni remitentes del chat (BR-CB-17 y BR-CB-23). De los dos
+  residuos de texto libre de BR-CB-17, el de las respuestas anteriores al ajuste lo resuelve el
+  borrado único de BR-CB-22b, y el del cuerpo de los mensajes del chat y de los anuncios queda
+  aceptado al aprobar, porque el chatbot no filtra texto libre.
 - *Agregado el 2026-09-25.* NO se leen el récord académico (RS-BE-28 de `academic-record`, sin
   cambios) ni los bloques de otro alumno.
 - *Agregado el 2026-09-25.* NO se distingue teoría de práctica en el horario, porque
@@ -1378,7 +1442,9 @@ CHATBOT_RATE_LIMIT=20   # Preguntas por alumno por hora (opcional, default 20)
 - `getRecentMessages` de Firebase: `[@test] ../../../test/HU28_ronald/chatbot.chat-deleted.test.ts`
 
 La validación Zod de la pregunta y los cinco patrones de BR-CB-10, y el límite de tasa de BR-CB-11,
-no tienen prueba propia en este repositorio, así que no llevan `[@test]`. El aislamiento del
+no tienen prueba propia en este repositorio, así que no llevan `[@test]`. El último punto de
+BR-CB-10, que descarta una respuesta de Cohere con datos de otro alumno, no tiene ni implementación
+ni prueba (ver la anotación de BR-CB-10). El aislamiento del
 récord, sin cambios, sigue en `[@test] ../../../test/HU34_jeff/chatbot-isolation.test.ts`, y el
 acceso acotado a los bloques propios, en
 `[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts` *(existe; ajustada a RS-BE-35
