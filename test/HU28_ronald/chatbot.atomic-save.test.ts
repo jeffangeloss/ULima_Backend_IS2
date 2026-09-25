@@ -198,7 +198,7 @@ const sinBloquesPropios = async () => ({
     { weekStart: "2026-09-28", hours: 0 },
   ],
 });
-const sinChat = async () => [];
+const sinChat = async () => ({ results: [], sectionsRead: [] });
 
 const nuevoServicio = () => new ChatbotService(repositorioFalso, servicioDeHorario, sinBloquesPropios, sinChat);
 

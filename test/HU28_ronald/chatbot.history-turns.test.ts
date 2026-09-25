@@ -129,7 +129,7 @@ const sinBloquesPropios = async () => ({
     { weekStart: "2026-09-28", hours: 0 },
   ],
 });
-const sinChat = async () => [];
+const sinChat = async () => ({ results: [], sectionsRead: [] });
 
 const PREGUNTA = "¿Cuánto saqué en el examen parcial inventado número 7?";
 

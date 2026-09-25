@@ -245,7 +245,7 @@ const leerBloquesPropios = async (studentId: number, today: string): Promise<Own
   return RESUMEN;
 };
 
-const buscarEnElChat = async () => [];
+const buscarEnElChat = async () => ({ results: [], sectionsRead: [] });
 
 const ultimoEnvio = () => enviosACohere[enviosACohere.length - 1]!;
 const ultimoMensajeDeDatos = (): string => {

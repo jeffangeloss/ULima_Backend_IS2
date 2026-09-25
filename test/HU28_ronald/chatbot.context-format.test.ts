@@ -241,7 +241,7 @@ const leerBloquesPropios = async (studentId: number, today: string) => {
   fuentes.push(`own_blocks(${studentId}, ${today})`);
   return BLOQUES_PROPIOS;
 };
-const sinChat = async () => [];
+const sinChat = async () => ({ results: [], sectionsRead: [] });
 
 describe("BR-CB-24 y BR-CB-20: lo que recibe Cohere en el ejemplo", () => {
   beforeAll(() => {

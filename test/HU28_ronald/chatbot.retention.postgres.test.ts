@@ -422,7 +422,7 @@ describe.skipIf(!URL_DE_PRUEBA)("BR-CB-22 y BR-CB-02: el servicio purga antes de
     const { ChatbotService } = await import("../../src/modules/chatbot/chatbot.service.js");
     const horario = { getAssessments: async () => ({ assessments: [] }) } as any;
     const sinBloques = async () => ({ window: { from: "", to: "" }, blocks: [], weeks: [] });
-    return new ChatbotService(repositorio, horario, sinBloques, async () => []);
+    return new ChatbotService(repositorio, horario, sinBloques, async () => ({ results: [], sectionsRead: [] }));
   };
 
   test("ask sobre una sesión vencida responde 404 SESSION_NOT_FOUND, la borra y no llama a Cohere", async () => {
@@ -535,7 +535,7 @@ describe.skipIf(!URL_DE_PRUEBA)("BR-CB-20 y BR-CB-21: historial y guardado atóm
       repositorio,
       { getAssessments: async () => ({ assessments: [] }) } as any,
       async () => ({ window: { from: "", to: "" }, blocks: [], weeks: [] }),
-      async () => [],
+      async () => ({ results: [], sectionsRead: [] }),
     );
 
     const error = await servicio

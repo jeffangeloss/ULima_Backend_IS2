@@ -137,7 +137,7 @@ const sinBloquesPropios = async () => ({
     { weekStart: "2026-09-28", hours: 0 },
   ],
 });
-const sinChat = async () => [];
+const sinChat = async () => ({ results: [], sectionsRead: [] });
 const servicio = () => new ChatbotService(repositorioFalso, servicioDeHorario, sinBloquesPropios, sinChat);
 
 const PREGUNTA = "¿Qué nota saqué en el parcial inventado?";
