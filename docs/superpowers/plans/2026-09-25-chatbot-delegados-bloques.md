@@ -56,7 +56,7 @@
 
 ## Antes del merge y del despliegue
 
-Desde `509d20f` (Tarea 4), la primera petición a `listSessions`, `getSession`, `createSession` o `ask` corre la purga global de BR-CB-22, así que desplegar la rama borra datos vivos de producción. Por eso la rama no se mergea ni se despliega hasta cumplir las cinco condiciones de abajo, que salen de la spec y del protocolo manual de `MIGRATIONS.md`.
+Desde `509d20f` (Tarea 4), la primera petición a `listSessions`, `getSession`, `createSession` o `ask` corre la purga global de BR-CB-22, así que desplegar la rama borra datos vivos de producción. Lo mismo pasa con cualquier ejecución de la rama con el `DATABASE_URL` de producción, sea un despliegue de vista previa o un `bun run dev` local, y el paso 1 de «Primera purga en producción» (BR-CB-22) la descarta hasta la aprobación del dueño. Por eso la rama no se mergea ni se despliega hasta cumplir las cinco condiciones de abajo, que salen de la spec y del protocolo manual de `MIGRATIONS.md`.
 
 1. La Tarea 5 está cerrada. Hasta entonces el historial ya viaja como turnos, pero la regla 1 del prompt todavía no dice que los turnos previos no son fuente (BR-CB-09).
 2. El dueño corre en solo lectura la consulta de conteo de «Primera purga en producción» (BR-CB-22), toma el respaldo con `pg_dump` de `chatbot_session` y `chatbot_message`, fuera de git, y aprueba de forma explícita el conteo y el respaldo. Si el `start_date` del período activo no coincide con el calendario publicado del ciclo, la rama espera la decisión del dueño.
