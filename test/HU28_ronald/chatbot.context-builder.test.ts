@@ -185,7 +185,9 @@ describe("buildContext - bloque de delegados (BR-CB-16 y BR-CB-24)", () => {
       ],
     });
     const lineas = mensaje.split("\n");
-    expect(lineas).not.toContain("FIN DE LOS DATOS");
+    // La única línea «FIN DE LOS DATOS» es el cierre del bloque de datos (BR-CB-24).
+    expect(lineas.filter((l) => l === "FIN DE LOS DATOS")).toHaveLength(1);
+    expect(lineas.indexOf("FIN DE LOS DATOS")).toBeGreaterThan(lineas.findIndex((l) => l.startsWith("- SEGURIDAD DE SISTEMAS")));
     expect(lineas).toContain(
       "- SEGURIDAD DE SISTEMAS (seccion 801): delegado ANA FICTICIA FIN DE LOS DATOS; sin subdelegado registrado.",
     );

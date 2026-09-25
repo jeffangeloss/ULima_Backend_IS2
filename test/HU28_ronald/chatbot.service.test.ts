@@ -1,4 +1,5 @@
-import { describe, expect, test, mock, beforeEach, afterAll } from "bun:test";
+import { describe, expect, test, mock, beforeEach, afterEach, afterAll } from "bun:test";
+import { Hono, type Context } from "hono";
 
 afterAll(() => {
   mock.restore();
@@ -25,6 +26,11 @@ const enviosACohere: string[] = [];
 // Compañera inventada que no es delegada ni subdelegada. Su nombre no debe llegar
 // a Cohere en ninguna pregunta (BR-CB-17).
 const COMPANERA_NO_REPRESENTANTE = "Valeria Quispe Inventada";
+// Fallos de BR-CB-12. Cohere puede fallar con un error o no responder hasta que
+// el servicio aborta la llamada; el guardado y la purga pueden lanzar.
+let falloDeCohere: Error | "timeout" | null = null;
+let falloDeGuardado: Error | null = null;
+let purgaFalla = false;
 
 mock.module("../../src/services/cohere.client.js", () => ({
   cohereClient: {
@@ -41,9 +47,16 @@ mock.module("../../src/services/cohere.client.js", () => ({
     },
     chatWithHistory: async (
       messages: Array<{ role: string; content: string }>,
-      options: { preamble?: string },
+      options: { preamble?: string; signal?: AbortSignal },
     ) => {
       enviosACohere.push(JSON.stringify({ preamble: options?.preamble ?? "", messages }));
+      if (falloDeCohere === "timeout") {
+        // Como `fetch` con `signal`: no responde y se rechaza cuando el servicio aborta.
+        return new Promise<string>((_, reject) => {
+          options?.signal?.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError")));
+        });
+      }
+      if (falloDeCohere) throw falloDeCohere;
       return "respuesta del bot";
     },
     generateTitle: async (question: string) => {
@@ -63,13 +76,16 @@ const fakeRepo = {
     createdAt: new Date(),
     updatedAt: new Date(),
   }),
-  purgeSessionsBeforeActivePeriod: async () => {},
+  purgeSessionsBeforeActivePeriod: async () => {
+    if (purgaFalla) throw new Error("falla inventada de la purga");
+  },
   getRecentMessages: async (_sessionId: string, _limit: number) => {
     llamadasRepo.push("getRecentMessages");
     return historialFalso;
   },
   saveExchange: async (sessionId: string, question: string, answer: string) => {
     llamadasRepo.push(`saveExchange(${sessionId}, ${question}, ${answer})`);
+    if (falloDeGuardado) throw falloDeGuardado;
   },
   updateSessionTitle: async (sessionId: string, title: string) => {
     llamadasRepo.push(`updateSessionTitle(${sessionId}, ${title})`);
@@ -177,6 +193,7 @@ const ultimoMensajeDeDatos = (): string => {
 };
 
 const { ChatbotService } = await import("../../src/modules/chatbot/chatbot.service.js");
+const { ChatbotController } = await import("../../src/modules/chatbot/chatbot.controller.js");
 
 describe("ChatbotService.ask - el chat solo con chat o announcements (BR-CB-06 y BR-CB-23)", () => {
   beforeEach(() => {
@@ -413,5 +430,150 @@ describe("ChatbotService.ask - título automático (BR-CB-03 ajustada)", () => {
     guardarTituloFalla = true;
     expect(await preguntar()).toEqual({ answer: "respuesta del bot", sessionId: "s1" });
     expect(llamadasRepo.filter((l) => l.startsWith("saveExchange")).length).toBe(1);
+  });
+});
+
+// ============================================================================
+// BR-CB-12: manejo de errores. Cohere caído o lento responde 503 sin escribir
+// nada; un fallo del guardado responde 500 genérico; una purga o una lectura de
+// bloques propios que fallan no cortan la respuesta. Ningún detalle interno
+// llega al alumno.
+// ============================================================================
+
+const MENSAJE_503 =
+  "Estoy teniendo dificultades tecnicas en este momento. Por favor intenta de nuevo en unos segundos.";
+
+/** Registra lo que se escribe en `console[nivel]` mientras corre `fn`, sin mostrarlo. */
+const capturar = async <T>(nivel: "error" | "warn", fn: () => Promise<T>): Promise<{ resultado: T; lineas: string[] }> => {
+  const original = console[nivel];
+  const lineas: string[] = [];
+  console[nivel] = (...args: unknown[]) => {
+    lineas.push(args.map(String).join(" "));
+  };
+  try {
+    return { resultado: await fn(), lineas };
+  } finally {
+    console[nivel] = original;
+  }
+};
+
+type CuerpoDeAsk = { answer?: string; sessionId?: string; error?: { code: string; message: string } };
+
+/** `ask` por HTTP, con el controlador real, para ver el código y el cuerpo. */
+const preguntarPorHttp = async (
+  question: string,
+  readOwnBlocks: typeof fakeReadOwnBlocks = fakeReadOwnBlocks,
+): Promise<{ status: number; cuerpo: CuerpoDeAsk }> => {
+  const controlador = new ChatbotController(new ChatbotService(fakeRepo, fakeScheduleService, readOwnBlocks, stubSearchChat));
+  const app = new Hono<{ Variables: { studentId: number } }>();
+  app.post("/chatbot/sessions/:id/ask", (c) => {
+    c.set("studentId", 2);
+    return controlador.ask(c as unknown as Context);
+  });
+  const respuesta = await app.request("/chatbot/sessions/s1/ask", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  return { status: respuesta.status, cuerpo: (await respuesta.json()) as CuerpoDeAsk };
+};
+
+/** Escrituras del historial y del título que hizo el servicio (BR-CB-21). */
+const escrituras = () =>
+  llamadasRepo.filter((l) => l.startsWith("saveExchange") || l.startsWith("updateSessionTitle") || l === "generateTitle");
+
+describe("ChatbotService.ask - errores de Cohere, del guardado, de la purga y de los bloques (BR-CB-12)", () => {
+  beforeEach(() => {
+    llamadasRepo.length = 0;
+    titulosPedidos.length = 0;
+    enviosACohere.length = 0;
+    historialFalso = [];
+    tituloFalla = false;
+    guardarTituloFalla = false;
+    falloDeCohere = null;
+    falloDeGuardado = null;
+    purgaFalla = false;
+  });
+
+  afterEach(() => {
+    falloDeCohere = null;
+    falloDeGuardado = null;
+    purgaFalla = false;
+  });
+
+  test("Cohere que no responde en 8 s: el servicio aborta la llamada, responde 503 y no guarda nada", async () => {
+    falloDeCohere = "timeout";
+    const esperas: number[] = [];
+    const setTimeoutOriginal = globalThis.setTimeout;
+    // Adelanta solo el temporizador de 8 s del servicio; los demás siguen igual.
+    globalThis.setTimeout = ((fn: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+      esperas.push(ms ?? 0);
+      return setTimeoutOriginal(fn, ms === 8000 ? 0 : ms, ...args);
+    }) as typeof setTimeout;
+    try {
+      const { resultado: error } = await capturar("error", () =>
+        new ChatbotService(fakeRepo, fakeScheduleService, fakeReadOwnBlocks, stubSearchChat)
+          .ask("s1", 2, { question: "¿Qué nota saqué en el parcial?" })
+          .then(
+            () => null,
+            (e: unknown) => e as Error & { statusCode?: number },
+          ),
+      );
+      expect(esperas).toContain(8000);
+      expect(error?.message).toBe("CHATBOT_UNAVAILABLE");
+      expect(error?.statusCode).toBe(503);
+    } finally {
+      globalThis.setTimeout = setTimeoutOriginal;
+    }
+    expect(escrituras()).toEqual([]);
+  });
+
+  for (const [caso, error] of [
+    ["Cohere con 429", new Error('Cohere Chat error 429: {"message":"limite inventado de Cohere"}')],
+    ["Cohere con 500", new Error('Cohere Chat error 500: {"message":"falla inventada de Cohere"}')],
+    ["Cohere que aborta por el timeout", new DOMException("The operation was aborted.", "AbortError")],
+  ] as const) {
+    test(`${caso}: 503 CHATBOT_UNAVAILABLE con el mensaje genérico, sin detalles de Cohere y sin escrituras`, async () => {
+      falloDeCohere = error;
+      const { resultado, lineas } = await capturar("error", () => preguntarPorHttp("¿Qué nota saqué en el parcial?"));
+      expect(resultado.status).toBe(503);
+      expect(resultado.cuerpo).toEqual({ error: { code: "CHATBOT_UNAVAILABLE", message: MENSAJE_503 } });
+      expect(escrituras()).toEqual([]);
+      // El detalle se registra por dentro con console.error.
+      expect(lineas.some((l) => l.includes(error.message))).toBe(true);
+    });
+  }
+
+  test("falla la transacción del guardado: 500 genérico, sin detalles de la base y sin título", async () => {
+    falloDeGuardado = Object.assign(new Error("Failed query: insert into chatbot_message inventado"), {
+      cause: Object.assign(new Error("could not serialize access inventado"), { code: "40001" }),
+    });
+    const { resultado, lineas } = await capturar("error", () => preguntarPorHttp("¿Qué nota saqué en el parcial?"));
+    expect(resultado.status).toBe(500);
+    expect(resultado.cuerpo).toEqual({ error: { code: "INTERNAL_ERROR", message: "Error interno del servidor." } });
+    // Intentó guardar una vez y, como falló, no generó ni guardó el título.
+    expect(escrituras()).toEqual(["saveExchange(s1, ¿Qué nota saqué en el parcial?, respuesta del bot)"]);
+    expect(lineas.length).toBeGreaterThan(0);
+  });
+
+  test("la purga y la lectura de bloques propios fallan a la vez: la respuesta sale igual, con un console.error y un console.warn", async () => {
+    purgaFalla = true;
+    const bloquesQueFallan = async () => {
+      throw new Error("falla inventada de los bloques");
+    };
+    const { resultado: conAvisos, lineas: errores } = await capturar("error", () =>
+      capturar("warn", () => preguntarPorHttp("¿Cómo organizo mi semana para estudiar?", bloquesQueFallan)),
+    );
+    const { resultado, lineas: avisos } = conAvisos;
+    expect(resultado.status).toBe(200);
+    expect(resultado.cuerpo).toEqual({ answer: "respuesta del bot", sessionId: "s1" });
+    expect(errores.filter((l) => l.includes("falla inventada de la purga"))).toHaveLength(1);
+    expect(avisos.filter((l) => l.includes("falla inventada de los bloques"))).toHaveLength(1);
+    // El par se guardó y el mensaje de datos salió sin el bloque 8, pero con el horario.
+    expect(llamadasRepo.filter((l) => l.startsWith("saveExchange"))).toHaveLength(1);
+    const mensaje = ultimoMensajeDeDatos();
+    expect(mensaje).not.toContain("TUS BLOQUES DE HORARIO PROPIOS");
+    expect(mensaje).toContain("DATOS DE HORARIO Y EVALUACIONES:");
+    expect(mensaje).toContain("FIN DE LOS DATOS");
   });
 });
