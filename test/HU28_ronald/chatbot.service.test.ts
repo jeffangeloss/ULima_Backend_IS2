@@ -6,17 +6,25 @@ afterAll(() => {
 
 const saveMessageCalls: Array<{ sessionId: string; role: string; content: string }> = [];
 const searchChatCalls: Array<{ question: string }> = [];
+// Fuentes de datos que el servicio consultó en cada pregunta (BR-CB-05).
+const fuentesConsultadas: string[] = [];
+// Trampa de BR-CB-04: si el servicio volviera a clasificar con Cohere, quedaría
+// registrado aquí. El cliente real ya no tiene `classify`.
+let llamadasClassify = 0;
 
 mock.module("../../src/services/cohere.client.js", () => ({
   cohereClient: {
-    classify: async () => [
-      {
-        input: "x",
-        prediction: "grades",
-        confidence: 0.9,
-        labels: { grades: { confidence: 0.9 } },
-      },
-    ],
+    classify: async () => {
+      llamadasClassify++;
+      return [
+        {
+          input: "x",
+          prediction: "grades",
+          confidence: 0.9,
+          labels: { grades: { confidence: 0.9 } },
+        },
+      ];
+    },
     chatWithHistory: async () => "respuesta del bot",
     generateTitle: async () => "titulo",
   },
@@ -52,12 +60,30 @@ const fakeRepo = {
     { weekNumber: 14, startDate: "2026-07-06", endDate: "2026-07-12" },
     { weekNumber: 15, startDate: "2026-07-13", endDate: "2026-07-19" },
   ],
-  getSchedule: async () => [],
-  getCurriculum: async () => [],
-  getAlerts: async () => [],
-  getAnnouncements: async () => [],
-  getClassmates: async () => [],
-  getOfficialGrades: async () => [],
+  getSchedule: async () => {
+    fuentesConsultadas.push("schedule");
+    return [];
+  },
+  getCurriculum: async () => {
+    fuentesConsultadas.push("curriculum");
+    return [];
+  },
+  getAlerts: async () => {
+    fuentesConsultadas.push("alerts");
+    return [];
+  },
+  getAnnouncements: async () => {
+    fuentesConsultadas.push("announcements");
+    return [];
+  },
+  getClassmates: async () => {
+    fuentesConsultadas.push("delegates");
+    return [];
+  },
+  getOfficialGrades: async () => {
+    fuentesConsultadas.push("grades");
+    return [];
+  },
   getActiveSectionDetails: async () => [
     { sectionId: 1, courseName: "INGENIERÍA DE SOFTWARE II", sectionCode: "856" },
   ],
@@ -113,5 +139,49 @@ describe("ChatbotService.ask - el chat se consulta SIEMPRE", () => {
     });
 
     expect(searchChatCalls.length).toBe(1);
+  });
+});
+
+describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 y BR-CB-05)", () => {
+  beforeEach(() => {
+    fuentesConsultadas.length = 0;
+    llamadasClassify = 0;
+  });
+
+  const preguntar = async (question: string) => {
+    const service = new ChatbotService(fakeRepo, fakeScheduleService, stubSearchChat);
+    await service.ask("s1", 2, { question });
+  };
+
+  test("no clasifica con Cohere: ninguna pregunta llega a classify", async () => {
+    await preguntar("¿Qué nota saqué en el parcial?");
+    await preguntar("¿Quiénes son los delegados de Seguridad de Sistemas?");
+    expect(llamadasClassify).toBe(0);
+  });
+
+  test("«¿Quiénes son los delegados…?» con tilde consulta la fuente de delegados", async () => {
+    // Hasta BR-CB-16, `delegates` usa la fuente que hereda de `classmates`.
+    await preguntar("¿Quiénes son los delegados de Seguridad de Sistemas?");
+    expect(fuentesConsultadas).toContain("delegates");
+  });
+
+  test("«¿A qué hora tengo prácticas?» carga el horario, que own_blocks arrastra", async () => {
+    await preguntar("¿A qué hora tengo prácticas?");
+    expect(fuentesConsultadas).toContain("schedule");
+  });
+
+  test("«¿Qué bloque libre me queda?» carga el horario solo por el arrastre de own_blocks", async () => {
+    await preguntar("¿Qué bloque libre me queda?");
+    expect(fuentesConsultadas).toEqual(["schedule"]);
+  });
+
+  test("«¿Qué nota saqué en el parcial?» consulta solo las notas", async () => {
+    await preguntar("¿Qué nota saqué en el parcial?");
+    expect(fuentesConsultadas).toEqual(["grades"]);
+  });
+
+  test("sin palabras clave consulta horario, notas y malla", async () => {
+    await preguntar("hola, ¿cómo estás?");
+    expect([...fuentesConsultadas].sort()).toEqual(["curriculum", "grades", "schedule"]);
   });
 });

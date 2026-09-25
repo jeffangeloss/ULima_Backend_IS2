@@ -1,87 +1,65 @@
 import type { ChatbotIntent } from "./chatbot.types.js";
 
-const KEYWORD_MAP: Record<ChatbotIntent, string[]> = {
-  grades: ["nota", "promedio", "saque", "parcial", "examen", "calificacion", "aprobe", "aprobar", "apruebo", "aprobare", "desaprob", "jale", "jalar", "notas"],
+// BR-CB-04: la clasificación es solo por palabras clave, sin llamadas a Cohere.
+// Las palabras se escriben ya normalizadas (minúsculas, sin tildes ni eñes) y se
+// comparan por subcadena contra la pregunta normalizada con `normalizeText`.
+// El orden de las claves fija el orden de la salida.
+const KEYWORD_MAP: Record<ChatbotIntent, readonly string[]> = {
+  grades: ["nota", "notas", "promedio", "saque", "parcial", "examen", "calificacion", "aprobe", "aprobar", "apruebo", "aprobare", "desaprob", "jale", "jalar"],
   schedule: ["horario", "hora", "entro", "clase", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "manana", "tengo", "cursos"],
   curriculum: ["malla", "creditos", "cursos", "terminar", "ciclo", "llevar", "prerrequisito", "falta", "avance"],
   alerts: ["riesgo", "alerta", "carga", "evaluaciones"],
-  announcements: ["anuncio", "comunicado", "aviso", "publico", "anuncios", "publicaron"],
-  classmates: ["companero", "companeros", "seccion", "quienes", "alumnos", "compañero", "compañeros"],
+  announcements: ["anuncio", "anuncios", "comunicado", "aviso", "publico", "publicaron"],
+  // Reemplaza a `classmates` y hereda sus palabras. «delegad» cubre delegado,
+  // delegada, delegados y subdelegado.
+  delegates: ["delegad", "representante", "companero", "companeros", "seccion", "quienes", "alumnos"],
+  own_blocks: [
+    "practica", "trabajo", "trabajar", "voluntariado", "bloque", "libre",
+    "organizar", "organizo", "organizarme", "organizacion", "tiempo",
+    "horas a la semana", "horas semanales",
+  ],
   chat: [
     "chat", "grupo", "grupos",
     "dijo", "dijeron", "dicho", "dicen",
-    "hablo", "hablaron", "habló",
-    "comento", "comentó", "comentan", "comentaron", "comentario", "comentarios",
-    "escribio", "escribió", "escribieron",
+    "hablo", "hablaron",
+    "comento", "comentan", "comentaron", "comentario", "comentarios",
+    "escribio", "escribieron",
     "mensaje", "mensajes", "conversacion",
     "alguien",
   ],
 };
 
-export function classifyByKeywords(question: string): ChatbotIntent[] {
-  const lower = question.toLowerCase();
-  const matchedIntents: ChatbotIntent[] = [];
+const DEFAULT_INTENTS: readonly ChatbotIntent[] = ["schedule", "grades", "curriculum"];
 
-  for (const [intent, keywords] of Object.entries(KEYWORD_MAP)) {
-    if (keywords.some((kw) => lower.includes(kw))) {
-      matchedIntents.push(intent as ChatbotIntent);
-    }
-  }
-
-  if (matchedIntents.length === 0) {
-    matchedIntents.push("schedule", "grades", "curriculum");
-  }
-
-  return matchedIntents;
+/**
+ * Normalización de BR-CB-04: minúsculas, descomposición NFD y sin las marcas
+ * diacríticas (U+0300 a U+036F). «¿Quiénes?» queda «¿quienes?» y «compañero»
+ * queda «companero».
+ */
+export function normalizeText(text: string): string {
+  return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-export function classifyWithCohere(
-  question: string,
-  cohere: { classify(
-    inputs: string[],
-    examples: Array<{ text: string; label: string }>,
-  ): Promise<Array<{ input: string; labels: Record<string, { confidence: number }> }>> },
-): Promise<ChatbotIntent[]> {
-  const examples: Array<{ text: string; label: string }> = [
-    { text: "Que nota saque en el parcial de Algebra", label: "grades" },
-    { text: "Cual es mi promedio general", label: "grades" },
-    { text: "Como voy en Soft II", label: "grades" },
-    { text: "Cuanto me falta para aprobar Ingenieria de Software", label: "grades" },
-    { text: "Que necesito sacar para aprobar el curso", label: "grades" },
-    { text: "Voy a aprobar Contabilidad", label: "grades" },
-    { text: "Que examenes tengo hoy", label: "schedule" },
-    { text: "Cuando es mi proximo examen", label: "schedule" },
-    { text: "A que hora entro manana", label: "schedule" },
-    { text: "Que cursos tengo los lunes", label: "schedule" },
-    { text: "Cuantos creditos llevo", label: "curriculum" },
-    { text: "Que cursos me faltan para terminar", label: "curriculum" },
-    { text: "Puedo llevar Base de Datos este ciclo", label: "curriculum" },
-    { text: "Estoy en riesgo academico", label: "alerts" },
-    { text: "Tengo alta carga de evaluaciones", label: "alerts" },
-    { text: "Que anuncios hubo esta semana", label: "announcements" },
-    { text: "Que publicaron en mis cursos", label: "announcements" },
-    { text: "Quienes son mis companeros en Soft II", label: "classmates" },
-    { text: "Quien esta en mi seccion", label: "classmates" },
-    { text: "Alguien dijo algo sobre el examen en el chat", label: "chat" },
-    { text: "Que se hablo en el chat ayer", label: "chat" },
-    { text: "Que comentaron sobre la tarea", label: "chat" },
-    { text: "Han dicho algo del examen en el grupo de software", label: "chat" },
-    { text: "Que escribieron en el grupo sobre la exposicion", label: "chat" },
-    { text: "Algun comentario en el grupo de la clase", label: "chat" },
-  ];
+export function classifyByKeywords(question: string): ChatbotIntent[] {
+  const normalized = normalizeText(question);
+  const matched = new Set<ChatbotIntent>();
 
-  return cohere.classify([question], examples).then((results) => {
-    if (!results.length) return classifyByKeywords(question);
-    const labels = results[0].labels;
-    const intents: ChatbotIntent[] = [];
-    for (const [label, { confidence }] of Object.entries(labels)) {
-      if (confidence > 0.3) {
-        intents.push(label as ChatbotIntent);
-      }
+  for (const [intent, keywords] of Object.entries(KEYWORD_MAP) as Array<[ChatbotIntent, readonly string[]]>) {
+    if (keywords.some((kw) => normalized.includes(kw))) {
+      matched.add(intent);
     }
-    if (intents.length === 0) {
-      return classifyByKeywords(question);
-    }
-    return intents;
-  });
+  }
+
+  if (matched.size === 0) {
+    return [...DEFAULT_INTENTS];
+  }
+
+  // `own_blocks` arrastra a `schedule`: BR-CB-19 combina los bloques propios con
+  // el horario de clases, y «practica» también es la «práctica calificada», que
+  // llega con las evaluaciones del horario. Este es el único lugar del arrastre.
+  if (matched.has("own_blocks")) {
+    matched.add("schedule");
+  }
+
+  return (Object.keys(KEYWORD_MAP) as ChatbotIntent[]).filter((intent) => matched.has(intent));
 }

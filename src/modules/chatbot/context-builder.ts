@@ -118,7 +118,7 @@ export function buildContext(params: {
     blocks.push(JSON.stringify(params.announcementsData, null, 2));
   }
 
-  if (params.intents.includes("classmates") && params.classmatesData) {
+  if (params.intents.includes("delegates") && params.classmatesData) {
     blocks.push(`\nDATOS DE COMPANEROS:`);
     blocks.push(JSON.stringify(params.classmatesData, null, 2));
   }

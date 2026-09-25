@@ -1,10 +1,12 @@
+/** Dominios de BR-CB-04. `delegates` reemplaza a `classmates`; `own_blocks` es nuevo. */
 export type ChatbotIntent =
   | "grades"
   | "schedule"
   | "curriculum"
   | "alerts"
   | "announcements"
-  | "classmates"
+  | "delegates"
+  | "own_blocks"
   | "chat";
 
 export interface ChatMessage {

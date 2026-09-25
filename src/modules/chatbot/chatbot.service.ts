@@ -2,14 +2,13 @@ import { cohereClient } from "../../services/cohere.client.js";
 import { todayISO } from "../../shared/clock.js";
 import type { ScheduleService } from "../schedule/index.js";
 import { ChatbotRepository } from "./chatbot.repository.js";
-import { classifyByKeywords, classifyWithCohere } from "./intent-classifier.js";
+import { classifyByKeywords } from "./intent-classifier.js";
 import { buildContext, type DateContext } from "./context-builder.js";
 import { searchChatMessages } from "./chat-search.js";
 import { summarizeOfficialGrades } from "./grades-summary.js";
-import type { ChatbotIntent, ChatbotMessageRow, ChatbotSessionRow } from "./chatbot.types.js";
+import type { ChatbotMessageRow, ChatbotSessionRow } from "./chatbot.types.js";
 import type { AskInput } from "./chatbot.schemas.js";
 
-const CLASSIFY_TIMEOUT_MS = 500;
 const WEEK_RANGE_RADIUS = 1;
 
 export class ChatbotService {
@@ -49,7 +48,8 @@ export class ChatbotService {
     await this.repository.saveMessage(sessionId, "user", input.question);
     await this.repository.touchSession(sessionId);
 
-    const intents = await this.classifyIntent(input.question);
+    // BR-CB-04: solo palabras clave, sin esperar a Cohere.
+    const intents = classifyByKeywords(input.question);
     const history = await this.repository.getMessages(sessionId);
     const studentInfo = await this.repository.getStudentInfo(studentId);
 
@@ -68,7 +68,8 @@ export class ChatbotService {
       intents.includes("curriculum") ? this.getCurriculumData(studentId) : Promise.resolve(null),
       intents.includes("alerts") ? this.getAlertsData(studentId) : Promise.resolve(null),
       intents.includes("announcements") ? this.getAnnouncementsData(studentId) : Promise.resolve(null),
-      intents.includes("classmates") ? this.getClassmatesData(studentId) : Promise.resolve(null),
+      // Hasta BR-CB-16, `delegates` usa la fuente que hereda de `classmates`.
+      intents.includes("delegates") ? this.getClassmatesData(studentId) : Promise.resolve(null),
       this.getChatResults(studentId, input.question),
       // Notas OFICIALES (fuente de la verdad): matrícula real del período activo.
       intents.includes("grades") ? this.repository.getOfficialGrades(studentId) : Promise.resolve(null),
@@ -135,20 +136,6 @@ export class ChatbotService {
     }
 
     return { answer, sessionId };
-  }
-
-  private async classifyIntent(question: string): Promise<ChatbotIntent[]> {
-    try {
-      const result = await Promise.race([
-        classifyWithCohere(question, cohereClient),
-        new Promise<ChatbotIntent[]>((resolve) =>
-          setTimeout(() => resolve(classifyByKeywords(question)), CLASSIFY_TIMEOUT_MS),
-        ),
-      ]);
-      return result;
-    } catch {
-      return classifyByKeywords(question);
-    }
   }
 
   private async getScheduleData(studentId: number, dateContext: DateContext) {
