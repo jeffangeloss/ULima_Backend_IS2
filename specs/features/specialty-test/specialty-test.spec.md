@@ -24,7 +24,7 @@ targets:
 > Enmienda `specs/features/academic-profile/academic-profile.spec.md` (BR-AP-07 y BR-AP-08,
 > ver «Enmienda a la spec de Academic Profile»). La contraparte de frontend es
 > `ULima_Frontend_IS2/specs/features/specialty-test/specialty-test.spec.md` (RF-TEST-1 a
-> RF-TEST-14, commit `2b3f136` de la rama `feat/test-especialidad-fe`), también pendiente de
+> RF-TEST-14, rama `feat/test-especialidad-fe`), también pendiente de
 > aprobación. Todos los `[@test]` apuntan a pruebas que se crean con la implementación y hoy
 > no existen, así que cada uno lleva la marca *(pendiente)*. Los ejemplos usan datos
 > inventados. La rama parte de `38024d4` y trae `main` en `f10eb3f` con un merge, que suma el
@@ -130,7 +130,8 @@ conducir el test sin red entre pregunta y pregunta.
   su id (`q01.top`, `q01.bottom`, `q04.task`), su texto, su descripción de ilustración y la
   clave de su especialidad.
 - **No viaja.** El nombre del ícono en Flutter (`icon.flutter`), los resúmenes de las
-  tareas, los electivos de cada tarea, los pesos, el umbral, las plantillas del motivo, las líneas de Ulises del resultado y del desempate, los
+  tareas, los electivos de cada tarea, los pesos, el umbral, las plantillas del motivo, las
+  líneas de Ulises del resultado salvo la de espera (`loading`), las del desempate, los
   desempates, los ejemplos, el balance ni las fuentes. Son del cálculo y del motivo, que hace
   el servidor.
 - **La especialidad de cada tarea no es un secreto.** La app la necesita para encender la
@@ -160,7 +161,8 @@ no guarda nada entre una llamada y otra, así que la misma petición siempre pro
 paso y el mismo ranking. Solo el resultado final se guarda (RS-BE-44).
 
 El cuerpo trae `version`, `answers` con las 14 respuestas por id de pregunta y
-`tiebreakAnswers` con los desempates ya respondidos, en orden.
+`tiebreakAnswers` con los desempates ya respondidos, en orden. `tiebreakAnswers` es opcional
+y, si falta, vale `[]`, como dice el contrato.
 
 Después de la autorización de RS-BE-46 (`401` y `403`), la petición se valida en este orden, y
 el primer fallo corta.
@@ -733,7 +735,7 @@ enmendada lleva la marca en cada regla y los detalles están allí.
 - `MIGRATIONS.md`. La entrada de la `0014` se escribe cuando el dueño la aplica, con su
   respaldo y su verificación.
 - Spec del frontend, `ULima_Frontend_IS2/specs/features/specialty-test/specialty-test.spec.md`
-  (RF-TEST-1 a RF-TEST-14, commit `2b3f136`). Cubre el id antiguo en caché de
+  (RF-TEST-1 a RF-TEST-14, rama `feat/test-especialidad-fe`). Cubre el id antiguo en caché de
   `getEspecialidadName()` (decisión 6, RF-TEST-14), la capa de datos con el `409` de versión y
   el `404` de test no disponible (RF-TEST-2), la tarjeta del Perfil que se oculta con ese
   `404` (RF-TEST-10), el color de cada tarjeta y las ilustraciones (su decisión abierta 2).

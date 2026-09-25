@@ -944,7 +944,7 @@ Contenido de la versión vigente, con lo necesario para conducir el test sin red
     ]
   }
   ```
-- **Qué no viaja**: el nombre del ícono en Flutter (`icon.flutter`), resúmenes y electivos de cada tarea, pesos, umbral, plantillas del motivo, líneas de Ulises del resultado y del desempate, desempates, ejemplos, balance y fuentes. Son del cálculo y del motivo, que hace el servidor.
+- **Qué no viaja**: el nombre del ícono en Flutter (`icon.flutter`), resúmenes y electivos de cada tarea, pesos, umbral, plantillas del motivo, líneas de Ulises del resultado salvo la de espera (`ulises.loading`), líneas del desempate, desempates, ejemplos, balance y fuentes. Son del cálculo y del motivo, que hace el servidor.
 - **`icon`**: el nombre del ícono en Lucide (`icon.lucide` del contenido, por ejemplo `code-xml`). `totalCredits` son los créditos del diploma.
 - **`specialty` de cada tarea**: viaja porque la app enciende la tarjeta tocada con el color de su especialidad. La app no la muestra antes del toque y Ulises no nombra especialidades durante el test.
 - **Errors**: los comunes.
@@ -1011,7 +1011,7 @@ Evaluación sin estado. Recibe todas las respuestas dadas hasta ese momento y de
 - **Idempotente en el ranking**: el mismo cuerpo da siempre el mismo paso y el mismo ranking; el motivo de Cohere puede variar.
 - **`Cache-Control: no-store`** en la respuesta.
 - **Límite**: 30 evaluaciones por alumno por hora.
-- **Errors**: `400` `INVALID_JSON_BODY`, `400` `INVALID_REQUEST_BODY`, `400` `SPECIALTY_TEST_INVALID_ANSWERS` (`details.missing`, `details.unexpected`, `details.invalid`), `400` `SPECIALTY_TEST_TIEBREAK_MISMATCH` (`details.expected`, el id que tocaba o `null`), `409` `SPECIALTY_TEST_VERSION_OUTDATED` (`details.currentVersion`), `413` `PAYLOAD_TOO_LARGE`, `429` `RATE_LIMITED` (`details.retryAfterMinutes`), y los comunes.
+- **Errors**: `400` `INVALID_JSON_BODY`, `400` `INVALID_REQUEST_BODY`, `400` `SPECIALTY_TEST_INVALID_ANSWERS` (`details.missing`, `details.unexpected`, `details.invalid`), `400` `SPECIALTY_TEST_TIEBREAK_MISMATCH` (`details.expected`, el id que tocaba o `null`), `409` `SPECIALTY_TEST_VERSION_OUTDATED` (`details.currentVersion`), `413` `PAYLOAD_TOO_LARGE`, `429` `RATE_LIMITED` (`details.retryAfterMinutes`), `500` `INTERNAL_SERVER_ERROR` si falla el guardado del resultado, que va antes de la llamada a Cohere, y los comunes.
 
 ### GET /specialty-test/me/result
 
