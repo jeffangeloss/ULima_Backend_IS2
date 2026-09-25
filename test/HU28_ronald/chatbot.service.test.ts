@@ -31,8 +31,8 @@ const COMPANERA_NO_REPRESENTANTE = "Valeria Quispe Inventada";
 let falloDeCohere: Error | "timeout" | null = null;
 let falloDeGuardado: Error | null = null;
 let purgaFalla = false;
-// Lo que devuelve `getSchedule`. Vacío por omisión, así que el bloque 3 no sale
-// (BR-CB-24: un bloque sale solo si tiene datos).
+// Lo que devuelve `getSchedule`. Vacío por omisión, así que el bloque 3 sale con
+// sus líneas de «no hay» (BR-CB-24, decisión 8 de la ronda final).
 let horarioFalso: unknown[] = [];
 
 mock.module("../../src/services/cohere.client.js", () => ({
@@ -324,15 +324,122 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
     expect([...fuentesConsultadas].sort()).toEqual(["curriculum", "grades", "schedule"]);
   });
 
-  test("sin palabras clave y con el horario, las notas y la malla vacíos, ningún bloque de datos sale (BR-CB-24)", async () => {
+  // BR-CB-24, decisión 8 de la ronda final: un dominio consultado sin datos
+  // manda su bloque con una línea de «no hay». La simulación no es una consulta
+  // y sigue sin salir vacía.
+  test("sin palabras clave y con el horario, las notas y la malla vacíos, los tres bloques salen con su línea (BR-CB-24)", async () => {
     await preguntar("hola, ¿cómo estás?");
     const mensaje = ultimoMensajeDeDatos();
-    for (const titulo of ["DATOS DE HORARIO Y EVALUACIONES:", "DATOS DE MALLA CURRICULAR:", "NOTAS OFICIALES", "SIMULACION NO OFICIAL"]) {
-      expect(mensaje).not.toContain(titulo);
-    }
+    expect(mensaje).toContain(
+      "\nDATOS DE HORARIO Y EVALUACIONES:\n- No hay horario registrado para este ciclo.\n" +
+        "- No hay evaluaciones registradas en la semana anterior, la actual ni la siguiente.\n",
+    );
+    expect(mensaje).toContain("\nDATOS DE MALLA CURRICULAR:\n- No tienes una malla curricular registrada.\n");
+    expect(mensaje).toContain("- No hay notas oficiales registradas en tus cursos de este ciclo.\n");
+    expect(mensaje).not.toContain("SIMULACION NO OFICIAL");
     expect(mensaje.split("\n")).not.toContain("[]");
     expect(mensaje).toContain("PERFIL DEL ALUMNO:");
     expect(mensaje).toContain("FECHA Y SEMANA ACTUAL:");
+  });
+});
+
+describe("ChatbotService.ask - un dominio consultado sin datos manda su línea de «no hay» (BR-CB-24, decisión 8)", () => {
+  beforeEach(() => {
+    enviosACohere.length = 0;
+    searchChatCalls.length = 0;
+    historialFalso = [];
+  });
+
+  const TITULO_CHAT = "MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):";
+  const LINEA_CHAT = "- No hay mensajes recientes en el chat de las secciones consultadas.";
+
+  const preguntar = async (
+    question: string,
+    opciones: { repo?: Record<string, unknown>; searchChat?: (q: string, s: unknown) => Promise<unknown> } = {},
+  ) => {
+    const repo = { ...fakeRepo, ...(opciones.repo ?? {}) };
+    const searchChat = opciones.searchChat ?? stubSearchChat;
+    const service = new ChatbotService(repo as any, fakeScheduleService, fakeReadOwnBlocks, searchChat as any);
+    await service.ask("s1", 2, { question });
+    return ultimoMensajeDeDatos();
+  };
+
+  test("«¿Estoy en riesgo académico?» sin alertas manda el bloque de alertas con su línea", async () => {
+    const mensaje = await preguntar("¿Estoy en riesgo académico?");
+    expect(mensaje).toContain("\nDATOS DE ALERTAS:\n- No tienes alertas registradas.\n");
+  });
+
+  test("una pregunta de anuncios sin anuncios ni mensajes manda los dos bloques con su línea", async () => {
+    const mensaje = await preguntar("¿Hay algún comunicado de mis cursos?", {
+      searchChat: async (question) => {
+        searchChatCalls.push({ question });
+        return [];
+      },
+    });
+    expect(mensaje).toContain("\nDATOS DE ANUNCIOS:\n- No hay anuncios activos en tus secciones de este ciclo.\n");
+    expect(mensaje).toContain(`\n${TITULO_CHAT}\n${LINEA_CHAT}\n`);
+  });
+
+  test("una pregunta de malla sin malla manda el bloque de malla con su línea", async () => {
+    const mensaje = await preguntar("¿Cuántos créditos llevo?");
+    expect(mensaje).toContain("\nDATOS DE MALLA CURRICULAR:\n- No tienes una malla curricular registrada.\n");
+  });
+
+  test("una pregunta de horario sin horario manda el bloque de horario con sus líneas", async () => {
+    const mensaje = await preguntar("¿Qué horario tengo el lunes?");
+    expect(mensaje).toContain(
+      "\nDATOS DE HORARIO Y EVALUACIONES:\n- No hay horario registrado para este ciclo.\n" +
+        "- No hay evaluaciones registradas en la semana anterior, la actual ni la siguiente.\n",
+    );
+  });
+
+  test("una pregunta del chat sin mensajes manda el bloque del chat con su línea", async () => {
+    const mensaje = await preguntar("¿Dijeron algo del examen en el chat?", {
+      searchChat: async (question) => {
+        searchChatCalls.push({ question });
+        return [];
+      },
+    });
+    expect(searchChatCalls.length).toBe(1);
+    expect(mensaje).toContain(`\n${TITULO_CHAT}\n${LINEA_CHAT}\n`);
+  });
+
+  test("sin secciones activas, el chat no se lee y su bloque sale con la línea", async () => {
+    const mensaje = await preguntar("¿Dijeron algo del examen en el chat?", {
+      repo: { getActiveSectionDetails: async () => [] },
+    });
+    expect(searchChatCalls.length).toBe(0);
+    expect(mensaje).toContain(`\n${TITULO_CHAT}\n${LINEA_CHAT}\n`);
+  });
+
+  test("una lectura del chat que falla sin traer mensajes (null, BR-CB-06) no manda el bloque del chat", async () => {
+    const mensaje = await preguntar("¿Dijeron algo del examen en el chat?", {
+      searchChat: async (question) => {
+        searchChatCalls.push({ question });
+        return null;
+      },
+    });
+    expect(searchChatCalls.length).toBe(1);
+    expect(mensaje).not.toContain("MENSAJES DEL CHAT DE LA SECCION");
+    expect(mensaje).not.toContain(LINEA_CHAT);
+  });
+
+  test("sin delegados que mostrar, porque no hay secciones activas, el bloque de delegados sale con su línea", async () => {
+    const mensaje = await preguntar("¿Quiénes son los delegados de Seguridad de Sistemas?", {
+      repo: { getSectionRepresentatives: async () => [] },
+    });
+    expect(mensaje).toContain(
+      "\nDELEGADOS DE TUS SECCIONES (solo delegado y subdelegado, por curso y seccion):\n" +
+        "- No tienes secciones activas en este ciclo.\n",
+    );
+  });
+
+  test("un dominio que no se consultó no manda su bloque ni su línea", async () => {
+    const mensaje = await preguntar("¿Qué nota saqué en el parcial?");
+    for (const titulo of ["DATOS DE ALERTAS:", "DATOS DE ANUNCIOS:", "DATOS DE MALLA CURRICULAR:", "MENSAJES DEL CHAT"]) {
+      expect(mensaje).not.toContain(titulo);
+    }
+    expect(mensaje).not.toContain("- No tienes alertas registradas.");
   });
 });
 

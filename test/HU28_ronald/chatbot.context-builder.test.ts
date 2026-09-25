@@ -143,8 +143,10 @@ describe("buildContext - bloque de delegados (BR-CB-16 y BR-CB-24)", () => {
     expect(mensaje).not.toContain("BRUNO INVENTADO SOTO");
   });
 
-  test("sin secciones (arreglo vacío o null) no sale el bloque", () => {
-    expect(armar({ delegatesData: [] })).not.toContain(TITULO_DELEGADOS);
+  // BR-CB-24, decisión 8: sin secciones activas el bloque sale con su línea de
+  // «no hay»; con el dato sin leer (null) no sale.
+  test("sin secciones (arreglo vacío) sale el bloque con su línea, y sin leer (null) no sale", () => {
+    expect(armar({ delegatesData: [] })).toContain(`${TITULO_DELEGADOS}\n- No tienes secciones activas en este ciclo.\n`);
     expect(armar({ delegatesData: null })).not.toContain(TITULO_DELEGADOS);
   });
 
@@ -199,11 +201,11 @@ describe("buildContext - bloque de delegados (BR-CB-16 y BR-CB-24)", () => {
 });
 
 // ============================================================================
-// BR-CB-24: un bloque sale solo si su dominio está activo y tiene datos. La
-// única excepción es el bloque 8 (bloques propios), que sale con `own_blocks`
-// aunque no haya bloques. Un arreglo vacío no es dato, así que los bloques 3 a 6,
-// 10 y 11 no salen con `[]`, y el horario no sale si no trae ninguna sesión ni
-// ninguna evaluación.
+// BR-CB-24 (enmienda de la ronda final, decisión 8): un bloque sale si su
+// dominio está activo y su dato se leyó. Leído sin datos, sale con su título y
+// una línea de «no hay», como el bloque 8 sin bloques. Con el dato sin leer
+// (null o ausente), no sale. El bloque 10 es la excepción: solo sale con una
+// simulación que traiga datos.
 // ============================================================================
 
 const SESION_INVENTADA = {
@@ -217,38 +219,165 @@ const SESION_INVENTADA = {
 
 const EVALUACION_INVENTADA = { title: "Practica calificada inventada", weekNumber: 6, date: "2026-09-24" };
 
-describe("buildContext - un bloque sin datos no sale (BR-CB-24)", () => {
+const SEMANA_CONOCIDA = {
+  today: "2026-09-25",
+  currentWeekNumber: 6,
+  currentWeekRange: "2026-09-21 → 2026-09-27",
+};
+
+/** Las líneas del bloque que abre `titulo`, hasta la línea en blanco que lo cierra. */
+const lineasDelBloque = (mensaje: string, titulo: string): string[] => {
+  const lineas = mensaje.split("\n");
+  const inicio = lineas.indexOf(titulo);
+  expect(inicio).toBeGreaterThan(0);
+  expect(lineas[inicio - 1]).toBe("");
+  const fin = lineas.indexOf("", inicio);
+  return lineas.slice(inicio + 1, fin);
+};
+
+describe("buildContext - un bloque leído sin datos sale con su línea de «no hay» (BR-CB-24, decisión 8)", () => {
   const conDominios = (over: Partial<Parameters<typeof buildContext>[0]>) =>
     armar({ intents: [], delegatesData: null, question: "Hola", ...over });
 
-  const casos: Array<{ bloque: string; titulo: string; over: Partial<Parameters<typeof buildContext>[0]> }> = [
+  const casos: Array<{
+    bloque: string;
+    titulo: string;
+    over: Partial<Parameters<typeof buildContext>[0]>;
+    lineas: string[];
+  }> = [
     {
-      bloque: "3",
+      bloque: "3, con la semana actual conocida",
+      titulo: "DATOS DE HORARIO Y EVALUACIONES:",
+      over: { intents: ["schedule"], dateContext: SEMANA_CONOCIDA, scheduleData: { sessions: [], assessments: [] } },
+      lineas: [
+        "- No hay horario registrado para este ciclo.",
+        "- No hay evaluaciones registradas en la semana anterior, la actual ni la siguiente.",
+      ],
+    },
+    {
+      bloque: "3, sin la semana actual",
       titulo: "DATOS DE HORARIO Y EVALUACIONES:",
       over: { intents: ["schedule"], scheduleData: { sessions: [], assessments: [] } },
+      lineas: ["- No hay horario registrado para este ciclo.", "- No hay evaluaciones registradas para este ciclo."],
     },
-    { bloque: "4", titulo: "DATOS DE MALLA CURRICULAR:", over: { intents: ["curriculum"], curriculumData: [] } },
-    { bloque: "5", titulo: "DATOS DE ALERTAS:", over: { intents: ["alerts"], alertsData: [] } },
-    { bloque: "6", titulo: "DATOS DE ANUNCIOS:", over: { intents: ["announcements"], announcementsData: [] } },
-    { bloque: "10", titulo: "SIMULACION NO OFICIAL", over: { intents: ["grades"], localGrades: [] } },
     {
-      bloque: "11",
-      titulo: "MENSAJES DEL CHAT DE LA SECCION",
+      bloque: "4",
+      titulo: "DATOS DE MALLA CURRICULAR:",
+      over: { intents: ["curriculum"], curriculumData: [] },
+      lineas: ["- No tienes una malla curricular registrada."],
+    },
+    {
+      bloque: "5",
+      titulo: "DATOS DE ALERTAS:",
+      over: { intents: ["alerts"], alertsData: [] },
+      lineas: ["- No tienes alertas registradas."],
+    },
+    {
+      bloque: "6",
+      titulo: "DATOS DE ANUNCIOS:",
+      over: { intents: ["announcements"], announcementsData: [] },
+      lineas: ["- No hay anuncios activos en tus secciones de este ciclo."],
+    },
+    {
+      bloque: "7",
+      titulo: TITULO_DELEGADOS,
+      over: { intents: ["delegates"], delegatesData: [] },
+      lineas: ["- No tienes secciones activas en este ciclo."],
+    },
+    {
+      bloque: "9",
+      titulo: "NOTAS OFICIALES DEL ALUMNO (fuente de la verdad, registradas por el docente):",
+      over: { intents: ["grades"], officialGrades: [] },
+      lineas: ["- No hay notas oficiales registradas en tus cursos de este ciclo."],
+    },
+    {
+      bloque: "11, con chat",
+      titulo: "MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):",
       over: { intents: ["chat"], chatSearchResults: [] },
+      lineas: ["- No hay mensajes recientes en el chat de las secciones consultadas."],
+    },
+    {
+      bloque: "11, con announcements",
+      titulo: "MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):",
+      over: { intents: ["announcements"], announcementsData: [{ title: "Aviso inventado" }], chatSearchResults: [] },
+      lineas: ["- No hay mensajes recientes en el chat de las secciones consultadas."],
     },
   ];
 
-  for (const { bloque, titulo, over } of casos) {
-    test(`el bloque ${bloque} no sale con su dominio activo y los datos vacíos`, () => {
+  for (const { bloque, titulo, over, lineas } of casos) {
+    test(`el bloque ${bloque} sale con su título y su línea de «no hay»`, () => {
       const mensaje = conDominios(over);
-      expect(mensaje).not.toContain(titulo);
-      // Ningún arreglo vacío queda suelto en el mensaje.
+      expect(lineasDelBloque(mensaje, titulo)).toEqual(lineas);
+      // Ningún arreglo vacío queda suelto en el mensaje: la línea lo reemplaza.
       expect(mensaje.split("\n")).not.toContain("[]");
       expect(mensaje).not.toContain('"sessions": []');
     });
   }
 
-  test("«Hola» con el respaldo schedule, grades y curriculum y todo vacío deja solo el perfil, la fecha y la pregunta", () => {
+  const sinLeer: Array<{ bloque: string; titulo: string; over: Partial<Parameters<typeof buildContext>[0]> }> = [
+    { bloque: "3", titulo: "DATOS DE HORARIO Y EVALUACIONES:", over: { intents: ["schedule"], scheduleData: null } },
+    { bloque: "4", titulo: "DATOS DE MALLA CURRICULAR:", over: { intents: ["curriculum"], curriculumData: null } },
+    { bloque: "5", titulo: "DATOS DE ALERTAS:", over: { intents: ["alerts"], alertsData: undefined } },
+    { bloque: "6", titulo: "DATOS DE ANUNCIOS:", over: { intents: ["announcements"], announcementsData: null } },
+    { bloque: "7", titulo: TITULO_DELEGADOS, over: { intents: ["delegates"], delegatesData: null } },
+    { bloque: "9", titulo: "NOTAS OFICIALES DEL ALUMNO", over: { intents: ["grades"], officialGrades: null } },
+    { bloque: "11", titulo: "MENSAJES DEL CHAT DE LA SECCION", over: { intents: ["chat"], chatSearchResults: null } },
+  ];
+
+  for (const { bloque, titulo, over } of sinLeer) {
+    test(`el bloque ${bloque} no sale con su dominio activo y el dato sin leer (null o ausente)`, () => {
+      const mensaje = conDominios(over);
+      expect(mensaje).not.toContain(titulo);
+      expect(mensaje).not.toContain("- No ");
+    });
+  }
+
+  test("un dominio que no se consultó no manda bloque aunque su dato venga vacío", () => {
+    const mensaje = conDominios({
+      intents: ["grades"],
+      scheduleData: { sessions: [], assessments: [] },
+      curriculumData: [],
+      alertsData: [],
+      announcementsData: [],
+      delegatesData: [],
+      chatSearchResults: [],
+      officialGrades: [{
+        courseName: "CURSO INVENTADO",
+        sectionCode: "801",
+        evaluaciones: [{ nombre: "EV01", peso: 100, nota: 15 }],
+        pesoCalificado: 100,
+        promedioActual: 15,
+        notaAcumulada: 15,
+        estado: "aprobado",
+        necesitaEnLoRestante: null,
+      }],
+    });
+    for (const titulo of [
+      "DATOS DE HORARIO Y EVALUACIONES:",
+      "DATOS DE MALLA CURRICULAR:",
+      "DATOS DE ALERTAS:",
+      "DATOS DE ANUNCIOS:",
+      TITULO_DELEGADOS,
+      "MENSAJES DEL CHAT DE LA SECCION",
+    ]) {
+      expect(mensaje).not.toContain(titulo);
+    }
+    expect(mensaje).not.toContain("- No ");
+  });
+
+  test("el bloque 10 sigue sin salir con la simulación vacía, que no es una consulta (BR-CB-08)", () => {
+    const mensaje = conDominios({ intents: ["grades"], officialGrades: [], localGrades: [] });
+    expect(mensaje).not.toContain("SIMULACION NO OFICIAL");
+    // El bloque 9 sí sale, con su línea.
+    expect(mensaje).toContain("- No hay notas oficiales registradas en tus cursos de este ciclo.");
+  });
+
+  test("«¿Estoy en riesgo académico?» sin alertas manda el bloque de alertas con su línea", () => {
+    const mensaje = conDominios({ intents: ["alerts"], alertsData: [], question: "¿Estoy en riesgo académico?" });
+    expect(mensaje).toContain("\nDATOS DE ALERTAS:\n- No tienes alertas registradas.\n");
+  });
+
+  test("«Hola» con el respaldo schedule, grades y curriculum y todo vacío trae los bloques 3, 4 y 9 con sus líneas", () => {
     const mensaje = conDominios({
       intents: ["schedule", "grades", "curriculum"],
       scheduleData: { sessions: [], assessments: [] },
@@ -268,6 +397,16 @@ describe("buildContext - un bloque sin datos no sale (BR-CB-24)", () => {
         "FECHA Y SEMANA ACTUAL:",
         "- Hoy: 2026-09-25",
         "",
+        "DATOS DE HORARIO Y EVALUACIONES:",
+        "- No hay horario registrado para este ciclo.",
+        "- No hay evaluaciones registradas para este ciclo.",
+        "",
+        "DATOS DE MALLA CURRICULAR:",
+        "- No tienes una malla curricular registrada.",
+        "",
+        "NOTAS OFICIALES DEL ALUMNO (fuente de la verdad, registradas por el docente):",
+        "- No hay notas oficiales registradas en tus cursos de este ciclo.",
+        "",
         "FIN DE LOS DATOS",
         "",
         "PREGUNTA DEL ALUMNO:",
@@ -276,19 +415,21 @@ describe("buildContext - un bloque sin datos no sale (BR-CB-24)", () => {
     );
   });
 
-  test("el horario con sesiones y sin evaluaciones sí sale, con el JSON sin cambios", () => {
+  test("el horario con sesiones y sin evaluaciones sale con el JSON sin cambios", () => {
     const datos = { sessions: [SESION_INVENTADA], assessments: [] };
     const mensaje = conDominios({ intents: ["schedule"], scheduleData: datos });
     expect(mensaje).toContain(`DATOS DE HORARIO Y EVALUACIONES:\n${JSON.stringify(datos, null, 2)}`);
+    expect(mensaje).not.toContain("- No hay horario registrado");
   });
 
-  test("el horario con evaluaciones y sin sesiones sí sale, con el JSON sin cambios", () => {
+  test("el horario con evaluaciones y sin sesiones sale con el JSON sin cambios", () => {
     const datos = { sessions: [], assessments: [EVALUACION_INVENTADA] };
     const mensaje = conDominios({ intents: ["schedule"], scheduleData: datos });
     expect(mensaje).toContain(`DATOS DE HORARIO Y EVALUACIONES:\n${JSON.stringify(datos, null, 2)}`);
+    expect(mensaje).not.toContain("- No hay evaluaciones registradas");
   });
 
-  test("las alertas, la malla, los anuncios, la simulación y el chat con un elemento sí salen", () => {
+  test("las alertas, la malla, los anuncios, la simulación y el chat con un elemento salen con su JSON y sin la línea", () => {
     const mensaje = conDominios({
       intents: ["curriculum", "alerts", "announcements", "grades", "chat"],
       curriculumData: [{ courseName: "CURSO INVENTADO", cycle: 8, status: "in_progress", credit: 4 }],
@@ -306,15 +447,20 @@ describe("buildContext - un bloque sin datos no sale (BR-CB-24)", () => {
     ]) {
       expect(mensaje).toContain(titulo);
     }
+    expect(mensaje).toContain('"tipo": "academic_risk"');
+    expect(mensaje).not.toContain("- No ");
   });
 
-  test("el bloque 8 sigue saliendo con `own_blocks` aunque no haya bloques, y el 3 no sale con el horario vacío", () => {
+  test("el bloque 8 sigue saliendo con `own_blocks` aunque no haya bloques, y el 3 sale con sus líneas con el horario vacío", () => {
     const mensaje = conDominios({
       intents: ["schedule", "own_blocks"],
       scheduleData: { sessions: [], assessments: [] },
       ownBlocks: { window: { from: "2026-09-21", to: "2026-10-04" }, blocks: [], weeks: [] },
     });
-    expect(mensaje).not.toContain("DATOS DE HORARIO Y EVALUACIONES:");
+    expect(lineasDelBloque(mensaje, "DATOS DE HORARIO Y EVALUACIONES:")).toEqual([
+      "- No hay horario registrado para este ciclo.",
+      "- No hay evaluaciones registradas para este ciclo.",
+    ]);
     expect(mensaje).toContain("TUS BLOQUES DE HORARIO PROPIOS");
     expect(mensaje).toContain("- No registraste bloques propios vigentes.");
     // El horario se leyó sin sesiones, así que las horas de clase son 0 h (BR-CB-19).

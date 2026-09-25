@@ -15,8 +15,9 @@ import type { ChatbotIntent, ChatbotMessageRow } from "../../src/modules/chatbot
 // Se prueba por PARTICION DE EQUIVALENCIA y VALORES LIMITE sin conocer la
 // implementacion, observando solo el texto del contexto que arma la funcion.
 // Regla de negocio central: un bloque de datos aparece solo si su intent esta
-// presente Y su dato no es vacio. chatSearchResults sale con el intent 'chat'
-// o 'announcements' (BR-CB-23, ajuste del 2026-09-25). Ver context-builder.ts.
+// presente Y su dato se leyo (no es null ni ausente). Leido vacio, sale con una
+// linea de «no hay» (BR-CB-24, ronda final del 2026-09-25). chatSearchResults
+// sale con el intent 'chat' o 'announcements' (BR-CB-23). Ver context-builder.ts.
 // ============================================================================
 
 const baseDate = { today: "2026-07-13" };

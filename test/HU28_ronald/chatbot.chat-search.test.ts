@@ -334,3 +334,56 @@ describe("searchChatMessages - los mensajes borrados no viajan (BR-CB-23, R-CHAT
     expect(JSON.stringify(results)).not.toContain("BORRADO");
   });
 });
+
+// ============================================================================
+// BR-CB-06 y BR-CB-24, ronda final (decisión 8): el bloque 11 dice «no hay
+// mensajes» solo si todas las lecturas respondieron. Si ninguna sección trajo
+// mensajes y alguna lectura falló, `searchChatMessages` devuelve null, que el
+// armado del contexto lee como lectura fallida y no manda el bloque.
+// ============================================================================
+
+describe("searchChatMessages - una lectura fallida no se confunde con «no hay mensajes» (BR-CB-06)", () => {
+  const SECCIONES = [
+    { sectionId: 7, courseName: "SEGURIDAD DE SISTEMAS", sectionCode: "801" },
+    { sectionId: 8, courseName: "PLANEAMIENTO ESTRATEGICO", sectionCode: "802" },
+  ];
+  const PREGUNTA = "chat de seguridad y planeamiento";
+
+  test("si todas las lecturas fallan, devuelve null", async () => {
+    const results = await searchChatMessages(PREGUNTA, SECCIONES, async () => {
+      throw new Error("firebase inventado caído");
+    });
+    expect(results).toBeNull();
+  });
+
+  test("si una lectura falla y la otra responde sin mensajes, devuelve null", async () => {
+    const results = await searchChatMessages(PREGUNTA, SECCIONES, async (sectionId) => {
+      if (sectionId === 7) throw new Error("firebase inventado caído");
+      return [];
+    });
+    expect(results).toBeNull();
+  });
+
+  test("si una lectura falla y la otra solo trae mensajes borrados, devuelve null", async () => {
+    const results = await searchChatMessages(PREGUNTA, SECCIONES, async (sectionId) => {
+      if (sectionId === 8) throw new Error("firebase inventado caído");
+      return [{ body: "BORRADO", createdAt: 1, deleted: true }];
+    });
+    expect(results).toBeNull();
+  });
+
+  test("si todas las lecturas responden sin mensajes, devuelve un arreglo vacío", async () => {
+    const results = await searchChatMessages(PREGUNTA, SECCIONES, async () => []);
+    expect(results).toEqual([]);
+  });
+
+  test("si una lectura falla y la otra trae mensajes, devuelve los que llegaron", async () => {
+    const results = await searchChatMessages(PREGUNTA, SECCIONES, async (sectionId) => {
+      if (sectionId === 7) throw new Error("firebase inventado caído");
+      return [{ body: "Nos vemos en clase", createdAt: Date.UTC(2026, 8, 24, 15, 0) }];
+    });
+    expect(results).toEqual([
+      { sectionName: "PLANEAMIENTO ESTRATEGICO (802)", messages: [{ body: "Nos vemos en clase", date: "2026-09-24 10:00" }] },
+    ]);
+  });
+});

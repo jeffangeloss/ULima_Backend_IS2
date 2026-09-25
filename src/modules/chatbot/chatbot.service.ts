@@ -7,7 +7,7 @@ import type { OwnTimeBlocksSummary, readOwnTimeBlocksForAssistant } from "../tim
 import { ChatbotRepository } from "./chatbot.repository.js";
 import { classifyByKeywords } from "./intent-classifier.js";
 import { buildContext, type DateContext } from "./context-builder.js";
-import { searchChatMessages } from "./chat-search.js";
+import { searchChatMessages, type ChatSearchResult } from "./chat-search.js";
 import { summarizeOfficialGrades } from "./grades-summary.js";
 import type { ChatbotMessageRow, ChatbotSessionRow } from "./chatbot.types.js";
 import type { AskInput } from "./chatbot.schemas.js";
@@ -242,11 +242,15 @@ export class ChatbotService {
     }
   }
 
-  private async getChatResults(studentId: number, question: string) {
+  /**
+   * BR-CB-06 y BR-CB-24: un arreglo vacío es «no hay mensajes» y el bloque 11
+   * sale con su línea; null es una lectura fallida y el bloque no sale. Sin
+   * secciones activas no hay chat que leer, así que no hay mensajes.
+   */
+  private async getChatResults(studentId: number, question: string): Promise<ChatSearchResult[] | null> {
     const sectionDetails = await this.repository.getActiveSectionDetails(studentId);
-    if (sectionDetails.length === 0) return null;
-    const results = await this.searchChat(question, sectionDetails);
-    return results.length > 0 ? results : null;
+    if (sectionDetails.length === 0) return [];
+    return this.searchChat(question, sectionDetails);
   }
 
   private async computeDateContext(): Promise<DateContext> {

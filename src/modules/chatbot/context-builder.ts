@@ -163,11 +163,10 @@ export function weeklyClassHours(sessions: readonly Pick<ScheduleData, "start_ti
 }
 
 /**
- * BR-CB-24: un bloque sale solo si su dominio está activo y tiene datos. Un
- * arreglo vacío no es dato, y un objeto tiene datos si alguno de sus campos los
- * tiene, así que el horario `{ sessions: [], assessments: [] }` no cuenta y el
- * que trae una sesión o una evaluación sí. La única excepción es el bloque 8,
- * que sale con `own_blocks` aunque no haya bloques (BR-CB-18).
+ * BR-CB-24: ¿el dato leído trae algún elemento? Un arreglo vacío no trae
+ * ninguno, y un objeto trae si alguno de sus campos trae, así que el horario
+ * `{ sessions: [], assessments: [] }` no trae y el que tiene una sesión o una
+ * evaluación sí.
  */
 function hasData(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -175,6 +174,32 @@ function hasData(value: unknown): boolean {
   if (typeof value === "object") return Object.values(value).some(hasData);
   return true;
 }
+
+/**
+ * BR-CB-24 (decisión 8 de la ronda final): el bloque de un dominio activo.
+ * Un dato `null` o ausente es un dominio que no se consultó o cuya lectura
+ * falló, y el bloque no sale. Leído sin elementos, sale con su título y sus
+ * líneas de «no hay», para que el modelo distinga «no hay» de «no se
+ * consultó», como el bloque 8 sin bloques (BR-CB-18). Con datos, sale con su
+ * cuerpo.
+ */
+function pushBlock(blocks: string[], title: string, data: unknown, body: () => string[], emptyLines: string[]): void {
+  if (data === null || data === undefined) return;
+  blocks.push(`\n${title}`);
+  blocks.push(...(hasData(data) ? body() : emptyLines));
+}
+
+// BR-CB-24: las líneas de «no hay» de cada bloque leído sin datos. Van sin
+// tildes, como el resto del mensaje, y dicen lo que su consulta mira.
+const NO_SCHEDULE = "- No hay horario registrado para este ciclo.";
+const NO_ASSESSMENTS_IN_WINDOW = "- No hay evaluaciones registradas en la semana anterior, la actual ni la siguiente.";
+const NO_ASSESSMENTS_IN_PERIOD = "- No hay evaluaciones registradas para este ciclo.";
+const NO_CURRICULUM = "- No tienes una malla curricular registrada.";
+const NO_ALERTS = "- No tienes alertas registradas.";
+const NO_ANNOUNCEMENTS = "- No hay anuncios activos en tus secciones de este ciclo.";
+const NO_SECTIONS = "- No tienes secciones activas en este ciclo.";
+const NO_OFFICIAL_GRADES = "- No hay notas oficiales registradas en tus cursos de este ciclo.";
+const NO_CHAT_MESSAGES = "- No hay mensajes recientes en el chat de las secciones consultadas.";
 
 /**
  * Las sesiones del bloque de horario (`{ sessions, assessments }`), o null si
@@ -237,6 +262,27 @@ function describeRepresentative(position: "delegado" | "subdelegado", person: Se
   return person.isSelf ? `${position} tu (${name})` : `${position} ${name}`;
 }
 
+/** BR-CB-24 (bloque 9): las líneas de un curso con notas oficiales, sin cambios. */
+function officialGradeLines(c: OfficialCourseGrades): string[] {
+  const lines = [`\nCurso: ${c.courseName}${c.sectionCode ? ` (seccion ${c.sectionCode})` : ""}`];
+  for (const ev of c.evaluaciones) {
+    const nota = ev.nota === null ? "sin calificar" : `${ev.nota}/20`;
+    lines.push(`  - ${ev.nombre} (peso ${ev.peso}%): ${nota}`);
+  }
+  lines.push(`  Promedio actual (sobre lo calificado): ${c.promedioActual}/20`);
+  lines.push(`  Peso ya calificado: ${c.pesoCalificado}% del curso`);
+  if (c.estado === "sin_notas") {
+    lines.push(`  Para aprobar (minimo ${PASSING_GRADE}): aun no hay notas registradas en este curso.`);
+  } else if (c.estado === "aprobado") {
+    lines.push(`  Para aprobar (minimo ${PASSING_GRADE}): YA APROBO el curso pase lo que pase en lo restante.`);
+  } else if (c.estado === "imposible") {
+    lines.push(`  Para aprobar (minimo ${PASSING_GRADE}): ya NO es matematicamente posible aprobar este curso.`);
+  } else {
+    lines.push(`  Para aprobar (minimo ${PASSING_GRADE}): necesita en promedio ${c.necesitaEnLoRestante}/20 en las evaluaciones que faltan.`);
+  }
+  return lines;
+}
+
 export interface DateContext {
   today: string;
   currentWeekNumber?: number;
@@ -291,39 +337,54 @@ export function buildContext(params: {
   // BR-CB-07 y BR-CB-20: el historial ya no va dentro de este mensaje. Los
   // turnos previos viajan una sola vez, como turnos de `chatWithHistory`.
 
-  // BR-CB-24: los bloques 3 a 6, 10 y 11 no salen con los datos vacíos. El
-  // bloque 8 lee las sesiones aparte, así que un horario leído sin sesiones no
-  // sale como bloque 3 y aun así da «0 h» de clase (BR-CB-19).
-  if (params.intents.includes("schedule") && hasData(params.scheduleData)) {
-    blocks.push(`\nDATOS DE HORARIO Y EVALUACIONES:`);
-    blocks.push(JSON.stringify(params.scheduleData, null, 2));
+  // BR-CB-24: cada bloque de un dominio activo sale con sus datos o, leído
+  // vacío, con su línea de «no hay» (`pushBlock`). El bloque 8 lee las sesiones
+  // aparte, así que un horario leído sin sesiones da «0 h» de clase (BR-CB-19).
+  if (params.intents.includes("schedule")) {
+    // BR-CB-14: con la semana actual, las evaluaciones son las de la semana
+    // anterior, la actual y la siguiente; sin ella, las del ciclo entero.
+    const noAssessments =
+      params.dateContext.currentWeekNumber != null ? NO_ASSESSMENTS_IN_WINDOW : NO_ASSESSMENTS_IN_PERIOD;
+    pushBlock(
+      blocks,
+      "DATOS DE HORARIO Y EVALUACIONES:",
+      params.scheduleData,
+      () => [JSON.stringify(params.scheduleData, null, 2)],
+      [NO_SCHEDULE, noAssessments],
+    );
   }
 
-  if (params.intents.includes("curriculum") && hasData(params.curriculumData)) {
-    blocks.push(`\nDATOS DE MALLA CURRICULAR:`);
-    blocks.push(JSON.stringify(params.curriculumData, null, 2));
+  if (params.intents.includes("curriculum")) {
+    pushBlock(blocks, "DATOS DE MALLA CURRICULAR:", params.curriculumData,
+      () => [JSON.stringify(params.curriculumData, null, 2)], [NO_CURRICULUM]);
   }
 
-  if (params.intents.includes("alerts") && hasData(params.alertsData)) {
-    blocks.push(`\nDATOS DE ALERTAS:`);
-    blocks.push(JSON.stringify(params.alertsData, null, 2));
+  if (params.intents.includes("alerts")) {
+    pushBlock(blocks, "DATOS DE ALERTAS:", params.alertsData,
+      () => [JSON.stringify(params.alertsData, null, 2)], [NO_ALERTS]);
   }
 
-  if (params.intents.includes("announcements") && hasData(params.announcementsData)) {
-    blocks.push(`\nDATOS DE ANUNCIOS:`);
-    blocks.push(JSON.stringify(params.announcementsData, null, 2));
+  if (params.intents.includes("announcements")) {
+    pushBlock(blocks, "DATOS DE ANUNCIOS:", params.announcementsData,
+      () => [JSON.stringify(params.announcementsData, null, 2)], [NO_ANNOUNCEMENTS]);
   }
 
   // BR-CB-16 y BR-CB-24 (bloque 7): una línea por sección, con el curso y la
   // sección de cada cargo. Es lo único de otras personas que llega al modelo.
-  if (params.intents.includes("delegates") && params.delegatesData && params.delegatesData.length > 0) {
-    blocks.push(`\n${DELEGATES_TITLE}`);
-    for (const s of params.delegatesData) {
-      blocks.push(
-        `- ${singleLine(s.courseName)} (seccion ${singleLine(s.sectionCode)}): ` +
-          `${describeRepresentative("delegado", s.delegate)}; ${describeRepresentative("subdelegado", s.subdelegate)}.`,
-      );
-    }
+  if (params.intents.includes("delegates")) {
+    const sections = params.delegatesData;
+    pushBlock(
+      blocks,
+      DELEGATES_TITLE,
+      sections,
+      () =>
+        (sections ?? []).map(
+          (s) =>
+            `- ${singleLine(s.courseName)} (seccion ${singleLine(s.sectionCode)}): ` +
+            `${describeRepresentative("delegado", s.delegate)}; ${describeRepresentative("subdelegado", s.subdelegate)}.`,
+        ),
+      [NO_SECTIONS],
+    );
   }
 
   // BR-CB-18, BR-CB-19 y BR-CB-24 (bloque 8): sale con `own_blocks` aunque no
@@ -335,28 +396,19 @@ export function buildContext(params: {
     blocks.push(...ownBlocksLines(params.ownBlocks, params.dateContext.today, classHours));
   }
 
-  if (params.intents.includes("grades") && params.officialGrades && params.officialGrades.length > 0) {
-    blocks.push(`\nNOTAS OFICIALES DEL ALUMNO (fuente de la verdad, registradas por el docente):`);
-    for (const c of params.officialGrades) {
-      blocks.push(`\nCurso: ${c.courseName}${c.sectionCode ? ` (seccion ${c.sectionCode})` : ""}`);
-      for (const ev of c.evaluaciones) {
-        const nota = ev.nota === null ? "sin calificar" : `${ev.nota}/20`;
-        blocks.push(`  - ${ev.nombre} (peso ${ev.peso}%): ${nota}`);
-      }
-      blocks.push(`  Promedio actual (sobre lo calificado): ${c.promedioActual}/20`);
-      blocks.push(`  Peso ya calificado: ${c.pesoCalificado}% del curso`);
-      if (c.estado === "sin_notas") {
-        blocks.push(`  Para aprobar (minimo ${PASSING_GRADE}): aun no hay notas registradas en este curso.`);
-      } else if (c.estado === "aprobado") {
-        blocks.push(`  Para aprobar (minimo ${PASSING_GRADE}): YA APROBO el curso pase lo que pase en lo restante.`);
-      } else if (c.estado === "imposible") {
-        blocks.push(`  Para aprobar (minimo ${PASSING_GRADE}): ya NO es matematicamente posible aprobar este curso.`);
-      } else {
-        blocks.push(`  Para aprobar (minimo ${PASSING_GRADE}): necesita en promedio ${c.necesitaEnLoRestante}/20 en las evaluaciones que faltan.`);
-      }
-    }
+  if (params.intents.includes("grades")) {
+    const courses = params.officialGrades;
+    pushBlock(
+      blocks,
+      "NOTAS OFICIALES DEL ALUMNO (fuente de la verdad, registradas por el docente):",
+      courses,
+      () => (courses ?? []).flatMap(officialGradeLines),
+      [NO_OFFICIAL_GRADES],
+    );
   }
 
+  // BR-CB-24 (bloque 10): la simulación no es una consulta sino el body
+  // (BR-CB-08), así que solo sale si trae datos y nunca con una línea de «no hay».
   if (params.intents.includes("grades") && hasData(params.localGrades)) {
     blocks.push(`\nSIMULACION NO OFICIAL (escenario que el alumno arma en la calculadora; NO son notas reales; usar solo si pregunta un "que pasaria si"):`);
     blocks.push(JSON.stringify(params.localGrades, null, 2));
@@ -364,10 +416,10 @@ export function buildContext(params: {
 
   // BR-CB-23 y BR-CB-24 (bloque 11): solo con `chat` o `announcements`. Los
   // mensajes van sin remitente y el JSON escapa sus saltos de línea y comillas.
-  const chatActive = params.intents.includes("chat") || params.intents.includes("announcements");
-  if (chatActive && hasData(params.chatSearchResults)) {
-    blocks.push(`\n${CHAT_TITLE}`);
-    blocks.push(JSON.stringify(params.chatSearchResults, null, 2));
+  // Con la lectura fallida (null, BR-CB-06) el bloque no sale.
+  if (params.intents.includes("chat") || params.intents.includes("announcements")) {
+    pushBlock(blocks, CHAT_TITLE, params.chatSearchResults,
+      () => [JSON.stringify(params.chatSearchResults, null, 2)], [NO_CHAT_MESSAGES]);
   }
 
   // La pregunta va después del cierre, fuera del bloque de datos.

@@ -46,13 +46,20 @@ function limaDateTime(createdAt: number): string {
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
+/**
+ * Mensajes de las secciones que corresponden a la pregunta (BR-CB-06). Una
+ * sección cuya lectura falla se registra y se salta. Si ninguna sección trae
+ * mensajes y alguna lectura falló, devuelve null y no un arreglo vacío, porque
+ * no puede afirmar que no hay mensajes: el bloque 11 no sale (BR-CB-24).
+ */
 export async function searchChatMessages(
   question: string,
   sectionDetails: SectionDetail[],
   // Inyectable para pruebas; por defecto, Firebase RTDB.
   readMessages: ChatMessagesReader = (sectionId, limit) => firebaseService.getRecentMessages(sectionId, limit),
-): Promise<ChatSearchResult[]> {
+): Promise<ChatSearchResult[] | null> {
   const results: ChatSearchResult[] = [];
+  let failedReads = 0;
 
   const matchedSections = filterSections(question, sectionDetails);
 
@@ -76,11 +83,12 @@ export async function searchChatMessages(
         })),
       });
     } catch (error) {
+      failedReads++;
       console.warn(`Failed to search chat for section ${section.sectionId}:`, error);
     }
   }
 
-  return results;
+  return results.length === 0 && failedReads > 0 ? null : results;
 }
 
 /** Orden de BR-CB-06: nombre de curso (normalizado) y código de sección. */
