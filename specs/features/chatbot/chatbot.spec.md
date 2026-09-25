@@ -74,6 +74,11 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > pregunta anterior del alumno (BR-CB-04). Suma además el escape de U+2028, U+2029 y U+0085 en el
 > JSON del chat y de los anuncios (BR-CB-23, corrección 12). Siguen abiertos los puntos 6, 7 y 9 de
 > «Pendiente del dueño antes del merge».
+> La revisión de la ronda final corrige, dentro de la decisión 8, la línea de «no hay» del bloque
+> 11. Sin un curso en la pregunta, BR-CB-06 lee solo las tres primeras secciones, y una línea que
+> habla de «las secciones consultadas» sin nombrarlas deja que el modelo niegue mensajes de las
+> secciones que no se leyeron. La línea nombra ahora las secciones leídas y, sin secciones
+> activas, dice que el alumno no las tiene (BR-CB-06 y BR-CB-24).
 > Contraparte en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-35, ajustada el mismo
 > día). El récord académico sigue fuera del chatbot (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -163,8 +168,8 @@ dueño sobre los puntos 6, 7 y 9, con la salida de la última columna si no los 
 
 | # | Punto | Regla | Qué hace hoy la rama | Si el dueño no lo confirma | Estado |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Los mensajes borrados del chat no viajan | BR-CB-23 | `searchChatMessages` omite los mensajes con `deleted: true` (`chat-search.ts:71-73`) | Sale el filtro, y el texto que su autor o el profesor titular borró vuelve a llegar a Cohere. Cambian los casos de `chatbot.chat-search.test.ts` que fijan la omisión | Confirmado por el dueño el 2026-09-25 (decisión 10) |
-| 2 | La vigencia de un bloque propio se mide contra hoy | BR-CB-18 | Un bloque sale con «empieza el …» solo si su `startDate` es posterior a `today` (`context-builder.ts:245-248`) | La comparación pasa al lunes de la ventana, y un bloque que empezó entre ese lunes y hoy sale con «empieza el …». Cambian los casos de `chatbot.own-blocks-context.test.ts` que fijan la vigencia | Confirmado por el dueño el 2026-09-25 (decisión 10) |
+| 1 | Los mensajes borrados del chat no viajan | BR-CB-23 | `searchChatMessages` omite los mensajes con `deleted: true` (`chat-search.ts:86-88`) | Sale el filtro, y el texto que su autor o el profesor titular borró vuelve a llegar a Cohere. Cambian los casos de `chatbot.chat-search.test.ts` que fijan la omisión | Confirmado por el dueño el 2026-09-25 (decisión 10) |
+| 2 | La vigencia de un bloque propio se mide contra hoy | BR-CB-18 | Un bloque sale con «empieza el …» solo si su `startDate` es posterior a `today` (`context-builder.ts:261-264`) | La comparación pasa al lunes de la ventana, y un bloque que empezó entre ese lunes y hoy sale con «empieza el …». Cambian los casos de `chatbot.own-blocks-context.test.ts` que fijan la vigencia | Confirmado por el dueño el 2026-09-25 (decisión 10) |
 | 3 | La suma de horas de clase lee `start_time` y `end_time` | BR-CB-19 | `ScheduleData` declara las claves snake_case que proyecta `getSchedule` (`chatbot.types.ts:38-45`) y `weeklyClassHours` las lee | La otra salida es que `getSchedule` mapee sus filas a camelCase. Eso cambia el JSON del bloque 3, que BR-CB-24 fija «sin cambios», así que exige además enmendar BR-CB-24 | Confirmado por el dueño el 2026-09-25 (decisión 10) |
 | 4 | Sin horario cargado, el bloque 8 sale sin la línea de horas de clase | BR-CB-19 y BR-CB-24 | La línea se omite si el horario no se leyó | La línea dice «0 h» también sin horario, un total que nadie leyó, o el dueño fija otro texto. Hoy el caso no ocurre, porque `own_blocks` arrastra `schedule` | Confirmado por el dueño el 2026-09-25 (decisión 10) |
 | 5 | «Tiene datos» significa al menos un elemento | BR-CB-24 | Desde la ronda final, un bloque leído sin datos sale con su línea de «no hay» (BR-CB-24) | La revisión final recomendaba la enmienda de BR-CB-24, con el arreglo vacío o una línea explícita cuando el dominio está activo y la consulta vuelve vacía | Reemplazado por la enmienda de BR-CB-24 y confirmado por el dueño el 2026-09-25 (decisiones 8 y 10) |
@@ -390,17 +395,25 @@ cada dominio, y su bloque del chat exige lo contrario de «el chat se consulta S
 - ~~Los mensajes se incluyen en el contexto bajo el titulo `MENSAJES DEL CHAT DE LA SECCION`, en formato JSON con `senderName`, `body` y `createdAt`. El LLM debe responder en lenguaje natural (no IDs tecnicos), citando remitentes por nombre.~~ *Reemplazado el 2026-09-25.* Los mensajes van bajo `MENSAJES DEL CHAT DE LA SECCION`, agrupados por curso y sección, **sin remitente**, solo con su texto y su fecha en hora de Lima (BR-CB-23). El modelo no atribuye ningún mensaje a nadie (regla 13 de BR-CB-09).
 - Si una seccion no tiene mensajes, se omite. Si Firebase RTDB no esta disponible para una seccion, se hace `console.warn` y se continua con la siguiente seccion (no se bloquea la respuesta para otros intents).
   *Agregado el 2026-09-25 en la ronda final, por la decisión 8.* Si ninguna sección leída trae
-  mensajes y al menos una lectura falló, `searchChatMessages` devuelve `null` y no un arreglo
-  vacío, porque no puede afirmar que no hay mensajes, y el bloque 11 no sale (BR-CB-24). Un
+  mensajes y al menos una lectura falló, `searchChatMessages` devuelve `null` ~~y no un arreglo
+  vacío~~, porque no puede afirmar que no hay mensajes, y el bloque 11 no sale (BR-CB-24). ~~Un
   arreglo vacío queda para el caso en que todas las lecturas respondieron sin mensajes, y también
-  para un alumno sin secciones activas, que el servicio resuelve sin leer Firebase. Si una lectura
+  para un alumno sin secciones activas, que el servicio resuelve sin leer Firebase.~~ Si una lectura
   falla y otra trae mensajes, salen los que llegaron, como hoy.
+  *Corregido el 2026-09-25 en la revisión de la ronda final.* En los demás casos,
+  `searchChatMessages` devuelve `{ results, sectionsRead }`. `results` trae solo las secciones con
+  mensajes y forma el JSON del bloque 11. `sectionsRead` nombra como «CURSO (código)», en el orden
+  del filtro, cada sección cuya lectura respondió, con mensajes o sin ellos, y deja fuera la
+  sección cuya lectura falla. Si todas las lecturas responden sin mensajes, `results` va vacío y
+  la línea de «no hay» del bloque 11 nombra las secciones de `sectionsRead` (BR-CB-24). Un alumno
+  sin secciones activas no lee Firebase, y el servicio pasa las dos listas vacías.
 
 `[@test] ../../../test/HU28_ronald/chatbot.chat-search.test.ts` *(existe; fija la normalización,
 el orden del respaldo, los artículos y preposiciones que no emparejan y los mensajes sin remitente
 y con `date` en hora de Lima, BR-CB-23. Desde la ronda final fija además que una lectura fallida
-sin ningún mensaje leído devuelve `null` y que las lecturas sin mensajes y sin fallas devuelven un
-arreglo vacío)*
+sin ningún mensaje leído devuelve `null` y que las lecturas sin mensajes y sin fallas devuelven
+`results` vacío. Desde su revisión fija también las secciones de `sectionsRead`, que dejan fuera
+la lectura fallida y, sin un curso en la pregunta, las secciones después de la tercera)*
 
 ### BR-CB-07: Ventana de contexto
 
@@ -1274,6 +1287,9 @@ BR-CB-24)*
     con su línea. El servicio pasa `null` para los dominios inactivos y, para los activos, lo que
     devuelve la consulta, que siempre es un arreglo, vacío o no, o el objeto del horario. Los
     bloques 8 y 11 reciben además `null` cuando su lectura falla (BR-CB-18 y BR-CB-06).
+    *Aclarado en la revisión de la ronda final.* El bloque 11 recibe además `chatSectionsRead`,
+    las secciones leídas de BR-CB-06. Sin ellas no sale vacío, porque su línea no puede decir de
+    qué secciones no hay mensajes.
   - **Las líneas.** Van después del título, con `- ` al comienzo y sin tildes, como el resto del
     mensaje y como la línea del bloque 8.
 
@@ -1285,13 +1301,16 @@ BR-CB-24)*
     | 6 | «- No hay anuncios activos en tus secciones de este ciclo.» |
     | 7 | «- No tienes secciones activas en este ciclo.» |
     | 9 | «- No hay notas oficiales registradas en tus cursos de este ciclo.» |
-    | 11 | «- No hay mensajes recientes en el chat de las secciones consultadas.» |
+    | 11 | ~~«- No hay mensajes recientes en el chat de las secciones consultadas.»~~ *Corregido en la revisión de la ronda final.* «- No hay mensajes recientes en el chat de ALGORITMOS INVENTADOS (801), BASES INVENTADAS (802) y CALCULO INVENTADO (803).», con cada sección de `sectionsRead` como «CURSO (código)», en el orden de BR-CB-06, o «- No tienes secciones activas en este ciclo.», la línea del bloque 7, si el alumno no tiene secciones activas |
 
   - Cada línea dice lo que su consulta mira. La de alertas dice «registradas» y no «activas»
     porque `getAlerts` trae las alertas del alumno sin filtrar si ya las leyó. La de anuncios dice
-    «activos» porque `getAnnouncements` filtra `an.is_active` y el período activo. La del chat
+    «activos» porque `getAnnouncements` filtra `an.is_active` y el período activo. ~~La del chat
     habla de «las secciones consultadas» porque el filtro de BR-CB-06 lee solo las secciones que
-    nombra la pregunta o, si no nombra ninguna, las tres primeras.
+    nombra la pregunta o, si no nombra ninguna, las tres primeras.~~ *Corregido en la revisión de
+    la ronda final.* La del chat nombra las secciones leídas, porque el filtro de BR-CB-06 lee solo
+    las secciones que nombra la pregunta o, si no nombra ninguna, las tres primeras, y una línea
+    que no las nombra deja que el modelo niegue mensajes de las secciones que no leyó.
   - El bloque 3 sale con el JSON sin cambios si trae al menos una sesión o una evaluación, así que
     un horario con sesiones y sin evaluaciones sigue mandando `"assessments": []`, como `main`.
     Solo sin sesiones ni evaluaciones cambia el JSON por las dos líneas. El bloque 8 lee las
@@ -1302,6 +1321,9 @@ BR-CB-24)*
   - Ante «¿Estoy en riesgo académico?» sin alertas, el mensaje trae `DATOS DE ALERTAS:` con
     «- No tienes alertas registradas.». Un «Hola» como primera pregunta, que cae en el respaldo
     (BR-CB-04), trae los bloques 3, 4 y 9 con sus líneas si las tres fuentes vienen vacías.
+    Ante «¿Dijeron algo en el chat?», con cinco secciones activas y mensajes solo en la cuarta y
+    la quinta, el bloque 11 trae la línea de la tabla con las tres primeras y no habla de las
+    otras dos, que no se leyeron.
 - Desaparecen `HISTORIAL DE LA CONVERSACION` (BR-CB-07) y `DATOS DE COMPANEROS` (BR-CB-17).
 - **Ejemplo inventado.** La alumna ficticia LUCIA INVENTADA PAREDES pregunta, en una sesión con
   dos mensajes previos, «¿Quiénes son los delegados de Seguridad de Sistemas y a qué hora tengo
@@ -1393,11 +1415,15 @@ su línea de «no hay» cuando su dominio está activo y el dato se leyó vacío
 de la línea de evaluaciones, que no salen con el dato sin leer, que el bloque 10 sigue sin salir
 con la simulación vacía y que un «Hola» con todo vacío trae los bloques 3, 4 y 9 con sus líneas.
 También fija que el horario con solo sesiones o solo evaluaciones sale con el JSON sin cambios y
-que el bloque 8 sale sin bloques)*
+que el bloque 8 sale sin bloques. Desde la revisión de la ronda final fija la línea del bloque 11
+con una, dos y tres secciones y sin secciones activas, y que el bloque 11 vacío no sale sin las
+secciones leídas)*
 `[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; desde la ronda final, «¿Estoy
 en riesgo académico?» sin alertas manda el bloque de alertas con su línea, y lo mismo los
 anuncios, la malla, el horario y el chat vacíos, el chat también sin secciones activas. Una
-lectura del chat que falla sin traer mensajes no manda el bloque 11)*
+lectura del chat que falla sin traer mensajes no manda el bloque 11. Desde su revisión, con cinco
+secciones activas y mensajes solo en la cuarta y la quinta, «¿Dijeron algo en el chat?» y «¿Hay
+algún comunicado?» mandan la línea que nombra las tres primeras y ninguna otra)*
 `[@test] ../../../test/HU28_ronald/chatbot.context-format.test.ts` *(existe; lee el ejemplo de
 esta regla, arma el mensaje con datos falsos y lo compara línea por línea, con la línea abreviada
 del horario reemplazada por su JSON, y comprueba el orden de los bloques de la tabla y que no

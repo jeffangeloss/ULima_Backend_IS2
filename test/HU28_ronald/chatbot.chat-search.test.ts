@@ -58,28 +58,28 @@ describe("searchChatMessages - lectura completa", () => {
     }));
 
     const { searchChatMessages: search } = await import("../../src/modules/chatbot/chat-search.js");
-    const results = await search(
+    const { results } = (await search(
       "Se puede usar apuntes en el examen de software? lo han dicho por el grupo?",
       [{ sectionId: 1, courseName: "INGENIERIA DE SOFTWARE II", sectionCode: "856" }],
-    );
+    ))!;
 
     expect(results.length).toBe(1);
     expect(results[0].messages.length).toBe(3);
     expect(results[0].messages[1].body).toBe("Se puede usar apuntes en el examen?");
   });
 
-  test("sección sin mensajes: no agrega resultado", async () => {
+  test("sección sin mensajes: no agrega resultado, pero cuenta como leída", async () => {
     mock.module("../../src/services/firebase.service.js", () => ({
       firebaseService: { getRecentMessages: async () => [] },
     }));
 
     const { searchChatMessages: search } = await import("../../src/modules/chatbot/chat-search.js");
-    const results = await search(
+    const outcome = await search(
       "qué se dijo en el chat?",
       [{ sectionId: 1, courseName: "INGENIERIA DE SOFTWARE II", sectionCode: "856" }],
     );
 
-    expect(results.length).toBe(0);
+    expect(outcome).toEqual({ results: [], sectionsRead: ["INGENIERIA DE SOFTWARE II (856)"] });
   });
 
   test("error de firebase: continua con la siguiente sección, no rompe", async () => {
@@ -95,16 +95,18 @@ describe("searchChatMessages - lectura completa", () => {
     }));
 
     const { searchChatMessages: search } = await import("../../src/modules/chatbot/chat-search.js");
-    const results = await search(
+    const { results, sectionsRead } = (await search(
       "qué se dijo?",
       [
         { sectionId: 1, courseName: "CURSO A", sectionCode: "100" },
         { sectionId: 2, courseName: "CURSO B", sectionCode: "200" },
       ],
-    );
+    ))!;
 
     expect(results.length).toBe(1);
     expect(results[0].sectionName).toContain("CURSO B");
+    // La sección cuya lectura falló no cuenta como leída.
+    expect(sectionsRead).toEqual(["CURSO B (200)"]);
   });
 });
 
@@ -179,9 +181,9 @@ describe("searchChatMessages - sin remitente y con fecha en hora de Lima (BR-CB-
     async (_sectionId: number, _limit: number) => mensajes;
 
   test("cada mensaje queda solo con body y date, en ese orden, sin senderName ni createdAt", async () => {
-    const results = await searchChatMessages("que dijeron en el chat?", SECCION, lectorCon([
+    const { results } = (await searchChatMessages("que dijeron en el chat?", SECCION, lectorCon([
       { id: "m1", senderName: "REMITENTE INVENTADO UNO", body: "El parcial es el lunes 28?", createdAt: Date.UTC(2026, 8, 25, 2, 15) },
-    ]));
+    ])))!;
 
     expect(results).toEqual([
       {
@@ -197,11 +199,11 @@ describe("searchChatMessages - sin remitente y con fecha en hora de Lima (BR-CB-
   });
 
   test("la fecha usa America/Lima (UTC-5): la medianoche de Lima sale 00:00, no 24:00 ni el día UTC", async () => {
-    const results = await searchChatMessages("chat", SECCION, lectorCon([
+    const { results } = (await searchChatMessages("chat", SECCION, lectorCon([
       { id: "a", senderName: "X", body: "uno", createdAt: Date.UTC(2026, 8, 25, 5, 0) },
       { id: "b", senderName: "X", body: "dos", createdAt: Date.UTC(2026, 8, 25, 4, 59) },
       { id: "c", senderName: "X", body: "tres", createdAt: Date.UTC(2026, 0, 1, 3, 7) },
-    ]));
+    ])))!;
 
     expect(results[0].messages.map((m) => m.date)).toEqual([
       "2026-09-25 00:00",
@@ -211,10 +213,10 @@ describe("searchChatMessages - sin remitente y con fecha en hora de Lima (BR-CB-
   });
 
   test("una fecha que no es un número válido no tumba la sección: el mensaje sale con «sin fecha»", async () => {
-    const results = await searchChatMessages("chat", SECCION, lectorCon([
+    const { results } = (await searchChatMessages("chat", SECCION, lectorCon([
       { id: "a", senderName: "X", body: "sin hora", createdAt: Number.NaN },
       { id: "b", senderName: "X", body: "con hora", createdAt: Date.UTC(2026, 8, 24, 21, 17) },
-    ]));
+    ])))!;
 
     expect(results[0].messages).toEqual([
       { body: "sin hora", date: "sin fecha" },
@@ -305,11 +307,11 @@ describe("searchChatMessages - los mensajes borrados no viajan (BR-CB-23, R-CHAT
   ];
 
   test("un mensaje con deleted === true se omite y su texto no llega al resultado", async () => {
-    const results = await searchChatMessages("que dijeron en seguridad?", SECCIONES, async () => [
+    const { results } = (await searchChatMessages("que dijeron en seguridad?", SECCIONES, async () => [
       { body: "El parcial es el lunes", createdAt: Date.UTC(2026, 8, 24, 15, 0) },
       { body: "TEXTO BORRADO POR SU AUTOR", createdAt: Date.UTC(2026, 8, 24, 15, 5), deleted: true },
       { body: "Gracias", createdAt: Date.UTC(2026, 8, 24, 15, 10), deleted: false },
-    ]);
+    ]))!;
 
     expect(results).toEqual([
       {
@@ -324,13 +326,15 @@ describe("searchChatMessages - los mensajes borrados no viajan (BR-CB-23, R-CHAT
   });
 
   test("una sección cuyos mensajes leídos están todos borrados se omite, como una sección sin mensajes", async () => {
-    const results = await searchChatMessages("chat de seguridad y planeamiento", SECCIONES, async (sectionId) =>
+    const { results, sectionsRead } = (await searchChatMessages("chat de seguridad y planeamiento", SECCIONES, async (sectionId) =>
       sectionId === 7
         ? [{ body: "BORRADO UNO", createdAt: 1, deleted: true }, { body: "BORRADO DOS", createdAt: 2, deleted: true }]
         : [{ body: "Nos vemos en clase", createdAt: Date.UTC(2026, 8, 24, 15, 0) }],
-    );
+    ))!;
 
     expect(results.map((r) => r.sectionName)).toEqual(["PLANEAMIENTO ESTRATEGICO (802)"]);
+    // Leída con todos sus mensajes borrados, la sección sigue contando como leída.
+    expect(sectionsRead).toEqual(["PLANEAMIENTO ESTRATEGICO (802)", "SEGURIDAD DE SISTEMAS (801)"]);
     expect(JSON.stringify(results)).not.toContain("BORRADO");
   });
 });
@@ -372,18 +376,71 @@ describe("searchChatMessages - una lectura fallida no se confunde con «no hay m
     expect(results).toBeNull();
   });
 
-  test("si todas las lecturas responden sin mensajes, devuelve un arreglo vacío", async () => {
-    const results = await searchChatMessages(PREGUNTA, SECCIONES, async () => []);
-    expect(results).toEqual([]);
+  test("si todas las lecturas responden sin mensajes, devuelve ningún resultado y las dos secciones leídas", async () => {
+    const outcome = await searchChatMessages(PREGUNTA, SECCIONES, async () => []);
+    expect(outcome).toEqual({
+      results: [],
+      sectionsRead: ["PLANEAMIENTO ESTRATEGICO (802)", "SEGURIDAD DE SISTEMAS (801)"],
+    });
   });
 
-  test("si una lectura falla y la otra trae mensajes, devuelve los que llegaron", async () => {
-    const results = await searchChatMessages(PREGUNTA, SECCIONES, async (sectionId) => {
+  test("si una lectura falla y la otra trae mensajes, devuelve los que llegaron y solo la sección leída", async () => {
+    const outcome = await searchChatMessages(PREGUNTA, SECCIONES, async (sectionId) => {
       if (sectionId === 7) throw new Error("firebase inventado caído");
       return [{ body: "Nos vemos en clase", createdAt: Date.UTC(2026, 8, 24, 15, 0) }];
     });
-    expect(results).toEqual([
-      { sectionName: "PLANEAMIENTO ESTRATEGICO (802)", messages: [{ body: "Nos vemos en clase", date: "2026-09-24 10:00" }] },
-    ]);
+    expect(outcome).toEqual({
+      results: [
+        { sectionName: "PLANEAMIENTO ESTRATEGICO (802)", messages: [{ body: "Nos vemos en clase", date: "2026-09-24 10:00" }] },
+      ],
+      sectionsRead: ["PLANEAMIENTO ESTRATEGICO (802)"],
+    });
+  });
+});
+
+// ============================================================================
+// BR-CB-06 y BR-CB-24, revisión de la ronda final: la línea de «no hay» del
+// bloque 11 nombra las secciones leídas, así que `searchChatMessages` devuelve
+// cuáles leyó. Sin un curso en la pregunta lee solo las tres primeras, y las
+// demás no cuentan como leídas aunque tengan mensajes. Cursos inventados.
+// ============================================================================
+
+describe("searchChatMessages - devuelve las secciones que leyó (BR-CB-06 y BR-CB-24)", () => {
+  const CINCO_SECCIONES = [
+    { sectionId: 5, courseName: "ETICA INVENTADA", sectionCode: "805" },
+    { sectionId: 4, courseName: "DISEÑO INVENTADO", sectionCode: "804" },
+    { sectionId: 3, courseName: "CÁLCULO INVENTADO", sectionCode: "803" },
+    { sectionId: 2, courseName: "BASES INVENTADAS", sectionCode: "802" },
+    { sectionId: 1, courseName: "ALGORITMOS INVENTADOS", sectionCode: "801" },
+  ];
+  // Solo la cuarta y la quinta sección, en orden de BR-CB-06, tienen mensajes.
+  const soloCuartaYQuinta = (leidas: number[]) => async (sectionId: number) => {
+    leidas.push(sectionId);
+    return sectionId >= 4 ? [{ body: "Mañana no hay clase", createdAt: Date.UTC(2026, 8, 24, 15, 0) }] : [];
+  };
+
+  test("sin un curso en la pregunta lee las tres primeras y solo esas cuentan como leídas", async () => {
+    const leidas: number[] = [];
+    const outcome = await searchChatMessages("¿Dijeron algo en el chat?", CINCO_SECCIONES, soloCuartaYQuinta(leidas));
+    expect(leidas).toEqual([1, 2, 3]);
+    expect(outcome).toEqual({
+      results: [],
+      sectionsRead: ["ALGORITMOS INVENTADOS (801)", "BASES INVENTADAS (802)", "CÁLCULO INVENTADO (803)"],
+    });
+  });
+
+  test("con un curso en la pregunta lee solo esa sección, y la nombra aunque traiga mensajes", async () => {
+    const leidas: number[] = [];
+    const outcome = await searchChatMessages("¿Dijeron algo en el chat de diseño?", CINCO_SECCIONES, soloCuartaYQuinta(leidas));
+    expect(leidas).toEqual([4]);
+    expect(outcome?.sectionsRead).toEqual(["DISEÑO INVENTADO (804)"]);
+    expect(outcome?.results.map((r) => r.sectionName)).toEqual(["DISEÑO INVENTADO (804)"]);
+  });
+
+  test("sin secciones no lee nada y devuelve las dos listas vacías", async () => {
+    const leidas: number[] = [];
+    const outcome = await searchChatMessages("¿Dijeron algo en el chat?", [], soloCuartaYQuinta(leidas));
+    expect(leidas).toEqual([]);
+    expect(outcome).toEqual({ results: [], sectionsRead: [] });
   });
 });

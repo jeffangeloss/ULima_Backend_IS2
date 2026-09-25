@@ -177,14 +177,17 @@ const fakeReadOwnBlocks = async (_studentId: number, _today: string) => {
 
 const stubSearchChat = async (question: string, _sections: unknown) => {
   searchChatCalls.push({ question });
-  return [
-    {
-      sectionName: "INGENIERÍA DE SOFTWARE II (856)",
-      messages: [
-        { body: "Si se puede usar apuntes", date: "2026-07-10 18:30" },
-      ],
-    },
-  ];
+  return {
+    results: [
+      {
+        sectionName: "INGENIERÍA DE SOFTWARE II (856)",
+        messages: [
+          { body: "Si se puede usar apuntes", date: "2026-07-10 18:30" },
+        ],
+      },
+    ],
+    sectionsRead: ["INGENIERÍA DE SOFTWARE II (856)"],
+  };
 };
 
 /** El último turno `user` de lo que recibió Cohere: el mensaje de datos. */
@@ -196,6 +199,7 @@ const ultimoMensajeDeDatos = (): string => {
 };
 
 const { ChatbotService } = await import("../../src/modules/chatbot/chatbot.service.js");
+const { searchChatMessages } = await import("../../src/modules/chatbot/chat-search.js");
 const { ChatbotController } = await import("../../src/modules/chatbot/chatbot.controller.js");
 
 describe("ChatbotService.ask - el chat solo con chat o announcements (BR-CB-06 y BR-CB-23)", () => {
@@ -351,7 +355,13 @@ describe("ChatbotService.ask - un dominio consultado sin datos manda su línea d
   });
 
   const TITULO_CHAT = "MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):";
-  const LINEA_CHAT = "- No hay mensajes recientes en el chat de las secciones consultadas.";
+  // La única sección activa de `fakeRepo`, leída sin mensajes.
+  const LINEA_CHAT = "- No hay mensajes recientes en el chat de INGENIERÍA DE SOFTWARE II (856).";
+  // El chat real de `chat-search.ts`, con una lectura de Firebase que responde sin mensajes.
+  const chatSinMensajes = async (question: string, sections: unknown) => {
+    searchChatCalls.push({ question });
+    return searchChatMessages(question, sections as Parameters<typeof searchChatMessages>[1], async () => []);
+  };
 
   const preguntar = async (
     question: string,
@@ -370,12 +380,7 @@ describe("ChatbotService.ask - un dominio consultado sin datos manda su línea d
   });
 
   test("una pregunta de anuncios sin anuncios ni mensajes manda los dos bloques con su línea", async () => {
-    const mensaje = await preguntar("¿Hay algún comunicado de mis cursos?", {
-      searchChat: async (question) => {
-        searchChatCalls.push({ question });
-        return [];
-      },
-    });
+    const mensaje = await preguntar("¿Hay algún comunicado de mis cursos?", { searchChat: chatSinMensajes });
     expect(mensaje).toContain("\nDATOS DE ANUNCIOS:\n- No hay anuncios activos en tus secciones de este ciclo.\n");
     expect(mensaje).toContain(`\n${TITULO_CHAT}\n${LINEA_CHAT}\n`);
   });
@@ -394,22 +399,18 @@ describe("ChatbotService.ask - un dominio consultado sin datos manda su línea d
   });
 
   test("una pregunta del chat sin mensajes manda el bloque del chat con su línea", async () => {
-    const mensaje = await preguntar("¿Dijeron algo del examen en el chat?", {
-      searchChat: async (question) => {
-        searchChatCalls.push({ question });
-        return [];
-      },
-    });
+    const mensaje = await preguntar("¿Dijeron algo del examen en el chat?", { searchChat: chatSinMensajes });
     expect(searchChatCalls.length).toBe(1);
     expect(mensaje).toContain(`\n${TITULO_CHAT}\n${LINEA_CHAT}\n`);
   });
 
-  test("sin secciones activas, el chat no se lee y su bloque sale con la línea", async () => {
+  test("sin secciones activas, el chat no se lee y su bloque dice que no hay secciones activas", async () => {
     const mensaje = await preguntar("¿Dijeron algo del examen en el chat?", {
       repo: { getActiveSectionDetails: async () => [] },
     });
     expect(searchChatCalls.length).toBe(0);
-    expect(mensaje).toContain(`\n${TITULO_CHAT}\n${LINEA_CHAT}\n`);
+    expect(mensaje).toContain(`\n${TITULO_CHAT}\n- No tienes secciones activas en este ciclo.\n`);
+    expect(mensaje).not.toContain("- No hay mensajes recientes");
   });
 
   test("una lectura del chat que falla sin traer mensajes (null, BR-CB-06) no manda el bloque del chat", async () => {
@@ -421,7 +422,7 @@ describe("ChatbotService.ask - un dominio consultado sin datos manda su línea d
     });
     expect(searchChatCalls.length).toBe(1);
     expect(mensaje).not.toContain("MENSAJES DEL CHAT DE LA SECCION");
-    expect(mensaje).not.toContain(LINEA_CHAT);
+    expect(mensaje).not.toContain("- No hay mensajes recientes");
   });
 
   test("sin delegados que mostrar, porque no hay secciones activas, el bloque de delegados sale con su línea", async () => {
@@ -440,6 +441,65 @@ describe("ChatbotService.ask - un dominio consultado sin datos manda su línea d
       expect(mensaje).not.toContain(titulo);
     }
     expect(mensaje).not.toContain("- No tienes alertas registradas.");
+  });
+});
+
+// Revisión de la ronda final (BR-CB-06 y BR-CB-24, decisión 8): sin un curso en
+// la pregunta, el chat se lee solo en las tres primeras secciones. Si esas tres
+// no traen mensajes, la línea de «no hay» las nombra y no habla de las otras,
+// que el servicio no leyó aunque tengan mensajes. Cinco secciones inventadas,
+// con mensajes solo en la cuarta y la quinta.
+describe("ChatbotService.ask - con más de tres secciones, la línea del chat nombra solo las leídas (BR-CB-06 y BR-CB-24)", () => {
+  const CINCO_SECCIONES = [
+    { sectionId: 1, courseName: "ALGORITMOS INVENTADOS", sectionCode: "801" },
+    { sectionId: 2, courseName: "BASES INVENTADAS", sectionCode: "802" },
+    { sectionId: 3, courseName: "CALCULO INVENTADO", sectionCode: "803" },
+    { sectionId: 4, courseName: "DISENO INVENTADO", sectionCode: "804" },
+    { sectionId: 5, courseName: "ETICA INVENTADA", sectionCode: "805" },
+  ];
+  const TITULO_CHAT = "MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):";
+  const LINEA_TRES_PRIMERAS =
+    "- No hay mensajes recientes en el chat de ALGORITMOS INVENTADOS (801), BASES INVENTADAS (802) y CALCULO INVENTADO (803).";
+  const leidas: number[] = [];
+
+  beforeEach(() => {
+    enviosACohere.length = 0;
+    leidas.length = 0;
+    historialFalso = [];
+  });
+
+  /** El servicio con cinco secciones activas y el chat real de `chat-search.ts`. */
+  const preguntar = async (question: string) => {
+    const repo = { ...fakeRepo, getActiveSectionDetails: async () => CINCO_SECCIONES };
+    const searchChat = (q: string, sections: Parameters<typeof searchChatMessages>[1]) =>
+      searchChatMessages(q, sections, async (sectionId) => {
+        leidas.push(sectionId);
+        return sectionId >= 4 ? [{ body: "Mañana no hay clase", createdAt: Date.UTC(2026, 8, 24, 15, 0) }] : [];
+      });
+    const service = new ChatbotService(repo as any, fakeScheduleService, fakeReadOwnBlocks, searchChat);
+    await service.ask("s1", 2, { question });
+    return ultimoMensajeDeDatos();
+  };
+
+  for (const pregunta of ["¿Dijeron algo en el chat?", "¿Hay algún comunicado?"]) {
+    test(`«${pregunta}» lee las tres primeras secciones y la línea nombra esas tres y ninguna otra`, async () => {
+      const mensaje = await preguntar(pregunta);
+      expect(leidas).toEqual([1, 2, 3]);
+      expect(mensaje).toContain(`\n${TITULO_CHAT}\n${LINEA_TRES_PRIMERAS}\n`);
+      expect(mensaje).not.toContain("secciones consultadas");
+      expect(mensaje).not.toContain("DISENO INVENTADO");
+      expect(mensaje).not.toContain("ETICA INVENTADA");
+      expect(mensaje).not.toContain("Mañana no hay clase");
+    });
+  }
+
+  test("«¿Dijeron algo en el chat de ética?» lee solo esa sección y manda sus mensajes, sin línea de «no hay»", async () => {
+    const mensaje = await preguntar("¿Dijeron algo en el chat de ética?");
+    expect(leidas).toEqual([5]);
+    expect(mensaje).toContain(`\n${TITULO_CHAT}\n`);
+    expect(mensaje).toContain('"sectionName": "ETICA INVENTADA (805)"');
+    expect(mensaje).toContain("Mañana no hay clase");
+    expect(mensaje).not.toContain("- No hay mensajes recientes");
   });
 });
 

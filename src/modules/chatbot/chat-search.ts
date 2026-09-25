@@ -14,6 +14,18 @@ export interface ChatSearchResult {
   }>;
 }
 
+/**
+ * Lo que deja la lectura del chat (BR-CB-06 y BR-CB-24). `results` trae solo
+ * las secciones con mensajes y es el JSON del bloque 11. `sectionsRead` nombra,
+ * como «CURSO (código)» y en el orden de BR-CB-06, cada sección cuya lectura
+ * respondió, con mensajes o sin ellos, porque la línea de «no hay» del bloque
+ * 11 dice de qué secciones no hay mensajes y no puede hablar de las que no leyó.
+ */
+export interface ChatSearchOutcome {
+  results: ChatSearchResult[];
+  sectionsRead: string[];
+}
+
 type SectionDetail = { sectionId: number; courseName: string; sectionCode: string };
 
 /**
@@ -48,22 +60,25 @@ function limaDateTime(createdAt: number): string {
 
 /**
  * Mensajes de las secciones que corresponden a la pregunta (BR-CB-06). Una
- * sección cuya lectura falla se registra y se salta. Si ninguna sección trae
- * mensajes y alguna lectura falló, devuelve null y no un arreglo vacío, porque
- * no puede afirmar que no hay mensajes: el bloque 11 no sale (BR-CB-24).
+ * sección cuya lectura falla se registra y se salta, y no entra en
+ * `sectionsRead`. Si ninguna sección trae mensajes y alguna lectura falló,
+ * devuelve null, porque no puede afirmar que no hay mensajes, y el bloque 11
+ * no sale (BR-CB-24).
  */
 export async function searchChatMessages(
   question: string,
   sectionDetails: SectionDetail[],
   // Inyectable para pruebas; por defecto, Firebase RTDB.
   readMessages: ChatMessagesReader = (sectionId, limit) => firebaseService.getRecentMessages(sectionId, limit),
-): Promise<ChatSearchResult[] | null> {
+): Promise<ChatSearchOutcome | null> {
   const results: ChatSearchResult[] = [];
+  const sectionsRead: string[] = [];
   let failedReads = 0;
 
   const matchedSections = filterSections(question, sectionDetails);
 
   for (const section of matchedSections) {
+    const sectionName = `${section.courseName} (${section.sectionCode})`;
     try {
       // Un mensaje que su autor o el profesor titular borró guarda aún su
       // texto (R-CHAT-4) y no viaja (BR-CB-23). Si todos lo están, la sección
@@ -71,11 +86,12 @@ export async function searchChatMessages(
       const messages = (await readMessages(section.sectionId, MESSAGES_PER_SECTION)).filter(
         (m) => m.deleted !== true,
       );
+      sectionsRead.push(sectionName);
 
       if (messages.length === 0) continue;
 
       results.push({
-        sectionName: `${section.courseName} (${section.sectionCode})`,
+        sectionName,
         // Solo el texto y la fecha: el remitente no se copia (BR-CB-23).
         messages: messages.map((m) => ({
           body: m.body,
@@ -88,7 +104,7 @@ export async function searchChatMessages(
     }
   }
 
-  return results.length === 0 && failedReads > 0 ? null : results;
+  return results.length === 0 && failedReads > 0 ? null : { results, sectionsRead };
 }
 
 /** Orden de BR-CB-06: nombre de curso (normalizado) y código de sección. */

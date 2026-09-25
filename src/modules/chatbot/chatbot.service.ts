@@ -7,7 +7,7 @@ import type { OwnTimeBlocksSummary, readOwnTimeBlocksForAssistant } from "../tim
 import { ChatbotRepository } from "./chatbot.repository.js";
 import { classifyByKeywords } from "./intent-classifier.js";
 import { buildContext, type DateContext } from "./context-builder.js";
-import { searchChatMessages, type ChatSearchResult } from "./chat-search.js";
+import { searchChatMessages, type ChatSearchOutcome } from "./chat-search.js";
 import { summarizeOfficialGrades } from "./grades-summary.js";
 import type { ChatbotMessageRow, ChatbotSessionRow } from "./chatbot.types.js";
 import type { AskInput } from "./chatbot.schemas.js";
@@ -94,7 +94,7 @@ export class ChatbotService {
       announcementsData,
       delegatesData,
       ownBlocks,
-      chatSearchResults,
+      chat,
       officialGradesRows,
     ] = await Promise.all([
       intents.includes("schedule") ? this.getScheduleData(studentId, dateContext) : Promise.resolve(null),
@@ -126,7 +126,10 @@ export class ChatbotService {
       announcementsData,
       delegatesData,
       ownBlocks,
-      chatSearchResults,
+      // BR-CB-24 (bloque 11): el JSON sale de `results` y la línea de «no hay»
+      // nombra las secciones de `sectionsRead`.
+      chatSearchResults: chat?.results ?? null,
+      chatSectionsRead: chat?.sectionsRead ?? null,
       officialGrades,
       localGrades: input.localGrades,
       question: input.question,
@@ -246,13 +249,14 @@ export class ChatbotService {
   }
 
   /**
-   * BR-CB-06 y BR-CB-24: un arreglo vacío es «no hay mensajes» y el bloque 11
-   * sale con su línea; null es una lectura fallida y el bloque no sale. Sin
-   * secciones activas no hay chat que leer, así que no hay mensajes.
+   * BR-CB-06 y BR-CB-24: sin mensajes, el bloque 11 sale con una línea que
+   * nombra las secciones leídas; null es una lectura fallida y el bloque no
+   * sale. Sin secciones activas no hay chat que leer, así que no se lee ninguna
+   * sección y la línea lo dice.
    */
-  private async getChatResults(studentId: number, question: string): Promise<ChatSearchResult[] | null> {
+  private async getChatResults(studentId: number, question: string): Promise<ChatSearchOutcome | null> {
     const sectionDetails = await this.repository.getActiveSectionDetails(studentId);
-    if (sectionDetails.length === 0) return [];
+    if (sectionDetails.length === 0) return { results: [], sectionsRead: [] };
     return this.searchChat(question, sectionDetails);
   }
 

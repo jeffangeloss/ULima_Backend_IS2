@@ -103,13 +103,17 @@ const singleLine = (text: string): string => text.replace(/\s+/g, " ").trim();
 /** Nombres sin tilde, de lunes (1) a domingo (7), la convención de `day_of_week`. */
 const DAY_NAMES = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"] as const;
 
+/** «a», «a y b» o «a, b y c». */
+function joinSpanish(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`;
+}
+
 /** «lunes», «lunes y miercoles», «lunes, miercoles y viernes» o «todos los dias». */
 function describeDays(daysOfWeek: readonly number[]): string {
   const days = [...new Set(daysOfWeek)].filter((d) => Number.isInteger(d) && d >= 1 && d <= 7).sort((a, b) => a - b);
   if (days.length === DAY_NAMES.length) return "todos los dias";
-  const names = days.map((d) => DAY_NAMES[d - 1]);
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} y ${names[names.length - 1]}`;
+  return joinSpanish(days.map((d) => DAY_NAMES[d - 1]));
 }
 
 /**
@@ -217,7 +221,19 @@ const NO_ALERTS = "- No tienes alertas registradas.";
 const NO_ANNOUNCEMENTS = "- No hay anuncios activos en tus secciones de este ciclo.";
 const NO_SECTIONS = "- No tienes secciones activas en este ciclo.";
 const NO_OFFICIAL_GRADES = "- No hay notas oficiales registradas en tus cursos de este ciclo.";
-const NO_CHAT_MESSAGES = "- No hay mensajes recientes en el chat de las secciones consultadas.";
+
+/**
+ * BR-CB-24 (bloque 11): la línea de «no hay» del chat nombra las secciones que
+ * se leyeron, porque sin pregunta sobre un curso BR-CB-06 lee solo las tres
+ * primeras y el modelo no puede suponer que las demás tampoco tienen mensajes.
+ * Sin secciones leídas, que solo pasa sin secciones activas, dice eso. Si no
+ * se sabe qué secciones se leyeron, no hay línea y el bloque vacío no sale.
+ */
+function noChatMessagesLines(sectionsRead: readonly string[] | null | undefined): string[] | null {
+  if (!sectionsRead) return null;
+  if (sectionsRead.length === 0) return [NO_SECTIONS];
+  return [`- No hay mensajes recientes en el chat de ${joinSpanish(sectionsRead.map(singleLine))}.`];
+}
 
 /**
  * Las sesiones del bloque de horario (`{ sessions, assessments }`), o null si
@@ -324,6 +340,8 @@ export function buildContext(params: {
   /** Resumen de `readOwnTimeBlocksForAssistant` (RS-BE-35); null si la lectura falló. */
   ownBlocks?: OwnTimeBlocksSummary | null;
   chatSearchResults?: unknown;
+  /** `sectionsRead` de `searchChatMessages` (BR-CB-06); vacío sin secciones activas. */
+  chatSectionsRead?: readonly string[] | null;
   officialGrades?: OfficialCourseGrades[] | null;
   localGrades?: unknown;
   question: string;
@@ -436,10 +454,12 @@ export function buildContext(params: {
   // BR-CB-23 y BR-CB-24 (bloque 11): solo con `chat` o `announcements`. Los
   // mensajes van sin remitente y el JSON escapa sus saltos de línea, sus
   // comillas y los separadores de línea de Unicode. Con la lectura fallida
-  // (null, BR-CB-06) el bloque no sale.
+  // (null, BR-CB-06) el bloque no sale, y tampoco sale vacío si no se sabe qué
+  // secciones se leyeron.
   if (params.intents.includes("chat") || params.intents.includes("announcements")) {
-    pushBlock(blocks, CHAT_TITLE, params.chatSearchResults,
-      () => [thirdPartyJson(params.chatSearchResults)], [NO_CHAT_MESSAGES]);
+    const noChat = noChatMessagesLines(params.chatSectionsRead);
+    const chat = hasData(params.chatSearchResults) || noChat !== null ? params.chatSearchResults : null;
+    pushBlock(blocks, CHAT_TITLE, chat, () => [thirdPartyJson(chat)], noChat ?? []);
   }
 
   // La pregunta va después del cierre, fuera del bloque de datos.
