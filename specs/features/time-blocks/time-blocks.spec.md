@@ -18,6 +18,10 @@ targets:
 > Revisada el 2026-09-21 con las decisiones de la planificación: `PATCH` en el CORS, tope de
 > 20 bloques guardados, semanas enteras en `weeks` y la fecha exacta del horario (RS-BE-36).
 > Ajustada el 2026-09-23 con el arreglo del bloque sin días reales y la lista Mis bloques, aprobado por el dueño ese día.
+> **Ajustada el 2026-09-25, aprobada por el dueño el 2026-09-25.** Por decisión suya de ese día,
+> RS-BE-35 cambia y el chatbot lee los bloques del propio alumno por una función acotada; el resto
+> del módulo sigue sin exponerse al chatbot. Ningún otro requisito ni el contrato de `/time-blocks`
+> cambian.
 > Contraparte de frontend: `ULima_Frontend_IS2/specs/features/time-blocks/time-blocks.spec.md`.
 
 ## El problema
@@ -198,14 +202,73 @@ También es función pura y se prueba aparte.
 
 `[@test] ../../../test/HU35_jeff/time-blocks-expansion.test.ts`
 
-### RS-BE-35 — Nada de esto lo ve el chatbot
+### RS-BE-35 — El chatbot lee solo los bloques del propio alumno, por una función acotada
 
-El chatbot manda su contexto a un proveedor externo. Dónde trabaja un alumno y a qué hora
-sale no tiene por qué salir de la app: ni `chatbot.repository.ts` ni `chatbot.service.ts`
-leen `student_time_block` ni `student_time_block_exception`, ni importan el módulo
-`time-blocks`. Una prueba lo fija, igual que en `academic-record` (RS-BE-28).
+> *Ajustada el 2026-09-25 por decisión del dueño de ese día, aprobada por él el 2026-09-25 e
+> implementada en la rama `fix/chatbot-delegados-bloques`.*
+> Revierte, para los bloques, la versión aprobada el 2026-09-23, que se titulaba «Nada de esto lo
+> ve el chatbot». El récord académico sigue aislado (RS-BE-28 de `academic-record`, sin cambios).
 
-`[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts`
+*Versión aprobada el 2026-09-23, reemplazada.* ~~El chatbot manda su contexto a un proveedor
+externo. Dónde trabaja un alumno y a qué hora sale no tiene por qué salir de la app: ni
+`chatbot.repository.ts` ni `chatbot.service.ts` leen `student_time_block` ni
+`student_time_block_exception`, ni importan el módulo `time-blocks`. Una prueba lo fija, igual que
+en `academic-record` (RS-BE-28).~~
+
+El chatbot manda su contexto a un proveedor externo (Cohere), y por eso esta regla lo aislaba de
+los bloques. El 2026-09-25 el dueño decide que el chatbot sí puede leer los bloques del alumno que
+pregunta, para responder «¿a qué hora tengo prácticas?» con días, horas y frecuencia y para sugerir
+cómo organizar el tiempo junto con su horario de clases (BR-CB-18 y BR-CB-19 de
+`specs/features/chatbot/chatbot.spec.md`). Desde entonces, el título y las horas de los bloques
+viajan a Cohere cuando la pregunta los pide.
+
+- **Una sola puerta.** `src/modules/time-blocks/index.ts` exporta la función
+  `readOwnTimeBlocksForAssistant(studentId, today)` y su tipo de retorno `OwnTimeBlocksSummary`
+  (en `time-blocks.types.ts`). La función delega en un método nuevo de `TimeBlocksService`,
+  `assistantSummary`, que usa `findBlocks` y `findExceptions` del repository, que ya filtran por
+  `student_id` (`time-blocks.repository.ts:94-102` y `:180-194`), y `expandOccurrences` y
+  `weeklyHours` (`time-blocks.logic.ts:79` y `:163`), las mismas de RS-BE-33 y RS-BE-34.
+- **Solo del propio alumno.** `studentId` llega del JWT a través del chatbot. La función no recibe
+  otro alumno, no busca por id de bloque y no acepta filtros.
+- **Solo lectura y solo estos campos.**
+  - La ventana, del lunes de la semana de `today` al domingo de la semana siguiente (14 días, en
+    hora de Lima).
+  - Los bloques con `endDate` igual o posterior al lunes de la ventana, en el orden de
+    `findBlocks`, con `title`, `daysOfWeek`, `startTime`, `endTime`, `startDate` y `endDate`.
+  - Por bloque, sus excepciones cuya fecha cae dentro de la ventana y dentro del patrón del bloque,
+    con `date`, `status`, `startTime` y `endTime`.
+  - Las horas de la semana actual y de la siguiente, dos entradas con la forma de `weeks` de
+    RS-BE-34.
+
+  No devuelve `id`, `colorHex`, fechas de creación, excepciones fuera de la ventana ni bloques
+  vencidos.
+- **Nada más del módulo se expone.** El chatbot no importa el repository, el service, la lógica,
+  los schemas ni las rutas de `time-blocks`, no nombra `student_time_block`,
+  `student_time_block_exception` ni `time_block_exception_status`, y no escribe bloques. Las rutas
+  de `/time-blocks` y su contrato no cambian.
+- **La prueba de aislamiento cambia en consecuencia.** `chatbot-isolation-blocks.test.ts` sigue
+  recorriendo todo `src/modules/chatbot/**/*.ts` y sigue prohibiendo los nombres de las tablas y
+  del enum en SQL y en camelCase. Deja de prohibir todo import de `time-blocks` y pasa a permitir
+  un único origen, `../time-blocks/index.js`, y solo dos nombres, `readOwnTimeBlocksForAssistant`
+  y `OwnTimeBlocksSummary`. La prueba distingue la importación como valor de la importación como
+  tipo por la forma de la declaración.
+  - `readOwnTimeBlocksForAssistant` puede importarse como valor solo en `chatbot/index.ts`. La
+    prueba falla si otro archivo la importa en una declaración que no sea `import type { … }`.
+  - `OwnTimeBlocksSummary` se importa siempre con `import type { … }`, también en
+    `chatbot/index.ts`.
+  - El modificador en línea (`import { type … }`) no cuenta como importación de tipo, así que la
+    declaración que lo usa se trata como importación de valor y cae en las dos reglas anteriores.
+
+  Cualquier otra ruta dentro de `time-blocks` (`time-blocks.repository`, `time-blocks.logic`,
+  `time-blocks.service`…) o cualquier otro nombre sigue fallando, también en un import dinámico o
+  de solo efecto.
+- Una prueba nueva de este módulo fija que la función devuelve solo los bloques del alumno pedido,
+  aunque haya otro alumno con bloques en la misma ventana, solo los campos listados, las excepciones
+  de la ventana y del patrón, y las mismas horas semanales que `GET /time-blocks/me/occurrences`
+  para esas dos semanas.
+
+`[@test] ../../../test/HU35_jeff/chatbot-isolation-blocks.test.ts` *(existe; ajustada a esta regla)*
+`[@test] ../../../test/HU35_jeff/time-blocks-assistant-summary.test.ts` *(existe)*
 
 ### RS-BE-36 — La fecha exacta de cada día del horario
 
@@ -343,6 +406,8 @@ GET /schedule/me/sessions      (ya existe; RS-BE-36 solo agrega isoDate a cada d
 - `specs/features/schedule/schedule.spec.md`: una nota de que el horario del alumno ya no es
   solo lo que baja del portal y de que los bloques propios viajan por su propia ruta, y el
   campo `isoDate` de `days` (RS-BE-36).
+- *2026-09-25.* `specs/features/chatbot/chatbot.spec.md` usa la función de RS-BE-35 en BR-CB-18
+  y BR-CB-19, y `docs/specs/api-contracts.md` deja de decir que el chatbot no lee estas tablas.
 
 ## Qué NO entra
 
@@ -374,3 +439,4 @@ GET /schedule/me/sessions      (ya existe; RS-BE-36 solo agrega isoDate a cada d
 | 9 | Semanas de `weeks` | La semana entera de lunes a domingo, una por cada lunes entre `from` y `to`, con 0 si no hay nada | Solo lo que cae dentro de la ventana (la primera y la última semana saldrían cortas); omitir las semanas vacías |
 | 10 | `PATCH` desde un navegador | Agregar `PATCH` al CORS de `src/server.ts` | Pasar la edición a `PUT`; dejar la build web sin editar bloques |
 | 11 | Cómo sabe la app la fecha de cada día | `isoDate` en cada día de `GET /schedule/me/sessions` | Leerla de `dateText` en español (no trae año y se rompe en un ciclo que cruza de diciembre a enero); una ruta aparte solo para las fechas |
+| 12 | Qué ve el chatbot de los bloques (2026-09-25, aprobada por el dueño ese día) | Los bloques del propio alumno, por una sola función de solo lectura con los campos de RS-BE-35 | Nada, que es la versión del 2026-09-23 y no deja responder «¿a qué hora tengo prácticas?»; que el repositorio del chatbot lea las tablas, lo que duplica la expansión y abre el módulo entero |

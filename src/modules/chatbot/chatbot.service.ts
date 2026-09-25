@@ -1,75 +1,113 @@
 import { cohereClient } from "../../services/cohere.client.js";
 import { todayISO } from "../../shared/clock.js";
 import type { ScheduleService } from "../schedule/index.js";
+// RS-BE-35: de `time-blocks` solo la función acotada y su tipo, y aquí solo
+// como tipos. El valor lo inyecta `chatbot/index.ts` por constructor.
+import type { OwnTimeBlocksSummary, readOwnTimeBlocksForAssistant } from "../time-blocks/index.js";
 import { ChatbotRepository } from "./chatbot.repository.js";
-import { classifyByKeywords, classifyWithCohere } from "./intent-classifier.js";
+import { classifyByKeywords } from "./intent-classifier.js";
 import { buildContext, type DateContext } from "./context-builder.js";
-import { searchChatMessages } from "./chat-search.js";
+import { searchChatMessages, type ChatSearchOutcome } from "./chat-search.js";
 import { summarizeOfficialGrades } from "./grades-summary.js";
-import type { ChatbotIntent, ChatbotMessageRow, ChatbotSessionRow } from "./chatbot.types.js";
+import type { ChatbotMessageRow, ChatbotSessionRow } from "./chatbot.types.js";
 import type { AskInput } from "./chatbot.schemas.js";
 
-const CLASSIFY_TIMEOUT_MS = 500;
 const WEEK_RANGE_RADIUS = 1;
+
+/** BR-CB-07 y BR-CB-20: turnos previos que viajan a Cohere en cada pregunta. */
+const HISTORY_LIMIT = 10;
+
+/** Violación de llave foránea de PostgreSQL. */
+const FOREIGN_KEY_VIOLATION = "23503";
 
 export class ChatbotService {
   constructor(
     private readonly repository: ChatbotRepository,
     private readonly scheduleService: ScheduleService,
+    // BR-CB-18: la lectura de los bloques propios del alumno, la única puerta
+    // del chatbot a `time-blocks` (RS-BE-35).
+    private readonly readOwnTimeBlocks: typeof readOwnTimeBlocksForAssistant,
     // Inyectable para tests (default: la función real). Evita tener que mockear
     // el módulo chat-search.js globalmente, que en Bun se filtra entre archivos.
     private readonly searchChat: typeof searchChatMessages = searchChatMessages,
   ) {}
 
   async createSession(studentId: number): Promise<ChatbotSessionRow> {
+    await this.purgeExpiredSessions();
     return this.repository.createSession(studentId);
   }
 
   async listSessions(studentId: number): Promise<ChatbotSessionRow[]> {
+    await this.purgeExpiredSessions();
     return this.repository.listSessions(studentId);
   }
 
   async getSession(sessionId: string, studentId: number): Promise<{ session: ChatbotSessionRow; messages: ChatbotMessageRow[] } | null> {
+    // BR-CB-22: una sesión del ciclo anterior se borra primero y la ruta da 404.
+    await this.purgeExpiredSessions();
     const session = await this.repository.findSessionById(sessionId, studentId);
     if (!session) return null;
     const messages = await this.repository.getMessages(sessionId);
     return { session, messages };
   }
 
+  /** BR-CB-22: `deleteSession` no corre la purga. */
   async deleteSession(sessionId: string, studentId: number): Promise<boolean> {
     return this.repository.deleteSession(sessionId, studentId);
   }
 
+  /**
+   * Orden de BR-CB-21: purga del ciclo, sesión del alumno, los 10 últimos
+   * mensajes, clasificación y fecha, recolección, Cohere, guardado atómico del
+   * par y, si el historial estaba vacío, el título.
+   */
   async ask(sessionId: string, studentId: number, input: AskInput): Promise<{ answer: string; sessionId: string }> {
+    // BR-CB-22: una sesión del ciclo anterior se borra aquí y responde 404.
+    await this.purgeExpiredSessions();
+
     const session = await this.repository.findSessionById(sessionId, studentId);
     if (!session) {
-      throw Object.assign(new Error("SESSION_NOT_FOUND"), { statusCode: 404 });
+      throw sessionNotFound();
     }
 
-    await this.repository.saveMessage(sessionId, "user", input.question);
-    await this.repository.touchSession(sessionId);
+    // BR-CB-20: el historial se lee ANTES de guardar nada, así que no trae la
+    // pregunta actual. Viaja una sola vez, como turnos.
+    const history = await this.repository.getRecentMessages(sessionId, HISTORY_LIMIT);
 
-    const intents = await this.classifyIntent(input.question);
-    const history = await this.repository.getMessages(sessionId);
+    // BR-CB-04: solo palabras clave, sin esperar a Cohere. Una repregunta sin
+    // palabras clave hereda los dominios de la pregunta anterior del alumno, que
+    // sale de los mensajes `user` del historial ya leído (decisión 11).
+    const previousQuestions = history.filter((m) => m.role === "user").map((m) => m.content);
+    const intents = classifyByKeywords(input.question, previousQuestions);
     const studentInfo = await this.repository.getStudentInfo(studentId);
 
     const dateContext = await this.computeDateContext();
+
+    // BR-CB-23: el chat de la sección solo se lee con preguntas sobre el chat o
+    // los avisos.
+    const readsChat = intents.includes("chat") || intents.includes("announcements");
 
     const [
       scheduleData,
       curriculumData,
       alertsData,
       announcementsData,
-      classmatesData,
-      chatSearchResults,
+      delegatesData,
+      ownBlocks,
+      chat,
       officialGradesRows,
     ] = await Promise.all([
       intents.includes("schedule") ? this.getScheduleData(studentId, dateContext) : Promise.resolve(null),
       intents.includes("curriculum") ? this.getCurriculumData(studentId) : Promise.resolve(null),
       intents.includes("alerts") ? this.getAlertsData(studentId) : Promise.resolve(null),
       intents.includes("announcements") ? this.getAnnouncementsData(studentId) : Promise.resolve(null),
-      intents.includes("classmates") ? this.getClassmatesData(studentId) : Promise.resolve(null),
-      this.getChatResults(studentId, input.question),
+      // BR-CB-16: delegado y subdelegado por curso y sección. Reemplaza a la lista
+      // plana de compañeros, que ya no existe (BR-CB-17).
+      intents.includes("delegates") ? this.repository.getSectionRepresentatives(studentId) : Promise.resolve(null),
+      // BR-CB-18: los bloques propios del alumno del token, con la fecha de hoy
+      // de BR-CB-13. El clasificador ya agregó `schedule` (BR-CB-04).
+      intents.includes("own_blocks") ? this.getOwnBlocks(studentId, dateContext.today) : Promise.resolve(null),
+      readsChat ? this.getChatResults(studentId, input.question) : Promise.resolve(null),
       // Notas OFICIALES (fuente de la verdad): matrícula real del período activo.
       intents.includes("grades") ? this.repository.getOfficialGrades(studentId) : Promise.resolve(null),
     ]);
@@ -80,15 +118,18 @@ export class ChatbotService {
       studentName: studentInfo?.fullName ?? "Alumno",
       careerName: studentInfo?.careerName ?? "Desconocida",
       currentLevel: studentInfo?.currentLevel ?? null,
-      history,
       intents,
       dateContext,
       scheduleData,
       curriculumData,
       alertsData,
       announcementsData,
-      classmatesData,
-      chatSearchResults,
+      delegatesData,
+      ownBlocks,
+      // BR-CB-24 (bloque 11): el JSON sale de `results` y la línea de «no hay»
+      // nombra las secciones de `sectionsRead`.
+      chatSearchResults: chat?.results ?? null,
+      chatSectionsRead: chat?.sectionsRead ?? null,
       officialGrades,
       localGrades: input.localGrades,
       question: input.question,
@@ -99,8 +140,9 @@ export class ChatbotService {
 
     let answer: string;
     try {
-      const historyMessages = history.slice(-10).map((m) => ({
-        role: m.role as "user" | "assistant",
+      // BR-CB-07 y BR-CB-20: los turnos previos y, al final, el mensaje de datos.
+      const historyMessages = history.map((m) => ({
+        role: m.role,
         content: m.content,
       }));
 
@@ -121,33 +163,43 @@ export class ChatbotService {
     }
     clearTimeout(timeout);
 
-    await this.repository.saveMessage(sessionId, "assistant", answer);
-    await this.repository.touchSession(sessionId);
+    // BR-CB-21: pregunta y respuesta juntas, solo después de que Cohere
+    // respondió. Si Cohere falló, arriba ya salió el 503 sin escribir nada.
+    try {
+      await this.repository.saveExchange(sessionId, input.question, answer);
+    } catch (error) {
+      // La sesión se borró mientras el alumno esperaba la respuesta.
+      if (hasPostgresCode(error, FOREIGN_KEY_VIOLATION)) {
+        throw sessionNotFound();
+      }
+      // Cualquier otro fallo sale como 500 genérico desde el controlador.
+      throw error;
+    }
 
-    const isFirstMessage = history.filter((m) => m.role === "user").length === 1;
-    if (isFirstMessage) {
+    // BR-CB-03: «primera pregunta» es que la sesión no tenía mensajes. El
+    // fallo del título no deshace el par ya guardado.
+    if (history.length === 0) {
       try {
         const title = await cohereClient.generateTitle(input.question);
         await this.repository.updateSessionTitle(sessionId, title);
       } catch {
-        // Keep default title
+        // Se queda el título por defecto.
       }
     }
 
     return { answer, sessionId };
   }
 
-  private async classifyIntent(question: string): Promise<ChatbotIntent[]> {
+  /**
+   * BR-CB-22 y BR-CB-12: la purga perezosa del ciclo. Si falla, se registra y la
+   * petición sigue; la próxima petición la reintenta.
+   */
+  private async purgeExpiredSessions(): Promise<void> {
     try {
-      const result = await Promise.race([
-        classifyWithCohere(question, cohereClient),
-        new Promise<ChatbotIntent[]>((resolve) =>
-          setTimeout(() => resolve(classifyByKeywords(question)), CLASSIFY_TIMEOUT_MS),
-        ),
-      ]);
-      return result;
-    } catch {
-      return classifyByKeywords(question);
+      await this.repository.purgeSessionsBeforeActivePeriod();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error("No se pudo purgar el historial del chatbot del ciclo anterior:", detail);
     }
   }
 
@@ -182,15 +234,30 @@ export class ChatbotService {
     return this.repository.getAnnouncements(studentId);
   }
 
-  private async getClassmatesData(studentId: number) {
-    return this.repository.getClassmates(studentId);
+  /**
+   * BR-CB-18 y BR-CB-12: si la lectura falla, se registra con `console.warn` y
+   * la respuesta sigue sin el bloque de bloques propios, como con el chat.
+   */
+  private async getOwnBlocks(studentId: number, today: string): Promise<OwnTimeBlocksSummary | null> {
+    try {
+      return await this.readOwnTimeBlocks(studentId, today);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.warn("No se pudieron leer los bloques propios del alumno:", detail);
+      return null;
+    }
   }
 
-  private async getChatResults(studentId: number, question: string) {
+  /**
+   * BR-CB-06 y BR-CB-24: sin mensajes, el bloque 11 sale con una línea que
+   * nombra las secciones leídas; null es una lectura fallida y el bloque no
+   * sale. Sin secciones activas no hay chat que leer, así que no se lee ninguna
+   * sección y la línea lo dice.
+   */
+  private async getChatResults(studentId: number, question: string): Promise<ChatSearchOutcome | null> {
     const sectionDetails = await this.repository.getActiveSectionDetails(studentId);
-    if (sectionDetails.length === 0) return null;
-    const results = await this.searchChat(question, sectionDetails);
-    return results.length > 0 ? results : null;
+    if (sectionDetails.length === 0) return { results: [], sectionsRead: [] };
+    return this.searchChat(question, sectionDetails);
   }
 
   private async computeDateContext(): Promise<DateContext> {
@@ -225,6 +292,21 @@ export class ChatbotService {
     return dateContext;
   }
 }
+
+const sessionNotFound = () => Object.assign(new Error("SESSION_NOT_FOUND"), { statusCode: 404 });
+
+/**
+ * Busca el código de PostgreSQL en el error o en su cadena de `cause`: Drizzle
+ * 0.45 envuelve el error de postgres.js en `DrizzleQueryError`.
+ */
+const hasPostgresCode = (error: unknown, code: string): boolean => {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && typeof current === "object" && current !== null; depth++) {
+    if ((current as { code?: unknown }).code === code) return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+};
 
 type AcademicWeekRow = { weekNumber: number; startDate: string; endDate: string };
 

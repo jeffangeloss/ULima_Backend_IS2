@@ -7,9 +7,18 @@ import type {
   CurriculumData,
   AlertData,
   AnnouncementData,
-  ClassmateData,
   OfficialGradeRow,
+  SectionRepresentativePerson,
+  SectionRepresentativesData,
 } from "./chatbot.types.js";
+
+const toMessageRow = (r: Record<string, unknown>): ChatbotMessageRow => ({
+  id: r.id as string,
+  sessionId: r.session_id as string,
+  role: r.role as "user" | "assistant",
+  content: r.content as string,
+  createdAt: new Date(r.created_at as string),
+});
 
 export class ChatbotRepository {
   constructor(readonly database: typeof db) {}
@@ -79,14 +88,7 @@ export class ChatbotRepository {
     `);
   }
 
-  async touchSession(sessionId: string): Promise<void> {
-    await this.database.execute(sql`
-      UPDATE chatbot_session
-      SET updated_at = now()
-      WHERE id = ${sessionId}
-    `);
-  }
-
+  /** La sesión entera, para `GET /chatbot/sessions/:id`. `ask` usa `getRecentMessages`. */
   async getMessages(sessionId: string): Promise<ChatbotMessageRow[]> {
     const rows = await this.database.execute(sql`
       SELECT id, session_id, role, content, created_at
@@ -94,29 +96,69 @@ export class ChatbotRepository {
       WHERE session_id = ${sessionId}
       ORDER BY created_at ASC
     `) as unknown as Record<string, unknown>[];
-    return rows.map((r) => ({
-      id: r.id as string,
-      sessionId: r.session_id as string,
-      role: r.role as "user" | "assistant",
-      content: r.content as string,
-      createdAt: new Date(r.created_at as string),
-    }));
+    return rows.map(toMessageRow);
   }
 
-  async saveMessage(sessionId: string, role: "user" | "assistant", content: string): Promise<ChatbotMessageRow> {
+  /**
+   * BR-CB-20: los `limit` mensajes más recientes de la sesión, en orden
+   * cronológico. La consulta los pide del más nuevo al más viejo para que
+   * `idx_chatbot_message_session_created` (migración 0013) corte en `limit` sin
+   * ordenar la sesión entera, y el código los devuelve al orden de la
+   * conversación.
+   */
+  async getRecentMessages(sessionId: string, limit: number): Promise<ChatbotMessageRow[]> {
     const rows = await this.database.execute(sql`
-      INSERT INTO chatbot_message (session_id, role, content)
-      VALUES (${sessionId}, ${role}, ${content})
-      RETURNING id, session_id, role, content, created_at
+      SELECT id, session_id, role, content, created_at
+      FROM chatbot_message
+      WHERE session_id = ${sessionId}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `) as unknown as Record<string, unknown>[];
+    return rows.map(toMessageRow).reverse();
+  }
+
+  /**
+   * BR-CB-21: guarda la pregunta y la respuesta juntas, en una transacción, y
+   * marca la actividad de la sesión. Si una sentencia falla no queda ninguna de
+   * las dos filas. Las dos toman `clock_timestamp()`, que avanza dentro de la
+   * transacción, para que la pregunta quede antes que la respuesta en el
+   * `ORDER BY created_at`; con `now()` empatarían. Si la sesión ya no existe, la
+   * primera inserción falla con la violación de llave foránea 23503.
+   */
+  async saveExchange(sessionId: string, question: string, answer: string): Promise<void> {
+    await this.database.transaction(async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO chatbot_message (session_id, role, content, created_at)
+        VALUES (${sessionId}, ${"user"}, ${question}, clock_timestamp())
+      `);
+      await tx.execute(sql`
+        INSERT INTO chatbot_message (session_id, role, content, created_at)
+        VALUES (${sessionId}, ${"assistant"}, ${answer}, clock_timestamp())
+      `);
+      await tx.execute(sql`
+        UPDATE chatbot_session SET updated_at = now() WHERE id = ${sessionId}
+      `);
+    });
+  }
+
+  /**
+   * BR-CB-22: borra, de todos los alumnos, las sesiones cuya última actividad
+   * es anterior a las 00:00 de Lima del `start_date` del período activo, con sus
+   * mensajes por la cascada de `chatbot_message.session_id`. Solo corre si hoy,
+   * en Lima, el período ya empezó; sin período activo no borra nada.
+   * `updated_at` es `timestamp` sin zona y guarda la hora de pared de la zona de
+   * la sesión de la base (la de `now()` al escribir), así que la medianoche de
+   * Lima se lleva a esa misma zona. La sentencia es, tal cual, la de la spec.
+   */
+  async purgeSessionsBeforeActivePeriod(): Promise<void> {
+    await this.database.execute(sql`
+      DELETE FROM chatbot_session cs
+      USING academic_period ap
+      WHERE ap.is_active = true
+        AND (now() AT TIME ZONE 'America/Lima')::date >= ap.start_date
+        AND cs.updated_at < ((ap.start_date::timestamp AT TIME ZONE 'America/Lima')
+                             AT TIME ZONE current_setting('TimeZone'))
     `);
-    const r = rows[0] as Record<string, unknown>;
-    return {
-      id: r.id as string,
-      sessionId: r.session_id as string,
-      role: r.role as "user" | "assistant",
-      content: r.content as string,
-      createdAt: new Date(r.created_at as string),
-    };
   }
 
   async getSessionsCount(studentId: number): Promise<number> {
@@ -154,6 +196,7 @@ export class ChatbotRepository {
       WHERE st.id = ${studentId}
         AND e.status = 'active'
         AND ap.is_active = true
+      ORDER BY c.name, s.code
     `) as unknown as { section_id: number; course_name: string; section_code: string }[];
     return rows.map((r) => ({
       sectionId: r.section_id,
@@ -279,44 +322,87 @@ export class ChatbotRepository {
     return rows;
   }
 
-  async getClassmates(studentId: number): Promise<ClassmateData[]> {
+  /**
+   * BR-CB-16: delegado y subdelegado de cada sección activa del alumno, en una
+   * sola sentencia. Una fila por sección y cargo, ordenadas por curso, sección y
+   * cargo; sin LIMIT, porque el tamaño lo acotan las secciones del alumno.
+   *
+   * Precedencia por cargo, como la pantalla del curso:
+   *   1. `section_representative` activo de ESA sección, cuya matrícula también
+   *      es de esa sección (sin exigir que siga activa, igual que la pantalla);
+   *   2. si no hay, el `section_representative_claim` del portal;
+   *   3. si tampoco, el cargo queda vacío.
+   * `is_self` marca al propio alumno, por `student.id` o por el código del claim.
+   * Solo sale el nombre de quien tiene el cargo: nunca el resto de la nómina.
+   */
+  async getSectionRepresentatives(studentId: number): Promise<SectionRepresentativesData[]> {
     const rows = await this.database.execute(sql`
-      SELECT DISTINCT
-        au.full_name,
-        COALESCE(srp.role_label, 'Alumno') as role
-      FROM enrollment e
-      JOIN student s2 ON s2.id = e.student_id
-      JOIN app_user au ON au.id = s2.user_id
-      JOIN section sec ON sec.id = e.section_id
-      JOIN course_offering co ON co.id = sec.course_offering_id
-      JOIN academic_period ap ON ap.id = co.academic_period_id
-      LEFT JOIN LATERAL (
-        SELECT
-          CASE sr.position
-            WHEN 'delegate' THEN 'Delegado'
-            WHEN 'subdelegate' THEN 'Subdelegado'
-            ELSE 'Alumno'
-          END as role_label
+      WITH mis_secciones AS (
+        SELECT s.id AS section_id, c.name AS course_name, s.code AS section_code
+        FROM enrollment e
+        JOIN section s ON s.id = e.section_id
+        JOIN course_offering co ON co.id = s.course_offering_id
+        JOIN course c ON c.id = co.course_id
+        JOIN academic_period ap ON ap.id = co.academic_period_id
+        WHERE e.student_id = ${studentId}
+          AND e.status = 'active'
+          AND ap.is_active = true
+      ),
+      cargos AS (
+        SELECT unnest(enum_range(NULL::representative_position)) AS position
+      ),
+      reales AS (
+        SELECT sr.section_id, sr.position, au.full_name, (st.id = ${studentId}) AS is_self
         FROM section_representative sr
-        WHERE sr.enrollment_id = e.id
-          AND sr.section_id = e.section_id
-          AND sr.is_active = true
-        LIMIT 1
-      ) srp ON true
-      WHERE e.section_id IN (
-        SELECT e2.section_id
-        FROM enrollment e2
-        JOIN student st2 ON st2.id = e2.student_id
-        WHERE st2.id = ${studentId}
-          AND e2.status = 'active'
+        JOIN enrollment er ON er.id = sr.enrollment_id AND er.section_id = sr.section_id
+        JOIN student st ON st.id = er.student_id
+        JOIN app_user au ON au.id = st.user_id
+        WHERE sr.is_active = true
+      ),
+      yo AS (
+        SELECT au.code
+        FROM student st
+        JOIN app_user au ON au.id = st.user_id
+        WHERE st.id = ${studentId}
       )
-        AND e.status = 'active'
-        AND ap.is_active = true
-        AND s2.id != ${studentId}
-      ORDER BY au.full_name
-      LIMIT 50
-    `) as unknown as ClassmateData[];
-    return rows;
+      SELECT
+        ms.section_id,
+        ms.course_name,
+        ms.section_code,
+        k.position::text AS position,
+        COALESCE(r.full_name, cl.full_name) AS full_name,
+        COALESCE(r.is_self, cl.student_code = (SELECT code FROM yo), false) AS is_self
+      FROM mis_secciones ms
+      CROSS JOIN cargos k
+      LEFT JOIN reales r
+        ON r.section_id = ms.section_id AND r.position = k.position
+      LEFT JOIN section_representative_claim cl
+        ON r.section_id IS NULL AND cl.section_id = ms.section_id AND cl.position = k.position
+      ORDER BY ms.course_name, ms.section_code, k.position
+    `) as unknown as Array<{
+      section_id: number;
+      course_name: string;
+      section_code: string;
+      position: "delegate" | "subdelegate";
+      full_name: string | null;
+      is_self: boolean;
+    }>;
+
+    // Dos filas por sección (una por cargo), contiguas por el ORDER BY. Se
+    // agrupan por el id de la sección, que no viaja.
+    const porSeccion = new Map<number, SectionRepresentativesData>();
+    for (const r of rows) {
+      let entrada = porSeccion.get(r.section_id);
+      if (!entrada) {
+        entrada = { courseName: r.course_name, sectionCode: r.section_code, delegate: null, subdelegate: null };
+        porSeccion.set(r.section_id, entrada);
+      }
+      const titular: SectionRepresentativePerson | null =
+        r.full_name == null ? null : { fullName: r.full_name, isSelf: r.is_self === true };
+      if (r.position === "delegate") entrada.delegate = titular;
+      else if (r.position === "subdelegate") entrada.subdelegate = titular;
+    }
+    return [...porSeccion.values()];
   }
 
   async getStudentName(studentId: number): Promise<string> {

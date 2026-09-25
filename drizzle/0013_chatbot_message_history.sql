@@ -1,0 +1,38 @@
+-- BR-CB-20 · Índice del historial del chatbot (ajuste del 2026-09-25).
+--
+-- Un solo índice nuevo y nada más: ninguna tabla, columna ni fila cambia.
+--   idx_chatbot_message_session_created   chatbot_message (session_id, created_at)
+--
+-- El chatbot lee en cada pregunta los 10 últimos mensajes de la sesión con
+-- `ORDER BY created_at DESC LIMIT 10` (getRecentMessages). Con este índice la
+-- consulta lee esos 10 desde el final del índice y no ordena la sesión entera.
+-- `idx_chatbot_message_session` queda redundante, porque el índice nuevo empieza
+-- por `session_id`, pero no se borra aquí: esta migración solo agrega, y
+-- borrarlo es un cambio aparte.
+--
+-- Aditiva e idempotente: lleva IF NOT EXISTS, así que se puede re-aplicar sin
+-- daño. Sin CONCURRENTLY, porque db:apply corre el archivo dentro de una
+-- transacción; la tabla es chica y el bloqueo de escritura dura poco.
+--
+--   bun run db:apply drizzle/0013_chatbot_message_history.sql
+--
+-- Con db:apply y NO con db:migrate ni db:generate: drizzle/meta/_journal.json
+-- se quedó en la 0009, así que esta migración tampoco queda registrada ahí. La
+-- aplica el dueño, con respaldo previo y antes del merge del código que la usa,
+-- y se registra en MIGRATIONS.md con su fecha, su respaldo y su verificación.
+--
+-- Paso de despliegue aparte, que este archivo NO ejecuta (BR-CB-22b):
+-- al desplegar el ajuste se borran una sola vez TODAS las sesiones y mensajes
+-- del chatbot que existan, porque sus respuestas pueden traer nombres de
+-- compañeros de antes de BR-CB-17. Antes se toma un respaldo con pg_dump de
+-- chatbot_session y chatbot_message, fuera del repositorio, y se cuentan las
+-- filas en una transacción de solo lectura; el borrado va en una transacción
+-- aparte, con la aprobación explícita del dueño, y se registra en MIGRATIONS.md
+-- sin copiar contenido. El respaldo se descarta cuando el dueño lo indique.
+-- Desde ahí rige la retención por ciclo de BR-CB-22, que no necesita
+-- migración: la primera petición al chatbot después del despliegue ya purga
+-- las sesiones anteriores al inicio del período activo (ver «Primera purga en
+-- producción» en specs/features/chatbot/chatbot.spec.md).
+
+CREATE INDEX IF NOT EXISTS "idx_chatbot_message_session_created"
+  ON "chatbot_message" ("session_id", "created_at");

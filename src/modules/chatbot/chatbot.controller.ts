@@ -8,6 +8,9 @@ const PROMPT_INJECTION_PATTERNS = [
   /\[DATOS_/i,
   /^system:/im,
   /^assistant:/im,
+  // BR-CB-10, decisión 13: las dos líneas que enmarcan el mensaje de datos (BR-CB-24).
+  /^\s*datos del alumno/im,
+  /^\s*fin de los datos\s*$/im,
 ];
 
 export class ChatbotController {
