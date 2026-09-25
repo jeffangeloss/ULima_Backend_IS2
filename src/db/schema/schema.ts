@@ -629,6 +629,9 @@ export const chatbotMessage = pgTable("chatbot_message", {
   createdAt: timestamp("created_at", { mode: "date" }).notNull().defaultNow(),
 }, (t) => ({
   idxChatbotMessageSession: index("idx_chatbot_message_session").on(t.sessionId),
+  // BR-CB-20 (migración 0013): los 10 últimos mensajes de la sesión sin ordenar
+  // la sesión entera. Deja redundante al índice de arriba, que no se borra.
+  idxChatbotMessageSessionCreated: index("idx_chatbot_message_session_created").on(t.sessionId, t.createdAt),
 }));
 
 /**

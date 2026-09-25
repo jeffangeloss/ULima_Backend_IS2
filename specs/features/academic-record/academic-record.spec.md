@@ -297,6 +297,10 @@ El chatbot manda su contexto a un proveedor externo. Ni `chatbot.repository.ts` 
 `academic-record`. Una prueba lo fija para que nadie lo conecte después "porque sería
 útil".
 
+*Confirmada el 2026-09-25.* Al abrir al chatbot los bloques de horario del propio alumno (RS-BE-35
+de `time-blocks`), el dueño confirma que esta regla no cambia. El récord sigue fuera del chatbot y
+su prueba queda igual.
+
 `[@test] ../../../test/HU34_jeff/chatbot-isolation.test.ts`
 
 ### RS-BE-29 — Consentimiento en la petición

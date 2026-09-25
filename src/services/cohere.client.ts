@@ -9,15 +9,6 @@ interface CohereChatResponse {
   text?: string;
 }
 
-interface CohereClassifyResponse {
-  classifications: Array<{
-    input: string;
-    prediction: string;
-    confidence: number;
-    labels: Record<string, { confidence: number }>;
-  }>;
-}
-
 interface CohereRerankResponse {
   results: Array<{
     index: number;
@@ -120,40 +111,6 @@ class CohereClient {
 
     const json = await res.json() as CohereChatResponse;
     return json.message?.content?.[0]?.text ?? json.text ?? "";
-  }
-
-  public async classify(
-    inputs: string[],
-    examples: Array<{ text: string; label: string }>,
-  ): Promise<
-    Array<{
-      input: string;
-      labels: Record<string, { confidence: number }>;
-    }>
-  > {
-    const res = await fetch(`${COHERE_BASE}/v1/classify`, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${this.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "embed-multilingual-v3.0",
-        inputs,
-        examples,
-      }),
-    });
-
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Cohere Classify error ${res.status}: ${err}`);
-    }
-
-    const json = await res.json() as CohereClassifyResponse;
-    return json.classifications.map((c) => ({
-      input: c.input,
-      labels: c.labels,
-    }));
   }
 
   public async rerank(

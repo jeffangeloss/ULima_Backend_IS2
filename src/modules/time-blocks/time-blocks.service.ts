@@ -1,5 +1,6 @@
 /**
- * Reglas de los bloques propios (RS-BE-31, RS-BE-32, RS-BE-33 y RS-BE-34).
+ * Reglas de los bloques propios (RS-BE-31, RS-BE-32, RS-BE-33 y RS-BE-34), y el
+ * resumen de solo lectura que recibe el chatbot (RS-BE-35).
  *
  * El service recibe el repository y el `EventBus` y nunca importa `db`, como
  * `academic-record.service.ts:11-15`. `events` está por la arquitectura del
@@ -24,12 +25,16 @@ import {
 import type { TimeBlocksRepository } from "./time-blocks.repository.js";
 import type { ExceptionInput } from "./time-blocks.schemas.js";
 import type {
+  OwnTimeBlocksSummary,
   TimeBlockException,
   TimeBlockInput,
   TimeBlockOccurrence,
   TimeBlockRule,
   TimeBlockWeekHours,
 } from "./time-blocks.types.js";
+
+/** Días de la ventana del chatbot: la semana de hoy y la siguiente (RS-BE-35). */
+const DIAS_VENTANA_ASISTENTE = 14;
 
 /** Tope de bloques por alumno (RS-BE-31). No es una regla de negocio: es el
  *  techo que mantiene acotada la expansión de una ventana. Cuenta todos los
@@ -193,6 +198,64 @@ export class TimeBlocksService {
       (ocurrencia) => ocurrencia.date >= from && ocurrencia.date <= to,
     );
     return { occurrences, weeks: weeklyHours(semanasCompletas, from, to) };
+  }
+
+  /**
+   * RS-BE-35 — Lo que el chatbot puede saber de los bloques del alumno que
+   * pregunta. Solo lectura, sin id de bloque y sin filtros: el `studentId`
+   * llega del token a través del chatbot y baja a las dos consultas.
+   *
+   * La ventana va del lunes de la semana de `today` al domingo de la semana
+   * siguiente. Entran los bloques cuya `endDate` es igual o posterior a ese
+   * lunes, en el orden de `findBlocks`; los vencidos no expanden nada en la
+   * ventana, así que dejarlos fuera no cambia las horas. Las horas salen de
+   * `expandOccurrences` y `weeklyHours`, las mismas de `occurrences`, sobre dos
+   * semanas enteras: coinciden con las que la app muestra para esas semanas.
+   */
+  async assistantSummary(studentId: number, today: string): Promise<OwnTimeBlocksSummary> {
+    // `addDays(today, 0)` rearma la fecha y la reimprime: una fecha que no
+    // existe ("2026-02-30") o que no es fecha no arma ninguna ventana.
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || addDays(today, 0) !== today) {
+      throw new Error("La fecha de hoy no es una fecha válida YYYY-MM-DD.");
+    }
+    const from = mondayOf(today);
+    const to = addDays(from, DIAS_VENTANA_ASISTENTE - 1);
+
+    const vigentes = (await this.repository.findBlocks(studentId)).filter((block) => block.endDate >= from);
+    const exceptions = await this.repository.findExceptions(
+      studentId,
+      vigentes.map((block) => block.id),
+    );
+
+    const blocks = vigentes.map((block) => {
+      const dias = new Set(block.daysOfWeek);
+      // Solo los cambios de la ventana que el patrón genera: una fila vieja que
+      // quedó fuera del patrón tras un PATCH (RS-BE-31) no significa nada.
+      const cambios = exceptions
+        .filter(
+          (excepcion) =>
+            excepcion.blockId === block.id &&
+            excepcion.date >= from &&
+            excepcion.date <= to &&
+            excepcion.date >= block.startDate &&
+            excepcion.date <= block.endDate &&
+            dias.has(dayOfWeekOf(excepcion.date)),
+        )
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map(vistaDeExcepcion);
+      return {
+        title: block.title,
+        daysOfWeek: [...block.daysOfWeek],
+        startTime: block.startTime,
+        endTime: block.endTime,
+        startDate: block.startDate,
+        endDate: block.endDate,
+        exceptions: cambios,
+      };
+    });
+
+    const ocurrencias = expandOccurrences(vigentes, exceptions, from, to);
+    return { window: { from, to }, blocks, weeks: weeklyHours(ocurrencias, from, to) };
   }
 
   /** 404 y no 403 a propósito: un id de otro alumno no tiene por qué revelar

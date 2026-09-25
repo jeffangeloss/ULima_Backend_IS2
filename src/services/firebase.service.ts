@@ -26,6 +26,49 @@ export type ChatSoftDeleteResult = {
   deletedBy?: string;
 };
 
+/** Mensaje del chat de una sección tal como lo devuelve `getRecentMessages`. */
+export type RecentMessage = {
+  id: string;
+  senderName: string;
+  body: string;
+  createdAt: number;
+  /** Lápida de R-CHAT-4: el mensaje conserva `body` y lleva `deleted: true`. */
+  deleted: boolean;
+};
+
+/** Valor de `sections/{sectionId}/messages` en RTDB (un mensaje trae más campos, como la lápida). */
+export type RecentMessagesSnapshot = Record<
+  string,
+  { senderName?: string; body?: string; createdAt?: number; deleted?: unknown; [field: string]: unknown }
+> | null;
+
+/**
+ * Parte pura de `getRecentMessages`: convierte el valor leído de RTDB en la
+ * lista de mensajes ordenada por `createdAt`, con los que son anteriores a
+ * `since` fuera. `deleted` pasa solo cuando el mensaje guarda `deleted === true`
+ * (R-CHAT-4), para que quien lee pueda omitir los borrados (BR-CB-23 del chatbot).
+ */
+export const recentMessagesFromSnapshot = (
+  data: RecentMessagesSnapshot,
+  since?: number,
+): RecentMessage[] => {
+  if (!data) return [];
+
+  let messages = Object.entries(data).map(([id, msg]) => ({
+    id,
+    senderName: msg.senderName ?? "Desconocido",
+    body: msg.body ?? "",
+    createdAt: msg.createdAt ?? 0,
+    deleted: msg.deleted === true,
+  }));
+
+  if (since) {
+    messages = messages.filter((m) => m.createdAt >= since);
+  }
+
+  return messages.sort((a, b) => a.createdAt - b.createdAt);
+};
+
 /** Lo mínimo de `Reference` de firebase-admin que usa el borrado suave. */
 export type ChatMessageRef = {
   get(): Promise<{ exists(): boolean; val(): unknown }>;
@@ -178,7 +221,7 @@ class FirebaseService {
     sectionId: number,
     limit: number = 200,
     since?: number,
-  ): Promise<Array<{ id: string; senderName: string; body: string; createdAt: number }>> {
+  ): Promise<RecentMessage[]> {
     if (!this.initialized) {
       console.warn("Firebase not initialized, skipping chat message fetch");
       return [];
@@ -189,21 +232,7 @@ class FirebaseService {
       let query = ref.orderByChild("createdAt").limitToLast(limit);
 
       const snapshot = await query.once("value");
-      const data = snapshot.val() as Record<string, { senderName?: string; body?: string; createdAt?: number }> | null;
-      if (!data) return [];
-
-      let messages = Object.entries(data).map(([id, msg]) => ({
-        id,
-        senderName: msg.senderName ?? "Desconocido",
-        body: msg.body ?? "",
-        createdAt: msg.createdAt ?? 0,
-      }));
-
-      if (since) {
-        messages = messages.filter((m) => m.createdAt >= since);
-      }
-
-      return messages.sort((a, b) => a.createdAt - b.createdAt);
+      return recentMessagesFromSnapshot(snapshot.val() as RecentMessagesSnapshot, since);
     } catch (error) {
       console.error("Error reading chat messages from Firebase:", error);
       return [];
