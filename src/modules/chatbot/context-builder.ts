@@ -2,6 +2,7 @@ import type {
   ChatbotIntent,
   ChatbotMessageRow,
   OfficialCourseGrades,
+  ScheduleData,
   SectionRepresentativePerson,
   SectionRepresentativesData,
 } from "./chatbot.types.js";
@@ -115,40 +116,36 @@ function minutesOfTime(value: unknown): number | null {
   return match ? Number(match[1]) * 60 + Number(match[2]) : null;
 }
 
-/** Una clave de una fila, en snake_case o en camelCase. */
-function fieldOf(row: unknown, snake: string, camel: string): unknown {
-  if (row === null || typeof row !== "object") return undefined;
-  const record = row as Record<string, unknown>;
-  return record[snake] ?? record[camel];
-}
-
 /**
  * BR-CB-19 — Horas de clase por semana: la suma de fin menos inicio de las
  * sesiones semanales de `getSchedule`. Acumula minutos enteros y divide por 60
  * una sola vez, sin redondear, como `weeklyHours` de `time-blocks`: ocho
  * sesiones de 1 h 50 min dan 14.666666666666666 y no 14.666666666666668.
  *
- * `getSchedule` castea las filas sin mapearlas, así que llegan con las claves
- * de la consulta (`start_time`, `end_time`, en snake_case y con segundos) y no
- * con las de `ScheduleData`; se aceptan las dos. Una sesión sin horas legibles
- * no suma (`chk_schedule_session_time` ya exige inicio menor que fin).
+ * Lee `start_time` y `end_time`, las claves de la consulta que declara
+ * `ScheduleData`, con segundos. Una sesión sin horas legibles no suma
+ * (`chk_schedule_session_time` ya exige inicio menor que fin).
  */
-export function weeklyClassHours(sessions: readonly unknown[]): number {
+export function weeklyClassHours(sessions: readonly Pick<ScheduleData, "start_time" | "end_time">[]): number {
   let minutes = 0;
   for (const session of sessions) {
-    const start = minutesOfTime(fieldOf(session, "start_time", "startTime"));
-    const end = minutesOfTime(fieldOf(session, "end_time", "endTime"));
+    const start = minutesOfTime(session?.start_time);
+    const end = minutesOfTime(session?.end_time);
     if (start === null || end === null || end <= start) continue;
     minutes += end - start;
   }
   return minutes / 60;
 }
 
-/** Las sesiones del bloque de horario (`{ sessions, assessments }`), o null si no se cargaron. */
-function sessionsOf(scheduleData: unknown): readonly unknown[] | null {
+/**
+ * Las sesiones del bloque de horario (`{ sessions, assessments }`), o null si
+ * el horario no se cargó. Con null, el bloque 8 sale sin la línea de horas de
+ * clase (BR-CB-19).
+ */
+function sessionsOf(scheduleData: unknown): readonly ScheduleData[] | null {
   if (scheduleData === null || typeof scheduleData !== "object") return null;
   const sessions = (scheduleData as { sessions?: unknown }).sessions;
-  return Array.isArray(sessions) ? sessions : null;
+  return Array.isArray(sessions) ? (sessions as ScheduleData[]) : null;
 }
 
 /**

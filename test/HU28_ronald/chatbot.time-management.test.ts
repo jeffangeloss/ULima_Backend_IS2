@@ -110,9 +110,30 @@ describe("BR-CB-19: horas de clase por semana, como función pura", () => {
     expect(weeklyClassHours([])).toBe(0);
   });
 
-  test("acepta también las claves camelCase del tipo ScheduleData", () => {
+  test("lee solo `start_time` y `end_time`, las claves que fija BR-CB-19; una fila en camelCase no suma", () => {
     const camel = [{ dayName: "Lunes", startTime: "08:00", endTime: "09:30", courseName: "X", sectionCode: "1", classroom: "A" }];
-    expect(weeklyClassHours(camel)).toBe(1.5);
+    expect(weeklyClassHours(camel as never)).toBe(0);
+    expect(weeklyClassHours([sesion("08:00", "09:30")])).toBe(1.5);
+  });
+
+  test("getSchedule proyecta `start_time` y `end_time` como texto, y ScheduleData declara esas claves", async () => {
+    // BR-CB-19, aclarado en la revisión de la Tarea 3: las filas de getSchedule
+    // se castean sin mapear, así que el tipo tiene que decir lo que trae la consulta.
+    const repositorio = await Bun.file("src/modules/chatbot/chatbot.repository.ts").text();
+    const consulta = repositorio.slice(
+      repositorio.indexOf("async getSchedule("),
+      repositorio.indexOf("async getCurriculum("),
+    );
+    expect(consulta).toContain("ss.start_time::text as start_time");
+    expect(consulta).toContain("ss.end_time::text as end_time");
+
+    const tipos = await Bun.file("src/modules/chatbot/chatbot.types.ts").text();
+    const inicio = tipos.indexOf("export interface ScheduleData {");
+    expect(inicio).toBeGreaterThanOrEqual(0);
+    const tipo = tipos.slice(inicio, tipos.indexOf("}", inicio));
+    expect(tipo).toMatch(/\bstart_time: string;/);
+    expect(tipo).toMatch(/\bend_time: string;/);
+    expect(tipo).not.toMatch(/\b(startTime|endTime)\b/);
   });
 });
 

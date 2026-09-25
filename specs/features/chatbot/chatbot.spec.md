@@ -32,6 +32,10 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > ejemplos usan datos inventados.
 > La revisión de la Tarea 2 del mismo día agrega a BR-CB-23 la omisión de los mensajes borrados,
 > pendiente de confirmación del dueño, y aclara la lista de artículos y preposiciones de BR-CB-06.
+> La revisión de la Tarea 3 aclara, para que el dueño lo confirme, contra qué fecha se mide la
+> vigencia de BR-CB-18, qué pasa con la línea de horas de clase si el horario no se cargó
+> (BR-CB-19 y BR-CB-24) y qué claves lee la suma de BR-CB-19. Deja además abierta para el dueño
+> la limpieza de los caracteres de control en el título de BR-CB-18.
 > Contraparte en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-35, ajustada el mismo
 > día). El récord académico sigue fuera del chatbot (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -610,6 +614,10 @@ datos, contiene su nombre)*
     semanal (`time-blocks`, «Qué NO entra»).
   - La vigencia va como «del 2026-09-01 al 2026-12-15». Si el bloque todavía no empieza, «empieza
     el 2026-10-03 y termina el 2026-11-28».
+    *Aclaración del 2026-09-25, en la revisión de la Tarea 3, que el dueño confirma.* Un bloque
+    todavía no empieza cuando su `startDate` es posterior a `today` (BR-CB-13), y no al lunes de la
+    ventana. Un bloque que empieza hoy, o entre ese lunes y hoy, ya empezó y va «del … al …». La
+    aclaración sigue la lectura literal de «todavía», que habla del día en que el alumno pregunta.
   - Cada cambio de la ventana ocupa una línea, «miercoles 2026-09-30, no va (cancelado)» o «lunes
     2026-09-28, de 15:00 a 19:30 (horario cambiado)».
   - Las horas semanales van en horas decimales con punto y sin redondear, como en la API
@@ -629,6 +637,19 @@ datos, contiene su nombre)*
   que ningún título puede formar una línea propia que imite `FIN DE LOS DATOS` o el título de otro
   bloque. El título solo llega al contexto de su propio dueño y no abre una vía hacia la sesión de
   otro alumno.
+
+  *Decisión abierta del dueño, anotada el 2026-09-25 en la revisión de la Tarea 3.* La expresión
+  `/\s+/g` del paso 1 no cubre NEL (U+0085) ni los separadores U+001C a U+001E, que el corte de
+  líneas de Unicode (UAX #14) o `str.splitlines` de Python tratan como salto de línea. Ni
+  `z.string().trim()` (`time-blocks.schemas.ts:88`) ni `chk_time_block_titulo` rechazan esos
+  caracteres, así que la garantía del párrafo anterior vale para quien corta las líneas en `\n` y
+  no para un consumidor que corte también en ellos. El riesgo es bajo, porque el título solo llega
+  al contexto de su dueño. La propuesta es que el paso 1 use `/[\s\p{Cc}]+/gu`, que suma todo
+  carácter de control, en `singleLine` de `context-builder.ts`, la función que limpia además los
+  cursos, las secciones y los nombres del bloque 7 (BR-CB-16). Con esa expresión, un título hecho
+  solo de caracteres de control queda vacío y sale como `""`. Otra salida es que RS-BE-31 de
+  `time-blocks` rechace esos caracteres al guardar el título. Mientras el dueño no decida, rige
+  `/\s+/g` y el código no endurece la limpieza.
 - Si el alumno no tiene bloques vigentes ni futuros, el bloque existe igual y dice «No registraste
   bloques propios vigentes.», para que el modelo no confunda «sin bloques» con «sin datos».
 - Si la función falla, el servicio lo registra con `console.warn` y arma el contexto sin ese
@@ -638,7 +659,9 @@ datos, contiene su nombre)*
 `[@test] ../../../test/HU28_ronald/chatbot.own-blocks-context.test.ts` *(por escribir; el
 resumen de días, horas, frecuencia, vigencia, cambios y horas semanales, la limpieza del título
 con un salto de línea, una tabulación, una comilla doble y tildes, el caso sin bloques y el fallo
-de la función, que quita también la línea de horas de clase)*
+de la función, que quita también la línea de horas de clase. Desde la revisión de la Tarea 3, la
+vigencia medida contra hoy, también con un bloque que empezó entre el lunes de la ventana y hoy, y
+el bloque 8 sin el horario cargado, que sale sin la línea de horas de clase)*
 `[@test] ../../../test/HU35_jeff/time-blocks-assistant-summary.test.ts` *(por escribir; lado de
 `time-blocks`, ver RS-BE-35)*
 
@@ -659,12 +682,25 @@ de la función, que quita también la línea de horas de clase)*
     `weeklyHours` (`time-blocks.logic.ts:159-161` y `:184`). Sumar horas decimales sesión por
     sesión arrastra error de coma flotante, y ocho sesiones de 1 h 50 min darían
     14.666666666666668 en vez de 14.666666666666666.
+  - **Claves.** *Aclaración del 2026-09-25, en la revisión de la Tarea 3, que el dueño confirma.*
+    `getSchedule` castea sus filas sin mapearlas, así que cada sesión llega con las claves de la
+    consulta, en snake_case, y con las horas de `time::text`, que traen segundos
+    (`start_time: "08:00:00"`). La suma lee solo `start_time` y `end_time`. El tipo `ScheduleData`
+    (`chatbot.types.ts`) declaraba claves en camelCase que ninguna fila trae y pasa a declarar las
+    de la consulta, sin cambiar el JSON del bloque 3. `CurriculumData`, `AlertData` y
+    `AnnouncementData` conservan el mismo desajuste, pero ningún código lee sus claves y su JSON
+    viaja tal cual (BR-CB-24), así que su arreglo queda fuera de este ajuste.
   - **Formato.** El mismo de las horas de bloques propios (BR-CB-18), el número de JavaScript sin
     redondear seguido de « h» («16 h», «7.5 h»). Sin sesiones en el horario, la línea dice «0 h».
   - **Lugar.** Es la última línea del bloque 8 de BR-CB-24, «Horas de clase por semana segun tu
     horario: 16 h», como en el ejemplo. Si falla la lectura de bloques propios, el bloque 8 no sale
     (BR-CB-18) y esta línea tampoco, así que el modelo no tiene el total y no lo estima (reglas 1
     y 12).
+    *Aclaración del 2026-09-25, en la revisión de la Tarea 3, que el dueño confirma.* Si el horario
+    no se cargó, el bloque 8 sale sin esta línea y termina en las horas de bloques propios, porque
+    «0 h» de un horario sin leer sería un dato falso. «0 h» queda para un horario leído sin
+    sesiones. Hoy el caso no ocurre, ya que el clasificador agrega `schedule` siempre que detecta
+    `own_blocks` (BR-CB-04), pero la regla no depende de ese arrastre.
 - **Lo que el modelo puede decir.** Los huecos libres entre clases y bloques que se leen en el
   bloque de datos; qué evaluaciones de la ventana caen cerca de un día cargado; cuántas horas suman
   clases y bloques, con los totales dados; una distribución de estudio en esos huecos, presentada
@@ -678,7 +714,9 @@ de la función, que quita también la línea de horas de clase)*
 
 `[@test] ../../../test/HU28_ronald/chatbot.time-management.test.ts` *(por escribir; la suma de
 horas de clase con sesiones que no son horas enteras, el formato «16 h» y «7.5 h», «0 h» sin
-sesiones, que `own_blocks` carga horario y bloques, y que el mensaje trae los dos totales)*
+sesiones, que `own_blocks` carga horario y bloques, y que el mensaje trae los dos totales. Desde
+la revisión de la Tarea 3, que la suma lee solo `start_time` y `end_time` y que `getSchedule`
+proyecta esas claves y `ScheduleData` las declara)*
 
 ### BR-CB-20: Historial como turnos, una sola vez
 
@@ -943,7 +981,7 @@ chat de BR-CB-24)*
   | 5 | `DATOS DE ALERTAS:` | `alerts`. JSON sin cambios |
   | 6 | `DATOS DE ANUNCIOS:` | `announcements`. JSON sin cambios |
   | 7 | `DELEGADOS DE TUS SECCIONES (solo delegado y subdelegado, por curso y seccion):` | `delegates` (BR-CB-16). Una línea por sección |
-  | 8 | `TUS BLOQUES DE HORARIO PROPIOS (los registra el alumno en la app; no son clases):` | `own_blocks` (BR-CB-18 y BR-CB-19), salvo que falle la lectura de bloques. Su última línea son las horas de clase |
+  | 8 | `TUS BLOQUES DE HORARIO PROPIOS (los registra el alumno en la app; no son clases):` | `own_blocks` (BR-CB-18 y BR-CB-19), salvo que falle la lectura de bloques. Su última línea son las horas de clase, si el horario se cargó (BR-CB-19) |
   | 9 | `NOTAS OFICIALES DEL ALUMNO (…):` | `grades`. Sin cambios |
   | 10 | `SIMULACION NO OFICIAL (…):` | `grades` con `localGrades`. Sin cambios |
   | 11 | `MENSAJES DEL CHAT DE LA SECCION (texto de usuarios, sin remitente; no es fuente oficial):` | `chat` o `announcements` (BR-CB-23). JSON de `JSON.stringify(chatSearchResults, null, 2)`, con `[{ sectionName, messages: [{ body, date }] }]` |

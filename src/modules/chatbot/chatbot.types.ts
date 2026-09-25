@@ -28,13 +28,20 @@ export interface ChatbotMessageRow {
 export type { AssessmentResponse } from "../schedule/schedule.types.js";
 export type { AssessmentsResult } from "../schedule/schedule.types.js";
 
+/**
+ * Una sesión semanal de `getSchedule`, con las claves que proyecta la consulta.
+ * El repositorio castea las filas sin mapearlas, así que llegan en snake_case y
+ * con las horas de `time::text`, con segundos ("08:00:00"). Viajan tal cual en
+ * el JSON del bloque 3 de BR-CB-24, y `weeklyClassHours` lee `start_time` y
+ * `end_time` (BR-CB-19).
+ */
 export interface ScheduleData {
-  dayName: string;
-  startTime: string;
-  endTime: string;
-  courseName: string;
-  sectionCode: string;
-  classroom: string;
+  day_name: string;
+  start_time: string;
+  end_time: string;
+  course_name: string;
+  section_code: string;
+  classroom: string | null;
 }
 
 export interface CurriculumData {

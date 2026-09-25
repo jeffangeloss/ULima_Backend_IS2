@@ -254,6 +254,14 @@ describe("BR-CB-18: vigencia", () => {
       ", empieza el 2026-09-30 y termina el 2026-11-28.",
     );
   });
+
+  test("un bloque que empezó entre el lunes de la ventana y hoy ya empezó", () => {
+    // Hoy es viernes 2026-09-25 y el lunes de la ventana, 2026-09-21: un bloque
+    // del miércoles 2026-09-23 va «del … al …» (aclaración de BR-CB-18).
+    expect(lineaDelBloque(bloque({ startDate: "2026-09-23", endDate: "2026-11-28" }))).toEndWith(
+      ", del 2026-09-23 al 2026-11-28.",
+    );
+  });
 });
 
 describe("BR-CB-18: los cambios de la ventana", () => {
@@ -401,6 +409,21 @@ describe("BR-CB-18: sin bloques y con la lectura fallida", () => {
     expect(message).not.toContain("No registraste bloques propios vigentes.");
     // El horario sí sigue.
     expect(message).toContain("DATOS DE HORARIO Y EVALUACIONES:");
+  });
+
+  test("sin el horario cargado, el bloque sale sin la línea de horas de clase y no dice «0 h» de un horario sin leer", () => {
+    // BR-CB-19, aclarado en la revisión de la Tarea 3. Hoy no ocurre, porque el
+    // clasificador agrega `schedule` con `own_blocks` (BR-CB-04), pero la regla
+    // no depende de ese arrastre.
+    for (const scheduleData of [undefined, null, {}, { sessions: null, assessments: [] }]) {
+      const { message } = armar({ intents: ["own_blocks"], scheduleData });
+      const ocho = bloqueOcho(message);
+      expect(ocho[0]).toBe(TITULO);
+      expect(message).not.toContain("Horas de clase por semana");
+      expect(ocho[ocho.length - 1]).toBe(
+        "- Horas de bloques propios por semana: semana del 2026-09-21: 8 h; semana del 2026-09-28: 7.5 h.",
+      );
+    }
   });
 
   test("sin el dominio own_blocks no sale, aunque haya resumen", () => {

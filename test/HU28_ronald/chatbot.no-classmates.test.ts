@@ -125,7 +125,8 @@ const repositorioFalso = {
     { weekNumber: 6, startDate: "2026-09-21", endDate: "2026-09-27" },
   ],
   getSchedule: async () => [
-    { dayName: "Lunes", startTime: "08:00", endTime: "10:00", courseName: "SEGURIDAD DE SISTEMAS", sectionCode: "801", classroom: "A-101" },
+    // Con las claves de `getSchedule` (`ScheduleData`): snake_case y segundos.
+    { day_name: "Lunes", start_time: "08:00:00", end_time: "10:00:00", course_name: "SEGURIDAD DE SISTEMAS", section_code: "801", classroom: "A-101" },
   ],
   getCurriculum: async () => [{ courseName: "SEGURIDAD DE SISTEMAS", cycle: 8, status: "in_progress", credit: 4 }],
   getAlerts: async () => [],
