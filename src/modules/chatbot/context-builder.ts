@@ -62,7 +62,6 @@ export function buildContext(params: {
   curriculumData?: unknown;
   alertsData?: unknown;
   announcementsData?: unknown;
-  classmatesData?: unknown;
   chatSearchResults?: unknown;
   officialGrades?: OfficialCourseGrades[] | null;
   localGrades?: unknown;
@@ -116,11 +115,6 @@ export function buildContext(params: {
   if (params.intents.includes("announcements") && params.announcementsData) {
     blocks.push(`\nDATOS DE ANUNCIOS:`);
     blocks.push(JSON.stringify(params.announcementsData, null, 2));
-  }
-
-  if (params.intents.includes("delegates") && params.classmatesData) {
-    blocks.push(`\nDATOS DE COMPANEROS:`);
-    blocks.push(JSON.stringify(params.classmatesData, null, 2));
   }
 
   if (params.intents.includes("grades") && params.officialGrades && params.officialGrades.length > 0) {

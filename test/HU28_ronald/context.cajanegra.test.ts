@@ -8,7 +8,7 @@ import type { ChatbotIntent, ChatbotMessageRow } from "../../src/modules/chatbot
 // Funcionalidad con 14 campos de entrada (> 4):
 //   studentName, careerName, currentLevel, history, intents, dateContext,
 //   scheduleData, curriculumData, alertsData, announcementsData,
-//   classmatesData, chatSearchResults, localGrades, question.
+//   chatSearchResults, officialGrades, localGrades, question.
 //
 // Se prueba por PARTICION DE EQUIVALENCIA y VALORES LIMITE sin conocer la
 // implementacion, observando solo el texto del contexto que arma la funcion.

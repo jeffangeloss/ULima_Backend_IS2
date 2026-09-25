@@ -11,6 +11,12 @@ const fuentesConsultadas: string[] = [];
 // Trampa de BR-CB-04: si el servicio volviera a clasificar con Cohere, quedaría
 // registrado aquí. El cliente real ya no tiene `classify`.
 let llamadasClassify = 0;
+// Todo lo que el servicio le manda a Cohere en cada pregunta: el preamble y los
+// turnos, incluido el mensaje de datos (BR-CB-17).
+const enviosACohere: string[] = [];
+// Compañera inventada que no es delegada ni subdelegada. Su nombre no debe llegar
+// a Cohere en ninguna pregunta (BR-CB-17).
+const COMPANERA_NO_REPRESENTANTE = "Valeria Quispe Inventada";
 
 mock.module("../../src/services/cohere.client.js", () => ({
   cohereClient: {
@@ -25,7 +31,13 @@ mock.module("../../src/services/cohere.client.js", () => ({
         },
       ];
     },
-    chatWithHistory: async () => "respuesta del bot",
+    chatWithHistory: async (
+      messages: Array<{ role: string; content: string }>,
+      options: { preamble?: string },
+    ) => {
+      enviosACohere.push(JSON.stringify({ preamble: options?.preamble ?? "", messages }));
+      return "respuesta del bot";
+    },
     generateTitle: async () => "titulo",
   },
 }));
@@ -76,9 +88,11 @@ const fakeRepo = {
     fuentesConsultadas.push("announcements");
     return [];
   },
+  // Lista plana de compañeros que BR-CB-17 retira. Si el servicio la consultara,
+  // quedaría registrada aquí y su nombre viajaría a Cohere.
   getClassmates: async () => {
-    fuentesConsultadas.push("delegates");
-    return [];
+    fuentesConsultadas.push("classmates");
+    return [{ fullName: COMPANERA_NO_REPRESENTANTE, role: "Alumno" }];
   },
   getOfficialGrades: async () => {
     fuentesConsultadas.push("grades");
@@ -146,6 +160,7 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
   beforeEach(() => {
     fuentesConsultadas.length = 0;
     llamadasClassify = 0;
+    enviosACohere.length = 0;
   });
 
   const preguntar = async (question: string) => {
@@ -159,10 +174,37 @@ describe("ChatbotService.ask - clasificación solo por palabras clave (BR-CB-04 
     expect(llamadasClassify).toBe(0);
   });
 
-  test("«¿Quiénes son los delegados…?» con tilde consulta la fuente de delegados", async () => {
-    // Hasta BR-CB-16, `delegates` usa la fuente que hereda de `classmates`.
-    await preguntar("¿Quiénes son los delegados de Seguridad de Sistemas?");
-    expect(fuentesConsultadas).toContain("delegates");
+  // `delegates` reemplaza a `classmates`, que ya no carga datos (BR-CB-04 y BR-CB-17).
+  // Hasta que BR-CB-16 conecte los delegados por sección, `delegates` no carga nada.
+  const preguntasDeDelegados = [
+    "¿Quiénes son los delegados de Seguridad de Sistemas?",
+    "¿Quién es el delegado de Cálculo I?",
+    "¿En qué sección estoy?",
+    "¿y el subdelegado?",
+    "¿Quiénes son mis compañeros?",
+  ];
+
+  for (const pregunta of preguntasDeDelegados) {
+    test(`«${pregunta}» no consulta la lista plana de compañeros (BR-CB-17)`, async () => {
+      await preguntar(pregunta);
+      expect(fuentesConsultadas).not.toContain("classmates");
+    });
+
+    test(`«${pregunta}» no manda a Cohere el bloque de compañeros ni el nombre de una compañera (BR-CB-17)`, async () => {
+      await preguntar(pregunta);
+      expect(enviosACohere.length).toBe(1);
+      expect(enviosACohere[0]).not.toContain("DATOS DE COMPANEROS");
+      expect(enviosACohere[0]).not.toContain(COMPANERA_NO_REPRESENTANTE);
+    });
+  }
+
+  test("el servicio y el armado del contexto ya no nombran la lista plana de compañeros", async () => {
+    const servicio = await Bun.file("src/modules/chatbot/chatbot.service.ts").text();
+    const contexto = await Bun.file("src/modules/chatbot/context-builder.ts").text();
+    expect(servicio).not.toContain("getClassmates");
+    expect(servicio).not.toContain("classmatesData");
+    expect(contexto).not.toContain("DATOS DE COMPANEROS");
+    expect(contexto).not.toContain("classmatesData");
   });
 
   test("«¿A qué hora tengo prácticas?» carga el horario, que own_blocks arrastra", async () => {

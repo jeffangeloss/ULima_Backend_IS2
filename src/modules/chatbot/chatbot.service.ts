@@ -60,7 +60,6 @@ export class ChatbotService {
       curriculumData,
       alertsData,
       announcementsData,
-      classmatesData,
       chatSearchResults,
       officialGradesRows,
     ] = await Promise.all([
@@ -68,8 +67,9 @@ export class ChatbotService {
       intents.includes("curriculum") ? this.getCurriculumData(studentId) : Promise.resolve(null),
       intents.includes("alerts") ? this.getAlertsData(studentId) : Promise.resolve(null),
       intents.includes("announcements") ? this.getAnnouncementsData(studentId) : Promise.resolve(null),
-      // Hasta BR-CB-16, `delegates` usa la fuente que hereda de `classmates`.
-      intents.includes("delegates") ? this.getClassmatesData(studentId) : Promise.resolve(null),
+      // `delegates` todavía no carga datos. La lista plana de compañeros ya no se
+      // consulta (BR-CB-04 y BR-CB-17), y los delegados por sección llegan con
+      // BR-CB-16.
       this.getChatResults(studentId, input.question),
       // Notas OFICIALES (fuente de la verdad): matrícula real del período activo.
       intents.includes("grades") ? this.repository.getOfficialGrades(studentId) : Promise.resolve(null),
@@ -88,7 +88,6 @@ export class ChatbotService {
       curriculumData,
       alertsData,
       announcementsData,
-      classmatesData,
       chatSearchResults,
       officialGrades,
       localGrades: input.localGrades,
@@ -167,10 +166,6 @@ export class ChatbotService {
 
   private async getAnnouncementsData(studentId: number) {
     return this.repository.getAnnouncements(studentId);
-  }
-
-  private async getClassmatesData(studentId: number) {
-    return this.repository.getClassmates(studentId);
   }
 
   private async getChatResults(studentId: number, question: string) {
