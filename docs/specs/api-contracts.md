@@ -624,7 +624,7 @@ Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el có
     ```json
     {
       "period": { "id": 12, "code": "2026-2", "created": false },
-      "identity": { "portalCode": "20235218", "fullName": "string", "career": "INGENIERÍA DE SISTEMAS" },
+      "identity": { "portalCode": "20230001", "fullName": "string", "career": "INGENIERÍA DE SISTEMAS" },
       "summary": {
         "coursesCreated": 0, "teachersCreated": 0, "sectionsCreated": 0, "sectionsUpdated": 5,
         "sessionsUpserted": 12, "enrollmentsUpserted": 5, "enrollmentsWithdrawn": 0,
