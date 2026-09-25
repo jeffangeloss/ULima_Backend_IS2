@@ -204,9 +204,9 @@ También es función pura y se prueba aparte.
 
 ### RS-BE-35 — El chatbot lee solo los bloques del propio alumno, por una función acotada
 
-> *Ajustada el 2026-09-25 por decisión del dueño de ese día, pendiente de su aprobación.* Revierte,
-> para los bloques, la versión aprobada el 2026-09-23, que se titulaba «Nada de esto lo ve el
-> chatbot». El récord académico sigue aislado (RS-BE-28 de `academic-record`, sin cambios).
+> *Ajustada el 2026-09-25 por decisión del dueño de ese día, aprobada por él el 2026-09-25.*
+> Revierte, para los bloques, la versión aprobada el 2026-09-23, que se titulaba «Nada de esto lo
+> ve el chatbot». El récord académico sigue aislado (RS-BE-28 de `academic-record`, sin cambios).
 
 *Versión aprobada el 2026-09-23, reemplazada.* ~~El chatbot manda su contexto a un proveedor
 externo. Dónde trabaja un alumno y a qué hora sale no tiene por qué salir de la app: ni
@@ -438,4 +438,4 @@ GET /schedule/me/sessions      (ya existe; RS-BE-36 solo agrega isoDate a cada d
 | 9 | Semanas de `weeks` | La semana entera de lunes a domingo, una por cada lunes entre `from` y `to`, con 0 si no hay nada | Solo lo que cae dentro de la ventana (la primera y la última semana saldrían cortas); omitir las semanas vacías |
 | 10 | `PATCH` desde un navegador | Agregar `PATCH` al CORS de `src/server.ts` | Pasar la edición a `PUT`; dejar la build web sin editar bloques |
 | 11 | Cómo sabe la app la fecha de cada día | `isoDate` en cada día de `GET /schedule/me/sessions` | Leerla de `dateText` en español (no trae año y se rompe en un ciclo que cruza de diciembre a enero); una ruta aparte solo para las fechas |
-| 12 | Qué ve el chatbot de los bloques (2026-09-25, pendiente de aprobación) | Los bloques del propio alumno, por una sola función de solo lectura con los campos de RS-BE-35 | Nada, que es la versión del 2026-09-23 y no deja responder «¿a qué hora tengo prácticas?»; que el repositorio del chatbot lea las tablas, lo que duplica la expansión y abre el módulo entero |
+| 12 | Qué ve el chatbot de los bloques (2026-09-25, aprobada por el dueño ese día) | Los bloques del propio alumno, por una sola función de solo lectura con los campos de RS-BE-35 | Nada, que es la versión del 2026-09-23 y no deja responder «¿a qué hora tengo prácticas?»; que el repositorio del chatbot lea las tablas, lo que duplica la expansión y abre el módulo entero |

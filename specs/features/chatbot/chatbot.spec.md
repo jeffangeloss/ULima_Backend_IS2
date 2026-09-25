@@ -36,6 +36,10 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 > vigencia de BR-CB-18, qué pasa con la línea de horas de clase si el horario no se cargó
 > (BR-CB-19 y BR-CB-24) y qué claves lee la suma de BR-CB-19. Deja además abierta para el dueño
 > la limpieza de los caracteres de control en el título de BR-CB-18.
+> La revisión de la Tarea 4 enlaza con `[@test]` las pruebas ya escritas de BR-CB-02, BR-CB-03,
+> BR-CB-12 y BR-CB-20 a BR-CB-22. Alinea además con la aprobación del dueño las etiquetas de estado
+> que seguían diciendo «pendiente de aprobación», aquí y en RS-BE-35 de `time-blocks`, sin cambiar
+> ningún requisito.
 > Contraparte en `specs/features/time-blocks/time-blocks.spec.md` (RS-BE-35, ajustada el mismo
 > día). El récord académico sigue fuera del chatbot (RS-BE-28 de `academic-record`, sin cambios).
 
@@ -98,7 +102,7 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 | --- | --- |
 | HU-CHATBOT-01 | Como alumno quiero hacer preguntas sobre mis notas, horario, examenes, malla, anuncios, delegados de mis secciones, alertas y conversaciones del chat de mi seccion, y recibir respuestas precisas basadas en mis datos reales. *(Ajustada el 2026-09-25: «companeros» pasa a «delegados de mis secciones», decisión 1.)* |
 | HU-CHATBOT-02 | Como alumno quiero mantener multiples sesiones de conversacion con el chatbot, poder volver a ellas, y crear nuevas cuando lo necesite. *(Ajustada el 2026-09-25: las sesiones duran lo que dura el ciclo, decisión 3.)* |
-| HU-CHATBOT-03 | Como alumno quiero preguntarle al chatbot cuándo tengo mis bloques propios (prácticas, trabajo) y pedirle ideas para organizar mi semana con mis clases, sin que invente datos. *(Nueva el 2026-09-25, decisión 2, pendiente de aprobación.)* |
+| HU-CHATBOT-03 | Como alumno quiero preguntarle al chatbot cuándo tengo mis bloques propios (prácticas, trabajo) y pedirle ideas para organizar mi semana con mis clases, sin que invente datos. *(Nueva el 2026-09-25, decisión 2, aprobada por el dueño el 2026-09-25.)* |
 
 ## Business Rules
 
@@ -114,30 +118,36 @@ Chatbot con IA (Cohere) embebido en la app. El alumno hace preguntas en lenguaje
 - El alumno solo puede ver, crear y eliminar sus propias sesiones.
 - Al eliminar una sesion se eliminan en cascada sus mensajes.
 - El endpoint `POST /chatbot/sessions/:id/ask` solo acepta preguntas en sesiones que pertenezcan al alumno autenticado; si no -> `404 SESSION_NOT_FOUND`.
-- *Ajustada el 2026-09-25, pendiente de aprobación.* Las sesiones del ciclo anterior se borran
-  solas cuando empieza el período activo (BR-CB-22). Una sesión borrada así responde
+- *Ajustada el 2026-09-25, aprobada por el dueño el 2026-09-25.* Las sesiones del ciclo anterior
+  se borran solas cuando empieza el período activo (BR-CB-22). Una sesión borrada así responde
   `404 SESSION_NOT_FOUND` en `GET /chatbot/sessions/:id` y en `POST /chatbot/sessions/:id/ask`,
   igual que una que no existe, y deja de salir en `GET /chatbot/sessions`.
-- *Ajustada el 2026-09-25, pendiente de aprobación.* Una pregunta cuya respuesta falla no queda
-  guardada (BR-CB-21), así que desde el ajuste la sesión no acumula preguntas sin respuesta.
+- *Ajustada el 2026-09-25, aprobada por el dueño el 2026-09-25.* Una pregunta cuya respuesta falla
+  no queda guardada (BR-CB-21), así que desde el ajuste la sesión no acumula preguntas sin
+  respuesta.
 
-`[@test] ../../../test/HU28_ronald/chatbot.retention.postgres.test.ts` *(por escribir; primer
-punto del ajuste)*
-`[@test] ../../../test/HU28_ronald/chatbot.atomic-save.test.ts` *(por escribir; segundo punto
-del ajuste)*
+`[@test] ../../../test/HU28_ronald/chatbot.retention.postgres.test.ts` *(existe; primer punto del
+ajuste contra un PostgreSQL local y solo con `TEST_DATABASE_URL`, con `ask` en 404, `getSession`
+en `null`, que la ruta responde con 404, y `listSessions` sin la sesión vencida)*
+`[@test] ../../../test/HU28_ronald/chatbot.retention.test.ts` *(existe; el mismo primer punto sin
+base, con un repositorio falso, y corre siempre)*
+`[@test] ../../../test/HU28_ronald/chatbot.atomic-save.test.ts` *(existe; segundo punto del
+ajuste)*
 
 ### BR-CB-03: Titulo automatico de sesion
 
 - Al crear una sesion via `POST /chatbot/sessions`, el titulo inicial es `"Nueva conversacion"`.
 - Al responder la primera pregunta de una sesion, el backend genera un titulo descriptivo (max 100 caracteres) usando Cohere Chat (llamada ligera, sin contexto grande) basado en la pregunta del alumno y actualiza el campo `title`.
 - Si falla la generacion del titulo, se mantiene `"Nueva conversacion"` (no bloquea la respuesta).
-- *Ajustada el 2026-09-25, pendiente de aprobación.* «Primera pregunta» significa que la sesión no
-  tenía ningún mensaje antes de esta pregunta. Como el historial se lee antes de guardar nada
-  (BR-CB-20), la condición es «historial vacío», y deja de ser «un solo mensaje `user` en el
-  historial» (`chatbot.service.ts:127`). El título se genera después de guardar el par pregunta y
-  respuesta (BR-CB-21), y su fallo no deshace ese par.
+- *Ajustada el 2026-09-25, aprobada por el dueño el 2026-09-25.* «Primera pregunta» significa que
+  la sesión no tenía ningún mensaje antes de esta pregunta. Como el historial se lee antes de
+  guardar nada (BR-CB-20), la condición es «historial vacío», y deja de ser «un solo mensaje
+  `user` en el historial» (`chatbot.service.ts:127`). El título se genera después de guardar el
+  par pregunta y respuesta (BR-CB-21), y su fallo no deshace ese par.
 
-`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; se ajusta)*
+`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; ajustada con los casos del
+título, que sale con el historial vacío y después de `saveExchange`, no sale con uno o dos
+mensajes previos y, si falla su generación o su guardado, deja la respuesta y el par guardado)*
 
 ### BR-CB-04: Clasificacion de intencion
 
@@ -424,8 +434,13 @@ declara que los turnos previos no son fuente, que trae las reglas 11 a 13, y que
 
 - Nunca se exponen detalles del error de Cohere al frontend. Se loguea internamente con `console.error`.
 
-`[@test] ../../../test/HU28_ronald/chatbot.service.test.ts` *(existe; se ajusta con los casos de
-fallo de Cohere sin escrituras y de purga fallida que no corta la petición)*
+`[@test] ../../../test/HU28_ronald/chatbot.atomic-save.test.ts` *(existe; el fallo de Cohere
+responde `503 CHATBOT_UNAVAILABLE` sin ninguna escritura, aunque la purga sí corrió, y otro fallo
+de la transacción responde un 500 genérico sin detalles de la base)*
+`[@test] ../../../test/HU28_ronald/chatbot.retention.test.ts` *(existe; la purga fallida se
+registra con `console.error` y no corta `listSessions`, `getSession`, `createSession` ni `ask`)*
+`[@test] ../../../test/HU28_ronald/chatbot.time-management.test.ts` *(existe; la lectura fallida
+de los bloques propios se registra con `console.warn` y la respuesta sigue sin ese bloque)*
 
 ### BR-CB-13: Fecha y zona horaria del contexto
 
@@ -739,11 +754,15 @@ proyecta esas claves y `ScheduleData` las declara)*
   created_at)`, para que el `ORDER BY … LIMIT` no ordene la sesión entera. Va en la migración
   `0013` (ver «Base de Datos») y en `schema.ts`.
 
-`[@test] ../../../test/HU28_ronald/chatbot.history-turns.test.ts` *(por escribir; la pregunta
+`[@test] ../../../test/HU28_ronald/chatbot.history-turns.test.ts` *(existe; la pregunta
 aparece una sola vez en lo que recibe Cohere, ningún turno previo aparece dentro del mensaje de
 datos y, con 30 mensajes guardados, solo viajan los 10 últimos y en orden)*
-`[@test] ../../../test/HU28_ronald/migration-0013.test.ts` *(por escribir; lee el `.sql` como
-texto, como `migration-0012.test.ts`, y comprueba que solo crea ese índice con `IF NOT EXISTS`)*
+`[@test] ../../../test/HU28_ronald/migration-0013.test.ts` *(existe; lee el `.sql` como texto,
+como `migration-0012.test.ts`, comprueba que solo crea ese índice con `IF NOT EXISTS` y que
+`schema.ts` declara el mismo índice)*
+`[@test] ../../../test/HU28_ronald/chatbot.retention.postgres.test.ts` *(existe; contra un
+PostgreSQL local y solo con `TEST_DATABASE_URL`, la `0013` aplicada dos veces deja el índice y
+`getRecentMessages` devuelve los 10 últimos de 30 en orden cronológico)*
 
 ### BR-CB-21: Pregunta y respuesta atómicas
 
@@ -775,10 +794,14 @@ texto, como `migration-0012.test.ts`, y comprueba que solo crea ese índice con 
   7. `saveExchange` en una transacción.
   8. Título, si el historial estaba vacío (BR-CB-03).
 
-`[@test] ../../../test/HU28_ronald/chatbot.atomic-save.test.ts` *(por escribir; con Cohere que
+`[@test] ../../../test/HU28_ronald/chatbot.atomic-save.test.ts` *(existe; con Cohere que
 falla no hay ningún INSERT en `chatbot_message` ni cambio de `updated_at` de la sesión, aunque la
 purga del paso 1 sí haya corrido, con Cohere que responde hay una sola transacción con las dos
 filas y la pregunta queda antes que la respuesta, y la sesión borrada a mitad de camino da 404)*
+`[@test] ../../../test/HU28_ronald/chatbot.retention.postgres.test.ts` *(existe; contra un
+PostgreSQL local y solo con `TEST_DATABASE_URL`, `saveExchange` deja la pregunta antes que la
+respuesta, una respuesta que falla no deja ninguna de las dos filas, y la sesión borrada mientras
+Cohere responde da 404 sin guardar nada)*
 
 ### BR-CB-22: Retención por ciclo
 
@@ -898,12 +921,17 @@ filas y la pregunta queda antes que la respuesta, y la sesión borrada a mitad d
   ROLLBACK;
   ```
 
-`[@test] ../../../test/HU28_ronald/chatbot.retention.postgres.test.ts` *(por escribir; contra un
+`[@test] ../../../test/HU28_ronald/chatbot.retention.postgres.test.ts` *(existe; contra un
 PostgreSQL local vacío y solo con `TEST_DATABASE_URL`. Los casos que fija son sesión con
 actividad antes del inicio, que se borra con sus mensajes; sesión con actividad después, que queda; período activo
 que todavía no empieza, que no borra nada; sin período activo, nada; la frontera de la medianoche
 de Lima; `ask` sobre una sesión vencida, que responde 404; y la consulta de conteo de «Primera
 purga en producción», que devuelve el mismo número de sesiones y mensajes que borra la purga)*
+`[@test] ../../../test/HU28_ronald/chatbot.retention.test.ts` *(existe; corre siempre, sin base.
+Compara la sentencia de `purgeSessionsBeforeActivePeriod` con el bloque SQL de esta regla y fija
+que `listSessions`, `getSession`, `createSession` y `ask` corren la purga una vez y antes de tocar
+la sesión, que `deleteSession` no la corre y que una purga fallida se registra con
+`console.error` y deja seguir la petición)*
 
 ### BR-CB-22b: Borrado único del historial previo al ajuste
 
@@ -1078,12 +1106,13 @@ aparece ningún remitente y que `FIN DE LOS DATOS` es línea propia una sola vez
 
 ## Endpoints
 
-> *Ajuste del 2026-09-25, pendiente de aprobación.* Ninguna ruta cambia de forma, de campos ni de
-> códigos de error. Cambia lo que devuelven en dos casos. Las sesiones del ciclo anterior
-> desaparecen cuando empieza el período activo (BR-CB-22), y una pregunta cuya respuesta falla no
-> queda guardada (BR-CB-21). La primera petición después del despliegue borra de una vez todas las
-> sesiones de producción anteriores al inicio del período activo, con la aprobación previa de
-> BR-CB-22. El detalle va en cada ruta y en `docs/specs/api-contracts.md`.
+> *Ajuste del 2026-09-25, aprobado por el dueño el 2026-09-25.* Ninguna ruta cambia de forma, de
+> campos ni de códigos de error. Cambia lo que devuelven en dos casos. Las sesiones del ciclo
+> anterior desaparecen cuando empieza el período activo (BR-CB-22), y una pregunta cuya respuesta
+> falla no queda guardada (BR-CB-21). La primera petición después del despliegue borra de una vez
+> todas las sesiones de producción anteriores al inicio del período activo, y ese borrado exige
+> antes del merge el paso «Primera purga en producción» de BR-CB-22. El detalle va en cada ruta y
+> en `docs/specs/api-contracts.md`.
 
 ### POST /chatbot/sessions
 
@@ -1271,7 +1300,7 @@ CHATBOT_RATE_LIMIT=20   # Preguntas por alumno por hora (opcional, default 20)
 - ~~`chat-search.ts`: busca mensajes relevantes combinando Firebase RTDB + Cohere Rerank.~~ *Reemplazado el 2026-09-25.* Lee Firebase RTDB de las secciones filtradas, sin Rerank y sin remitentes (BR-CB-06 y BR-CB-23).
 - ~~`context-builder.ts`: logica pura que arma el string de contexto a partir de intents + datos + historial + localGrades + system prompt.~~ *Reemplazado el 2026-09-25.* Arma el mensaje de datos sin el historial, que viaja como turnos (BR-CB-07, BR-CB-20 y BR-CB-24).
 - `rate-limit.ts`: middleware reutilizable que trackea conteo de requests por `studentId` en memoria.
-- *Ajuste del 2026-09-25, pendiente de aprobación.*
+- *Ajuste del 2026-09-25, aprobado por el dueño el 2026-09-25.*
   - `intent-classifier.ts` queda como lógica pura de palabras clave normalizadas, sin Cohere
     (BR-CB-04). `cohere.client.ts` pierde `classify`.
   - `chatbot.repository.ts` pierde `getClassmates` y gana `getSectionRepresentatives`
