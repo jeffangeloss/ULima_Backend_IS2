@@ -173,6 +173,7 @@ Especialidades filtradas por carrera. Si `careerId` se omite, usa la carrera del
     ]
   }
   ```
+- **Solo lo oficial** *(propuesta del 2026-09-25, BR-AP-07 de `academic-profile.spec.md`, pendiente de aprobación)*. Con `careerId` y sin él, la lista trae solo las especialidades con `is_active = true`, que en Ingeniería de Sistemas son los cuatro diplomas oficiales. `is_active` sigue en cada elemento, ahora siempre `true`, y `display_order` se numera después del filtro. Los datos de `specialty` no cambian.
 
 ### PUT /academic-profile/me/specialties
 
@@ -198,6 +199,7 @@ Reemplaza las especialidades activas del estudiante autenticado. Escribe en `stu
   }
   ```
 - **Errors**: `400` `INVALID_BODY`, `404` `SPECIALTY_NOT_FOUND`, `409` `DUPLICATE_PRIMARY`
+- **Solo lo oficial y reemplazo atómico** *(propuesta del 2026-09-25, BR-AP-07 y BR-AP-08, pendiente de aprobación)*. `404 SPECIALTY_NOT_FOUND` también para una especialidad que existe pero tiene `is_active = false`, con el mismo mensaje que una de otra carrera. El desactivado, los `upsert` y la marca de `specialty_setup_completed` corren en una sola transacción. La forma de la ruta no cambia.
 
 Notas:
 
