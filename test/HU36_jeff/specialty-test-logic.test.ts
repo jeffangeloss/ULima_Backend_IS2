@@ -277,6 +277,18 @@ describe("lineas de Ulises del resultado (RS-BE-42)", () => {
     expect(u.tiebreakOutcome).toBe(lineas.tiebreak.resolved);
   });
 
+  test("con afinidad de 50 exacta el titular es winner y no low", () => {
+    // ejemplo-7 termina con si en 50 exactos (S = 10500) tras el segundo desempate.
+    const e = ejemplo("ejemplo-7");
+    const ev = evaluacion(e.answers, e.tiebreakAnswers);
+    expect(ev.tie).toBe(false);
+    expect(ev.ranking[0]).toBe("si");
+    expect(ev.scores.si.S).toBe(50 * 210);
+    expect(buildResultUlises(c, ev).headline).toBe(
+      "Lo tuyo apunta a Sistemas de Información, con 50 % de afinidad.",
+    );
+  });
+
   test("titular low con afinidad menor que 50", () => {
     const e = ejemplo("ejemplo-4");
     const u = buildResultUlises(c, evaluacion(e.answers, e.tiebreakAnswers));
