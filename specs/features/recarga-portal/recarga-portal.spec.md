@@ -34,11 +34,15 @@ targets:
 > `portal-sync.spec.md`, `delegados-portal.spec.md`, `grades.spec.md`,
 > `official-grades.spec.md`, `schedule.spec.md` y `course-detail.spec.md` (ver «Cambios en
 > otras specs»). La rama `feat/recarga-notas-asistencia` parte de `origin/main` en `f10eb3f`, y
-> todas las referencias de línea citan ese estado. Todos los `[@test]` apuntan a pruebas que
-> se crean con la implementación y hoy no existen, así que cada uno lleva la marca
-> *(pendiente)*. Los ejemplos usan datos inventados (alumno `20230001`, curso `690417` TALLER
-> DE PROTOTIPADO, sección `812`, aulas `900101` a `900105`). La contraparte de frontend, con la
-> maqueta aprobada, se escribe en `ULima_Frontend_IS2` y todavía no existe.
+> todas las referencias de línea citan ese estado. Los `[@test]` con la marca *(pendiente)*
+> apuntan a pruebas que se crean con la implementación y hoy no existen. Los que llevan
+> *(existe, casos nuevos)* o *(existe, se actualiza)* apuntan a pruebas de `test/HU31_jeff/`
+> que ya existen (`service.asistencia.test.ts`, `service.delegados.test.ts`,
+> `service.import.test.ts`, `parser.asistencia.test.ts`, `parser.asistencia-sidebar.test.ts`,
+> `parsers.delegado.test.ts` y `portal.client.login.test.ts`) y solo suman casos o ajustan los
+> que cambian de forma. Los ejemplos usan datos inventados (alumno `20230001`, curso `690417`
+> TALLER DE PROTOTIPADO, sección `812`, aulas `900101` a `900105`). La contraparte de frontend,
+> con la maqueta aprobada, se escribe en `ULima_Frontend_IS2` y todavía no existe.
 
 ## El problema
 
@@ -156,11 +160,14 @@ ninguna aula utilizable»), porque este portal devuelve la página de inicio de 
 1. Un curso empieza en cada etiqueta `<li` cuyo atributo `class` contiene la palabra `curso`
    como palabra completa, separada por espacios (`curso` y `curso open` sirven, `curso-body`
    no), y termina donde empieza el siguiente curso o en el primer `</ul>`.
-2. Dentro de ese tramo se buscan los enlaces `fnEnlace('<dígitos>')`, con comillas simples o
-   dobles, y se toman sus aulas distintas. Un tramo con exactamente un aula aporta esa aula.
-   Un tramo sin aula se descarta, porque ese curso no ofrece el panel. Un tramo con dos aulas
-   distintas se descarta entero, porque no hay forma segura de saber cuál es la suya.
-3. El aula se valida con `^\d{4,8}$`, el mismo criterio de `assertAula`.
+2. Dentro de ese tramo se buscan las llamadas `fnEnlace('<argumento>')`, con comillas simples
+   o dobles y un argumento de hasta 20 caracteres sin comillas ni `<>`, y se cuentan sus
+   argumentos distintos antes de validarlos. Un tramo sin llamadas se descarta, porque ese
+   curso no ofrece el panel. Un tramo con dos argumentos distintos se descarta entero, aunque
+   uno de ellos no sea un aula válida, porque no hay forma segura de saber cuál es la suya. Un
+   tramo con exactamente un argumento aporta esa aula si pasa el punto 3.
+3. El aula se valida con `^\d{4,8}$`, el mismo criterio de `assertAula`, y un argumento que no
+   cumple descarta el tramo.
 4. `sectionCode` es el último segmento del texto del `<li>`, separado por `/` y normalizado con
    `clean(stripTags(...))`, cuando cumple `^\d{1,4}$`. Si no lo cumple queda `null` y el aula
    se conserva, porque la sección del menú solo sirve para contrastar.
@@ -173,30 +180,57 @@ ninguna aula utilizable»), porque este portal devuelve la página de inicio de 
 
 **Quién consume el resultado.**
 
-- **Asistencia de la importación.** Hoy ya identifica cada curso por los ocultos de la página
-  de detalle (`prm_sCoCurs`, `prm_sCoSecc`), así que el formato de lista no le quita nada. Se
-  agrega un contraste. Cuando el aula trae `sectionCode` del menú y la página declara otra
-  sección, ese curso no se escribe y se emite `PARSER_FAILED` con `block: "asistencia"` y el
-  mensaje fijo «La sección del menú no coincide con la de la página de asistencia del aula
-  <aula>.».
+- **Asistencia de la importación.** Identifica cada curso por los ocultos de la página de
+  detalle (`prm_sCoCurs`, `prm_sCoSecc`), así que el formato de lista no le cambia la
+  escritura. Sí le cambia los avisos de un aula cuya página falla, que hoy se arman con
+  `${a.courseCode}/${a.sectionCode}` (`portal-sync.service.ts:321` en delegados y `:395` en
+  asistencia) y con el menú de lista saldrían «de null/812». Rige la atribución de abajo. Se
+  agrega además un contraste. Cuando el aula trae `sectionCode` del menú y la página declara
+  otra sección, ese curso no se escribe, el aula no entra al mapa aula → (curso, sección) y se
+  emite `PARSER_FAILED` con `block: "asistencia"` y el mensaje fijo «La sección del menú no
+  coincide con la de la página de asistencia del aula <aula>.».
 - **Delegados de la importación.** La fase de asistencia pasa a correr antes que la de
   delegados, las dos fuera de la transacción y una después de la otra, como hoy. Para un aula
   con `courseCode: null`, la fase de delegados toma el curso y la sección del mapa aula →
-  (curso, sección) que arman las páginas de asistencia que se leyeron bien en la misma
-  importación, porque el aula es el mismo número en los tres paneles. Si el aula no está en ese
-  mapa, sus delegados no se escriben y se emite `PARSER_FAILED` con `block: "delegado"` y el
-  mensaje fijo «No se pudo identificar el curso del aula <aula>.». Si el menú trae una sección
-  y el mapa dice otra, rige la misma regla. El aviso de RS-11 («Ninguna de las aulas del panel
-  de delegados empató con tu matrícula») se mide sobre las aulas identificadas. La nómina no
-  cambia (RS-2 a RS-7 de `delegados-portal.spec.md`).
+  (curso, sección) de la misma importación, que se arma con la identificación verificada de
+  cada página de asistencia (RS-BE-51, punto 4), porque el aula es el mismo número en los tres
+  paneles. Consulta ese mapa antes de pedir la nómina, así que un aula sin curso conocido no
+  gasta ninguna petición. Si el aula no está en el mapa, sus delegados no se escriben y se
+  emite `PARSER_FAILED` con `block: "delegado"` y el mensaje fijo «No se pudo identificar el
+  curso del aula <aula>.». Si el menú trae una sección y el mapa dice otra, rige la misma
+  regla. El aviso de RS-11 («Ninguna de las aulas del panel de delegados empató con tu
+  matrícula») se mide sobre las aulas identificadas. La nómina no cambia (RS-2 a RS-7 de
+  `delegados-portal.spec.md`).
 - **Recarga.** RS-BE-51 y RS-BE-52 usan el mismo parser con `OpenAsistenciaAlumno` y
   `OpenNotaAlumnoPrePost`.
+
+**Atribución de un aula sin curso conocido.** Con el menú de lista, un aula cuya página falla
+(en la descarga, en la lectura o porque se agota el presupuesto) no dice de qué curso es. La
+regla es la misma en la importación y en la recarga.
+
+1. El curso y la sección de un aula salen, en este orden, de los arreglos del menú, de la
+   identificación verificada de su propia página (RS-BE-51, punto 4, y RS-BE-52, punto 6) o
+   de la identificación verificada de la página de la misma aula en el otro panel. Si
+   ninguna la da, el aula queda sin curso conocido.
+2. Los avisos de cada aula se arman al final, cuando ya terminan todas las fases. Con curso
+   conocido nombran `<curso>/<sección>`, y sin él nombran el aula, como en «No se pudo traer la
+   asistencia del aula 900101.» o «No se entendió la asistencia del aula 900101» seguido del
+   motivo. Ningún aviso lleva `null`.
+3. La importación no tiene fase de notas, así que con el menú de lista el aula de una página
+   de asistencia que falla queda sin curso conocido y su aviso nombra el aula.
+4. En la recarga, un aula sin curso conocido no se atribuye a ninguna matrícula, y el estado
+   de cada matrícula sigue RS-BE-56.
 
 Los mensajes llevan solo literales fijos y valores ya validados con una regex de dígitos.
 
 `[@test] ../../../test/HU31_jeff/parser.aulas-lista.test.ts` *(pendiente)*
-`[@test] ../../../test/HU31_jeff/service.asistencia.test.ts` *(pendiente, casos nuevos)*
-`[@test] ../../../test/HU31_jeff/service.delegados.test.ts` *(pendiente, casos nuevos)*
+`[@test] ../../../test/HU31_jeff/parser.asistencia-sidebar.test.ts` *(existe, se actualiza)*
+`[@test] ../../../test/HU31_jeff/parsers.delegado.test.ts` *(existe, se actualiza)*
+`[@test] ../../../test/HU31_jeff/service.asistencia.test.ts` *(existe, casos nuevos)*
+`[@test] ../../../test/HU31_jeff/service.delegados.test.ts` *(existe, casos nuevos)*
+
+`parser.asistencia-sidebar.test.ts:17` y `parsers.delegado.test.ts` comparan el resultado de
+`parseAulas` con `toEqual`, así que sus objetos esperados suman `origen: "arreglos"`.
 
 ### RS-BE-49 · Endpoint de recarga, un solo inicio de sesión
 
@@ -216,15 +250,32 @@ autenticado con un solo inicio de sesión. Es la opción por defecto de la decis
      él. Si no, `409 IMPORT_REQUIRED` («Primero carga tus datos del ciclo.»). La recarga solo
      actualiza matrículas que ya existen y nunca crea período, curso, sección ni matrícula.
   2. `app_user.code` existe. Si no, `422 PORTAL_IDENTITY_UNVERIFIABLE`.
-  3. No hay otra recarga del mismo alumno en curso en esta instancia. Si la hay,
-     `409 PORTAL_REFRESH_IN_PROGRESS`, porque dos inicios de sesión casi simultáneos gastan el
-     mismo código de un solo uso y el segundo se leería como un rechazo.
+  3. No hay otra recarga ni una importación con `credentials` del mismo alumno en curso en
+     esta instancia. Si la hay, `409 PORTAL_REFRESH_IN_PROGRESS` con el mensaje fijo «Ya hay
+     una lectura de miUlima en curso. Espera a que termine.», porque dos inicios de sesión casi
+     simultáneos gastan el mismo código de un solo uso y el segundo se leería como un rechazo.
+     RS-BE-50 dice cómo la importación respeta la misma guarda.
   4. El tope de inicios de sesión rechazados de RS-BE-50, que se revisa justo antes de iniciar
      sesión. El cupo por hora lo descuenta antes un middleware, como en la importación, y
      RS-BE-50 dice cuándo se devuelve.
 - **Inicio de sesión.** Una sola llamada a `PortalClient.login(app_user.code, password,
-  passcode)`, el mismo flujo de la importación con credenciales. El usuario del portal nunca
-  viene del cliente. La contraseña y el código se usan en esa llamada y se descartan.
+  passcode)`, el mismo flujo de la importación con credenciales, con el plazo de RS-BE-50. El
+  usuario del portal nunca viene del cliente. La contraseña y el código se usan en esa llamada
+  y se descartan.
+- **Ronda de apertura y ciclo, antes de leer ningún curso.** Tras el inicio de sesión, una
+  ronda pide en paralelo `layout.jsp`, el menú de Asistencia y el menú de Nota.
+  `parseCicloActivo(layout)` da el ciclo que muestra la ULima, el mismo que usa la
+  importación. Si la petición de `layout.jsp` falla, la recarga termina con el error de esa
+  petición, y si la página llega sin ciclo legible, con `502 PORTAL_UNREADABLE`. Si ese ciclo
+  difiere del código del período activo de ULima++, la recarga termina con
+  `409 IMPORT_REQUIRED` y el
+  mensaje fijo «La ULima ya muestra otro ciclo. Carga tus datos del ciclo nuevo.», sin pedir
+  ninguna página de curso y sin escribir nada. La misma respuesta sale si después alguna
+  página de asistencia declara otro ciclo (RS-BE-51, punto 3). La guarda existe porque la
+  página de notas y su marco no traen ciclo, y entre el cambio de ciclo en la ULima y la
+  importación que activa el período nuevo las matrículas viejas siguen activas, así que un
+  curso llevado otra vez con el mismo código de sección recibiría notas del ciclo nuevo
+  emparejadas con el sílabo viejo (decisión abierta 19).
 - **Fases, fuera de la transacción.** Primero la asistencia (RS-BE-51) y después las notas
   (RS-BE-52 y RS-BE-53). La asistencia va primero porque su mapa aula → (curso, sección)
   sirve para contrastar el panel Nota.
@@ -233,11 +284,14 @@ autenticado con un solo inicio de sesión. Es la opción por defecto de la decis
   con error o por presupuesto agotado. RS-BE-60 cubre el inicio de sesión que falla a medias.
 - **Identidad.** La sesión es del alumno por construcción, porque el backend inicia sesión con
   `app_user.code` y no acepta cookies de afuera. Como defensa adicional, si cualquier página
-  de asistencia declara en `prm_sCoUserAlum` un alumno distinto, la recarga entera se aborta
-  con `403 PORTAL_IDENTITY_MISMATCH` y no escribe nada. Para eso `parseAsistenciaCurso`
-  distingue ese fallo de los demás con `identityMismatch: true` en su resultado. La importación
-  conserva su comportamiento de hoy ante ese fallo, porque ya verifica la identidad con el
-  consolidado de matrícula.
+  de asistencia declara en `prm_sCoUserAlum` un código presente, no vacío y distinto de
+  `app_user.code`, la recarga entera se aborta con `403 PORTAL_IDENTITY_MISMATCH` y no escribe
+  nada. Para eso `parseAsistenciaCurso` marca ese caso, y solo ese, con
+  `identityMismatch: true`. Un `prm_sCoUserAlum` ausente o vacío es un fallo común de lectura
+  de ese curso, con el motivo fijo «la página no trae el código de alumno», mientras que hoy
+  los dos casos comparten motivo (`asistencia.ts:55-59`). La importación conserva su
+  comportamiento de hoy ante los dos, un aviso por curso, porque ya verifica la identidad con
+  el consolidado de matrícula.
 - **Lo que la recarga nunca toca.** Período, semanas, cursos, ofertas, docentes, secciones,
   horarios, sílabos, `assessment`, progreso, récord, alertas, claims de delegados,
   `section_representative`, `student_score` y `simulated_grades`. En `enrollment` escribe
@@ -252,68 +306,117 @@ Opción por defecto de la decisión abierta 3.
 
 - **Cupo propio.** 5 recargas por alumno por hora, en un almacén propio
   (`portalRefreshRateLimit`), separado de los 5 de la importación. Se descuenta antes de
-  trabajar y se devuelve ante `PORTAL_LOGIN_REJECTED`, `IMPORT_REQUIRED`,
-  `PORTAL_REFRESH_IN_PROGRESS`, `INVALID_JSON_BODY`, `INVALID_REQUEST_BODY` y el `429` del tope
-  de rechazos, porque ninguno de ellos llega a leer datos del portal. Al agotarse responde `429 RATE_LIMITED` con
+  trabajar y se devuelve cuando la recarga termina sin haber enviado ninguna petición al
+  portal, es decir ante `INVALID_JSON_BODY`, `INVALID_REQUEST_BODY`, el `IMPORT_REQUIRED` de la
+  condición previa 1, `PORTAL_IDENTITY_UNVERIFIABLE`, `PORTAL_REFRESH_IN_PROGRESS` y el `429`
+  del tope de rechazos. Se devuelve también ante `PORTAL_LOGIN_REJECTED`, con el criterio de la
+  importación, porque quien se equivoca al tipear su propio código no tiene por qué perder el
+  cupo. El `409 IMPORT_REQUIRED` por cambio de ciclo de RS-BE-49 no lo devuelve, porque llega
+  después de iniciar sesión y de pedir páginas. Al agotarse responde `429 RATE_LIMITED` con
   `details: { retryAfterMinutes, kind: "quota" }` y el mensaje «Demasiadas actualizaciones.
   Intenta de nuevo en N minuto(s).». Cada respuesta lleva `X-RateLimit-Remaining`.
-- **Tope de inicios de sesión rechazados.** 3 rechazos cada 15 minutos por alumno, contados
-  juntos con los de `POST /portal-sync/import`, porque protegen la misma cuenta de miUlima de
-  un bloqueo. Se revisa antes de iniciar sesión. Al llegar al tope responde
-  `429 RATE_LIMITED` con `details: { retryAfterMinutes, kind: "rejected_logins" }` y el mensaje
-  «Demasiados intentos con datos rechazados. Intenta de nuevo en N minuto(s).». Devolver el
-  cupo por hora ante un rechazo no borra el rechazo de este contador.
-- **Límite del mecanismo.** Los dos contadores y la guarda de recarga en curso viven en la
-  memoria de cada instancia, como los de hoy, así que no son límites globales.
+- **Tope de inicios de sesión rechazados.** 3 rechazos cada 15 minutos por alumno, en un
+  almacén en memoria que comparten la recarga y `POST /portal-sync/import` con
+  `credentials`, porque protegen la misma cuenta de miUlima de un bloqueo. En la recarga se
+  revisa justo antes de `PortalClient.login`. En la importación se revisa dentro de la rama con
+  `credentials` de `importFromPortal`, después de leer `app_user.code` y antes de
+  `this.client.login` (`portal-sync.service.ts:146-153`), y un `PORTAL_LOGIN_REJECTED` que
+  lanza ese `login` suma un rechazo. La importación con `cookies` no inicia sesión, así que ni
+  revisa ni suma. `POST /auth/register` tampoco, porque llama a `PortalClient.login` por su
+  cuenta (`auth.service.ts:236`), no tiene `studentId` y ya tiene su propio contador por
+  código. Al llegar al tope, las dos rutas responden `429 RATE_LIMITED` con
+  `details: { retryAfterMinutes, kind: "rejected_logins" }` y el mensaje «Demasiados intentos
+  con datos rechazados. Intenta de nuevo en N minuto(s).», sin llamar al portal, y las dos
+  devuelven su cupo por hora. Devolver el cupo por hora ante un rechazo no borra el rechazo de
+  este contador. Para la importación es un `429` nuevo en su contrato.
+- **Cupo de la importación.** Su `429` de cupo, que hoy solo trae `retryAfterMinutes`, suma
+  `details.kind: "quota"`, un campo aditivo que lo alinea con la recarga (decisión abierta 3).
+- **Guarda de inicio de sesión en curso.** La guarda de la condición previa 3 de RS-BE-49 es un
+  registro en memoria por alumno que marcan la recarga y la importación con `credentials` desde
+  antes de iniciar sesión hasta el cierre. La recarga rechaza si hay cualquiera de las dos en
+  curso. La importación con `credentials` la revisa antes del tope de rechazos, y si hay una
+  recarga en curso responde `409 PORTAL_REFRESH_IN_PROGRESS` sin llamar al portal y devuelve su
+  cupo. Entre dos importaciones rige lo de hoy.
+- **Límite del mecanismo.** Los contadores y la guarda viven en la memoria de cada instancia,
+  como los de hoy, así que no son límites globales.
 - **Concurrencia.** Nunca hay más de 5 peticiones simultáneas sobre la misma sesión del portal,
   el mismo tope que ya asume la importación.
 - **Presupuesto de tiempo.** `PORTAL_REFRESH_BUDGET_MS`, variable nueva en `src/config/env.ts`
-  validada con Zod como entero entre 20 000 y 80 000, con 60 000 por defecto y expuesta en
-  `config.portal.refreshBudgetMs`. Cuenta desde que el controlador recibe la petición. Pasado
-  el presupuesto no se inicia ninguna petición nueva al portal, salvo el cierre de sesión. Las
-  peticiones en vuelo terminan con su propio `PORTAL_TIMEOUT_MS`. Los cursos que no alcanzan a
-  leerse quedan como `not_reached` y la respuesta suma un único aviso
-  `REFRESH_BUDGET_EXCEEDED`. Si el presupuesto se agota antes de leer ningún curso, la
-  respuesta es `504 PORTAL_TIMEOUT`. Con los valores por defecto, el peor caso es 60 s de
-  presupuesto, 8 s de la última petición en vuelo, la transacción y 8 s del cierre de sesión,
-  por debajo de los 90 s de la app.
+  validada con Zod como entero entre 20 000 y 68 000, con 60 000 por defecto.
+  `config.portal.refreshBudgetMs` vale el menor entre ese valor y
+  90 000 − 2 · `PORTAL_TIMEOUT_MS` − 6 000, y la validación del entorno falla al arrancar si ese
+  menor queda por debajo de 20 000, lo que solo ocurre con un `PORTAL_TIMEOUT_MS` mayor que
+  32 000. El presupuesto cuenta desde que el controlador recibe la petición y cubre también el
+  inicio de sesión.
+  - `PortalClient.login` recibe un plazo opcional (`deadline`), que la importación y el
+    registro no pasan. Con plazo, ningún salto del inicio de sesión empieza después del plazo,
+    y el temporizador de cada salto es el menor entre `PORTAL_TIMEOUT_MS` y el tiempo que
+    queda, porque un inicio de sesión a medias no sirve de nada. Si el plazo vence durante el
+    inicio de sesión, la respuesta es `504 PORTAL_TIMEOUT`, después del cierre de RS-BE-60.
+  - Pasado el presupuesto no se inicia ninguna petición nueva al portal, salvo el cierre de
+    sesión. Las peticiones de las fases que están en vuelo terminan con su propio
+    `PORTAL_TIMEOUT_MS`. Los cursos que no alcanzan a leerse quedan como `not_reached` y la
+    respuesta suma un único aviso `REFRESH_BUDGET_EXCEEDED`. Si el presupuesto se agota antes
+    de leer ningún curso, la respuesta es `504 PORTAL_TIMEOUT`.
+  - El peor caso suma el presupuesto, una petición de fase en vuelo (`PORTAL_TIMEOUT_MS`), la
+    transacción y la respuesta (6 s de margen) y el cierre de sesión (`PORTAL_TIMEOUT_MS`), y
+    con la fórmula nunca pasa de los 90 s de la app. Con los valores por defecto son
+    60 + 8 + 6 + 8 = 82 s. El margen de 6 s no está medido y lo comprueba V5.
 - **Registro.** Por fase, la duración en milisegundos, el número de peticiones y sus estados
   HTTP. Nunca cuerpos, cookies, contraseña, código, notas, nombres ni códigos de alumno.
 
 `[@test] ../../../test/HU37_jeff/refresh.rate-limit.test.ts` *(pendiente)*
 `[@test] ../../../test/HU37_jeff/refresh.budget.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/env.refresh-budget.test.ts` *(pendiente)*
+`[@test] ../../../test/HU31_jeff/service.import.test.ts` *(existe, casos nuevos)*
+`[@test] ../../../test/HU31_jeff/portal.client.login.test.ts` *(existe, casos nuevos)*
 
 ### RS-BE-51 · Asistencia en la recarga
 
-1. `GET` del menú `PORTAL_PATHS.cursosAsistencia` y `parseAulas(html, "OpenAsistenciaAlumno")`.
+1. El menú `PORTAL_PATHS.cursosAsistencia`, pedido en la ronda de apertura de RS-BE-49, y
+   `parseAulas(html, "OpenAsistenciaAlumno")`.
 2. Por cada aula, `GET` de `PORTAL_PATHS.asistenciaAlumno(aula)`, en paralelo con el tope de
    RS-BE-50, y `parseAsistenciaCurso(html, aula, app_user.code, cicloEsperado)`.
 3. **Ciclo.** `parseAsistenciaCurso` recibe un cuarto parámetro opcional, `cicloEsperado`
    (`"AAAA-N"`). Cuando llega, exige `prm_sAaCicl` con `^\d{4}$` y `prm_sNuCicl` con `^[0-3]$`,
    y que `"<prm_sAaCicl>-<prm_sNuCicl>"` sea igual a `cicloEsperado`. Si no, devuelve
-   `ok: false` con el motivo fijo «la página es de otro ciclo». La recarga pasa el código del
-   período activo y la importación pasa `ciclo.data.periodCode`, el ciclo que acaba de leer de
-   `layout.jsp`. `AsistenciaCurso` sigue con sus cinco campos.
-4. El curso y la sección salen de la página, nunca del menú. Si el menú trae una sección
-   distinta, rige el contraste de RS-BE-48.
+   `ok: false` con el motivo fijo «la página es de otro ciclo», y cuando los dos ocultos están
+   bien formados y solo difiere el ciclo, marca además `otroCiclo: true`. La recarga pasa el
+   código del período activo y ante `otroCiclo` termina con `409 IMPORT_REQUIRED` sin escribir
+   nada (RS-BE-49). La importación pasa `ciclo.data.periodCode`, el ciclo que acaba de leer de
+   `layout.jsp`, y ante `otroCiclo` emite el aviso de ese curso sin abortar.
+   `AsistenciaCurso` sigue con sus cinco campos.
+4. **Identificación verificada.** El curso y la sección salen de la página, nunca del menú. La
+   identificación verificada de una página es el par (curso, sección) que declara cuando
+   además `prm_sNuAula` es el aula pedida, `prm_sCoUserAlum` es el del alumno y, con
+   `cicloEsperado`, el ciclo coincide. `parseAsistenciaCurso` la devuelve en
+   `identificado: { courseCode, sectionCode }` también cuando la página falla después, en los
+   totales o en el cotejo con las sesiones. El mapa aula → (curso, sección) de RS-BE-48 y
+   RS-BE-52 se arma con esas identificaciones y no solo con las páginas que se leen enteras,
+   así que un curso cuya página falla en los totales conserva sus delegados y su contraste de
+   notas. Si el menú trae una sección distinta, rige el contraste de RS-BE-48 y el aula no entra
+   al mapa.
 5. La matrícula se resuelve en memoria por el par (curso, sección) contra las matrículas
    activas del alumno en el período activo, que ya trae la consulta de la condición previa 1.
    Un curso de miUlima sin matrícula en ULima++ no se escribe y suma el aviso `NOT_ENROLLED`.
 6. La escritura es la de RS-BE-15 (`resolveAttendanceHours` y `updateAttendanceHours`, un solo
    `UPDATE` por asignación con el CHECK replicado en el `WHERE`), y el mismo `UPDATE` fija
-   `portal_attendance_read_at` en el instante en que llega la respuesta de esa página. Una
-   fila que el `UPDATE` no toca queda `skipped` y conserva su hora de lectura anterior.
+   `portal_attendance_read_at` en el instante en que llega la respuesta de esa página, con la
+   guarda de lectura más reciente de RS-BE-55. Una fila que el `UPDATE` no toca queda
+   `skipped` y conserva su hora de lectura anterior.
 7. Un fallo de descarga o de lectura no toca la fila. Nunca se escribe 0 por un fallo.
 
 `[@test] ../../../test/HU37_jeff/refresh.asistencia.test.ts` *(pendiente)*
-`[@test] ../../../test/HU31_jeff/parser.asistencia.test.ts` *(pendiente, casos de ciclo)*
+`[@test] ../../../test/HU31_jeff/parser.asistencia.test.ts` *(existe, casos nuevos de ciclo, identidad e identificación)*
+`[@test] ../../../test/HU31_jeff/service.asistencia.test.ts` *(existe, casos nuevos de `cicloEsperado` en la importación)*
 
 ### RS-BE-52 · Página de notas de cada curso (identificación y agregados)
 
 **Rutas nuevas en `PORTAL_PATHS`.** Son constantes y lo único interpolado es el aula, validada
 por `assertAula`.
 
-- `cursosNota` es `av/servlets/ComandoListarCursosXOpcionAulaVirtualNota`.
+- `cursosNota` es `av/servlets/ComandoListarCursosXOpcionAulaVirtualNota`, que se pide en la
+  ronda de apertura de RS-BE-49.
 - `notaCurso(aula)` es el servlet que arma `OpenNotaAlumnoPrePost` en `aVirtualBB.js`, con
   `?prm_sNuAula=<aula>`. Se fija como constante después de la verificación V1, y solo si ese
   es su único parámetro. Si la función pide un código de alumno, la feature se detiene y se
@@ -327,32 +430,38 @@ por `assertAula`.
 AgregadoUlima[] }` y `AgregadoUlima = { clave: "EP" | "TA" | "EF" | "PROM"; etiqueta: string;
 valor: number | null }`.
 
-1. `courseCode` sale de una asignación `codCurso = '<valor>';` al comienzo de una línea (con
-   `var` opcional y comillas simples o dobles) y cumple `^\d{4,6}$`. Una línea que empieza con
-   `//` nunca se lee, así que la línea comentada con el nombre del alumno queda fuera por
-   construcción. Si falta o no cumple, `ok: false` con «la respuesta no es la página de notas
-   de un curso», el mismo motivo que recibe la página de inicio de sesión.
+1. `courseCode` sale de una asignación `codCurso = '<valor>';` al comienzo de una línea, tras
+   espacios o tabulaciones opcionales (con `var` opcional y comillas simples o dobles), y
+   cumple `^\d{4,6}$`. La página viva indenta cada `var` con tabulaciones, así que un lector
+   anclado en `^var` pasaría un fixture sin sangría y fallaría en vivo. Una línea cuyo primer
+   carácter distinto de espacio o tabulación empieza un `//` nunca se lee, así que la línea
+   comentada con el nombre del alumno queda fuera por construcción. Si falta o no cumple,
+   `ok: false` con «la respuesta no es la página de notas de un curso», el mismo motivo que
+   recibe la página de inicio de sesión.
 2. `sectionCode` sale igual de `seccion = '<valor>';` y cumple `^\d{1,4}$`.
 3. La página tiene que traer un `<iframe>` cuyo `name` o `id` sea `ifrTareaAcad` y cuyo `src`
    sea exactamente `/portalUL/gada/servlets/ComandoConsultarTareaAcademica?prm_sNuAula=<aula>`
    con el aula pedida. Si falta, `ok: false` con «la página no trae el marco de evaluaciones».
    Si el aula difiere, `ok: false` con «la página no corresponde al aula que se pidió».
-4. **Agregados.** Se leen solo las asignaciones `notaEP`, `notaTA`, `notaEF` y `notaPROM`, al
-   comienzo de línea, con `^\d{1,2}(\.\d{1,2})?$` y valor entre 0 y 20, y sus etiquetas
-   `nomEP`, `nomTA`, `nomEF` y `nomPROM`, normalizadas con `clean(stripTags(...))`, que
-   convierte el `<br>` de «Eval. Continua<br>2» en espacio. Un 0 se devuelve como `null`,
+4. **Agregados.** Se leen solo las asignaciones `notaEP`, `notaTA`, `notaEF` y `notaPROM`, con
+   el mismo anclaje del punto 1, con `^\d{1,2}(\.\d{1,2})?$` y valor entre 0 y 20, y sus
+   etiquetas `nomEP`, `nomTA`, `nomEF` y `nomPROM`, normalizadas con `clean(stripTags(...))`,
+   que convierte el `<br>` de «Eval. Continua<br>2» en espacio. Un 0 se devuelve como `null`,
    porque el portal usa 0 para «sin nota». Un agregado que falta o no cumple se omite y no
    hace fallar al curso.
 5. Las asignaciones `min*` y `max*` no se leen nunca. Son datos de la clase entera, es decir de
    terceros, y usan el mismo 0 ambiguo.
-6. Si el menú trae una sección y la página declara otra, o si el mapa de la asistencia tiene
-   esa aula con otro curso o sección, el curso no se escribe y se emite `PARSER_FAILED` con
-   `block: "nota"` y el mensaje fijo «El curso del aula <aula> no coincide entre los paneles de
-   miUlima.».
+6. Si el menú trae una sección y la página declara otra, o si el mapa aula → (curso, sección)
+   de la asistencia (RS-BE-51, punto 4) tiene esa aula con otro curso o sección, el curso no
+   se escribe y se emite `PARSER_FAILED` con `block: "nota"` y el mensaje fijo «El curso del
+   aula <aula> no coincide entre los paneles de miUlima.». Una página que cumple los puntos 1
+   a 3 sin caer en este punto da la identificación verificada de la página de notas, que
+   RS-BE-48 usa para atribuir un aula cuya página de asistencia falla.
 7. **Uso de los agregados.** No se guardan, no se devuelven a la app (decisión abierta 18) y no
    se registran. Solo sirven al chequeo del punto 7 de RS-BE-53.
 
 `[@test] ../../../test/HU37_jeff/parser.nota-curso.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(pendiente, punto 6)*
 
 ### RS-BE-53 · Tabla «Detalle Evaluaciones»
 
@@ -361,7 +470,9 @@ su marco, y los cursos uno tras otro. Es la opción segura mientras la verificac
 que el marco no depende de un estado de sesión que deja la página del curso. Si V3 lo prueba,
 las cadenas de cursos distintos pueden correr en paralelo con el tope de RS-BE-50, y si además
 el marco responde sin abrir antes la página, la página del curso deja de pedirse y el curso y
-la sección salen del mapa de la asistencia (variante corta de «Costo de una recarga»).
+la sección salen del mapa de la asistencia (variante corta de «Costo de una recarga»). Mientras
+V3 no se haga, este orden es lo único que ata a su curso un marco que no trae ningún
+identificador, y por eso tiene su propia prueba.
 
 **Lector `parseDetalleEvaluaciones(html): ParseResult<EvaluacionUlima[]>`**, función pura en
 `parsers/nota.ts`, con `EvaluacionUlima = { key: string; group: string | null; name: string;
@@ -412,6 +523,7 @@ ningún texto del docente.
 9. Los mensajes llevan solo literales fijos. Nunca un fragmento del HTML.
 
 `[@test] ../../../test/HU37_jeff/parser.detalle-evaluaciones.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(pendiente, orden de las peticiones)*
 
 ### RS-BE-54 · Emparejamiento con el sílabo
 
@@ -422,7 +534,10 @@ null; match: "exact" | "exact_other_name" | "week_shift" | "none" }`.
 
 - **Candidatas.** Solo las evaluaciones del sílabo de la oferta del curso (`assessment` →
   `syllabus` → `course_offering` del período activo), resuelta por la matrícula del alumno.
-  Nunca las de otro curso. Todas las secciones de un curso comparten esa rúbrica.
+  Nunca las de otro curso. Todas las secciones de un curso comparten esa rúbrica. El
+  repositorio las lee por `enrollment_id` con la cadena `enrollment` → `section` →
+  `course_offering` → `syllabus` → `assessment`, y el servicio pide las de cada matrícula por
+  separado y nunca junta las de dos cursos en una misma lista.
 - **Nombre base.** `normalizar(nombre)` pasa a minúsculas, quita las tildes con NFD, colapsa
   espacios y quita un ordinal final, sea `\s+(n\s*[°º.]?\s*)?\d{1,2}$` («Examen escrito 2»,
   «Trabajo de investigación N1») o un romano de I a VI. Una evaluación del sílabo calza por
@@ -437,7 +552,9 @@ null; match: "exact" | "exact_other_name" | "week_shift" | "none" }`.
 - **R2, semana corrida.** Con lo que sobra de R1, por nombre base, las evaluaciones de la ULima
   y las candidatas libres del mismo peso se ordenan por semana y la k-ésima de un lado se
   empareja con la k-ésima del otro si la diferencia de semanas es de 2 o menos. `week_shift`.
-  El ordinal cuenta dentro del mismo nombre y no por posición en la lista.
+  El ordinal cuenta dentro del mismo nombre y no por posición en la lista. R2 solo considera
+  evaluaciones de la ULima y candidatas con semana, así que una evaluación de la ULima sin
+  semana que R1 no empareja pasa directo a R3.
 - **R3.** Lo que queda va con `assessmentId: null` y `match: "none"`.
 - Una evaluación del sílabo se empareja a lo sumo una vez.
 - **Guarda del curso.** Si la mitad o más de las evaluaciones de la ULima quedan con `none`, o
@@ -446,6 +563,8 @@ null; match: "exact" | "exact_other_name" | "week_shift" | "none" }`.
   en <curso>/<sección>.», y el curso se guarda igual.
 
 `[@test] ../../../test/HU37_jeff/emparejar.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.repository.test.ts` *(pendiente, candidatas por matrícula)*
+`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(pendiente, dos cursos)*
 
 ### RS-BE-55 · Guardado
 
@@ -453,13 +572,26 @@ null; match: "exact" | "exact_other_name" | "week_shift" | "none" }`.
   `pg_advisory_xact_lock(hashtext('portal-refresh'), studentId)`. Sin ese candado, dos
   recargas del mismo alumno desde dos dispositivos borran e insertan las mismas filas a la vez
   y la segunda termina en un `23505`.
-- **Notas.** Por cada matrícula cuyo marco se lee bien, se borran todas sus filas de
-  `student_portal_score`, se insertan las evaluaciones emparejadas y se fija
-  `enrollment.portal_grades_read_at` en el instante en que llega la respuesta del marco. Así
-  una evaluación que la ULima retira no queda como fila vieja.
+- **Notas.** Por cada matrícula cuyo marco se lee bien, con `<t>` el instante en que llega la
+  respuesta del marco, primero corre `UPDATE enrollment SET portal_grades_read_at = <t> WHERE
+  id = <matrícula> AND (portal_grades_read_at IS NULL OR portal_grades_read_at < <t>)`. Solo
+  si ese `UPDATE` toca la fila se borran todas sus filas de `student_portal_score` y se
+  insertan las evaluaciones emparejadas. Así una evaluación que la ULima retira no queda como
+  fila vieja, y una recarga que lee antes pero confirma después, cuando por fin obtiene el
+  candado, no pisa una lectura más nueva ni hace retroceder la hora, con el mismo criterio de
+  `observed_at` en los delegados. Un curso cuya escritura se salta por esta guarda cuenta
+  igual como `read`.
+- **Pareja atada a la oferta.** Las filas con `assessment_id` se insertan con un
+  `INSERT … SELECT` que une `enrollment` → `section` → `course_offering` → `syllabus` →
+  `assessment` y filtra por la matrícula y por el `assessment_id` propuesto, así que una
+  pareja de otro curso no produce fila aunque el servicio falle. El repositorio compara las
+  filas insertadas con las enviadas y, si difieren, lanza un error que revierte la transacción
+  entera (`500`), porque eso solo ocurre por un defecto del servicio.
 - Un curso cuyo marco falla conserva sus filas y su hora de lectura anteriores, con el mismo
   criterio con que la asistencia nunca escribe 0 por un fallo.
-- **Asistencia.** La de RS-BE-51, dentro de la misma transacción.
+- **Asistencia.** La de RS-BE-51, dentro de la misma transacción. El `UPDATE` de las horas
+  suma a su `WHERE` la misma guarda sobre `portal_attendance_read_at`, también en la
+  importación, y una fila que no toca queda `skipped`.
 - Solo se escribe sobre matrículas activas del alumno en el período activo, resueltas en el
   servidor.
 - Los CHECK de la tabla repiten las validaciones de RS-BE-53, así que un valor que el lector
@@ -481,7 +613,7 @@ dos paneles.
   "grades": { "read": 5, "failed": 0, "unavailable": 0, "withValue": 3 },
   "courses": [
     { "sectionId": 81, "courseCode": "690417", "sectionCode": "812",
-      "attendance": "updated", "grades": "read" }
+      "attendance": "unavailable", "grades": "read" }
   ],
   "view": { "lastReadAt": "2026-09-25T15:42:10.000Z", "courses": [] },
   "warnings": [
@@ -491,12 +623,23 @@ dos paneles.
 }
 ```
 
-- En el ejemplo, `view.courses` va vacío solo por brevedad.
+- En el ejemplo, `courses` y `view.courses` van recortados solo por brevedad. La descarga de
+  la página de asistencia del aula 900101 falla, y la página de notas de la misma aula la
+  identifica como 690417/812, así que por RS-BE-48 el aviso nombra el curso y la matrícula queda
+  `unavailable`. Sin esa página, el aviso diría «No se pudo traer la asistencia del aula
+  900101.» y la matrícula quedaría `missing`.
 - `readAt` es el instante más reciente entre las lecturas que se guardan.
-- `courses` tiene una entrada por matrícula activa del alumno en el período activo.
-  `attendance` vale `updated`, `skipped`, `failed`, `unavailable`, `missing` (el menú de
-  miUlima no trae ese curso) o `not_reached` (se agota el presupuesto). `grades` vale `read`,
-  `failed`, `unavailable`, `missing` o `not_reached`.
+- Los contadores de `attendance` y de `grades` cuentan aulas de cada menú, estén o no
+  atribuidas a una matrícula. `withValue` cuenta los cursos leídos con al menos una evaluación
+  con `mark: "graded"`.
+- `courses` tiene una entrada por matrícula activa del alumno en el período activo, y su
+  estado sale solo de las aulas atribuidas a esa matrícula por la regla de RS-BE-48.
+  `attendance` vale `updated`, `skipped`, `failed` (la página de un aula atribuida no se
+  entiende), `unavailable` (la descarga falla), `not_reached` o `missing`. `grades` vale
+  `read`, `failed`, `unavailable`, `not_reached` o `missing`. Una matrícula sin ningún aula
+  atribuida queda `not_reached` si el presupuesto se agota con alguna aula de ese menú todavía
+  sin pedir, y `missing` en otro caso, que abarca el curso que el menú no trae y el aula cuya
+  página falla sin que ninguna otra página diga de qué curso es.
 - `view` tiene exactamente la forma de `GET /grades/me/ulima` (RS-BE-57), ya con lo guardado,
   para que la app no haga otra petición.
 - Los avisos usan `block: "asistencia"` o `block: "nota"` y los códigos `PARSER_FAILED`,
@@ -509,15 +652,15 @@ dos paneles.
 | Código | Cuándo |
 | --- | --- |
 | `400 INVALID_JSON_BODY`, `400 INVALID_REQUEST_BODY` | Cuerpo ilegible, `consent` distinto de `true`, `passcode` mal formado o claves de más. |
-| `409 IMPORT_REQUIRED` | Sin período activo o sin matrícula activa en él. La app lleva a `/portal-sync`. |
-| `409 PORTAL_REFRESH_IN_PROGRESS` | Otra recarga del mismo alumno en curso. |
+| `409 IMPORT_REQUIRED` | Sin período activo o sin matrícula activa en él, antes de tocar el portal. También después de iniciar sesión, cuando `layout.jsp` o una página de asistencia muestran otro ciclo (RS-BE-49), sin escribir nada y con su propio mensaje fijo. La app lleva a `/portal-sync`. |
+| `409 PORTAL_REFRESH_IN_PROGRESS` | Otra recarga o una importación con `credentials` del mismo alumno en curso. |
 | `409 PORTAL_LOGIN_REJECTED` | Contraseña o código rechazados, sin distinguir cuál. Nunca `401`, porque la app cierra la sesión de ULima++ ante cualquier `401`. |
 | `409 PORTAL_SESSION_INVALID` | La sesión muere a mitad de camino, sin ningún curso leído. |
-| `403 PORTAL_IDENTITY_MISMATCH` | Una página de asistencia declara otro alumno. No se escribe nada. |
+| `403 PORTAL_IDENTITY_MISMATCH` | Una página de asistencia declara un código de alumno presente y distinto. No se escribe nada. |
 | `422 PORTAL_IDENTITY_UNVERIFIABLE` | La cuenta no tiene `app_user.code`. |
 | `429 RATE_LIMITED` | Cupo por hora o tope de rechazos (RS-BE-50), con `details.kind`. |
 | `502 PORTAL_UNAVAILABLE` | Error de red o 5xx del portal y ningún curso leído. |
-| `502 PORTAL_UNREADABLE` | El portal responde, pero ni los menús ni ninguna página se entienden, que es lo que se vería ante otro rediseño. Mensaje «miUlima responde con páginas que ULima++ no sabe leer.». |
+| `502 PORTAL_UNREADABLE` | El portal responde, pero `layout.jsp` no trae el ciclo, o ni los menús ni ninguna página se entienden, que es lo que se vería ante otro rediseño. Mensaje «miUlima responde con páginas que ULima++ no sabe leer.». |
 | `504 PORTAL_TIMEOUT` | Tiempo agotado y ningún curso leído, incluido el presupuesto de RS-BE-50. |
 
 Cuando no hay ningún curso leído, el código sale de los fallos vistos y la precedencia es
@@ -577,7 +720,9 @@ del JWT y no hay parámetro, ruta para docentes ni lectura para delegados. Respo
   lectura. Es un campo más y ninguno de los de antes cambia. Las filas del docente y de
   asesoría lo emiten siempre `null`.
 - La importación (RS-BE-15) fija también `portal_attendance_read_at` en el mismo `UPDATE` de
-  las horas, para que la hora refleje la última lectura por cualquiera de los dos caminos.
+  las horas, con el instante en que llega la respuesta de la página y la guarda de lectura más
+  reciente de RS-BE-55, para que la hora refleje la última lectura por cualquiera de los dos
+  caminos.
 - Orden obligatorio. La migración `0015` va antes del despliegue de este código, porque la
   importación escribe la columna nueva y contra una base sin ella fallaría entera.
 
@@ -602,22 +747,32 @@ del JWT y no hay parámetro, ruta para docentes ni lectura para delegados. Respo
   `test/HU37_jeff/fixtures/nota-curso-900101.html`, `detalle-evaluaciones-vacias.html`,
   `detalle-evaluaciones-con-notas.html`, `detalle-evaluaciones-np.html`,
   `detalle-evaluaciones-dos-grupos.html` y `asistencia-curso-900101.html`. El de notas lleva
-  notas inventadas con coma y con punto decimal, y el de asistencia lleva faltas inventadas. El fixture de la página del curso conserva la
-  línea comentada del nombre con un nombre inventado, para probar que nunca se lee, y valores
-  de `min*` y `max*` distintos de cero, para probar que no cambian el resultado.
+  notas inventadas con coma y con punto decimal, y el de asistencia lleva faltas inventadas.
+  El fixture de la página del curso conserva la sangría con tabulaciones de cada `var`, como
+  la página viva, la línea comentada del nombre con un nombre inventado, para probar que nunca
+  se lee, y valores de `min*` y `max*` distintos de cero, para probar que no cambian el
+  resultado.
 
 `[@test] ../../../test/HU37_jeff/parser.nota-curso.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.privacidad.test.ts` *(pendiente, registrador espía y fixtures)*
 
 ### RS-BE-60 · Cierre de sesión cuando el inicio de sesión falla a medias
 
-`PortalClient.login` cierra la sesión abierta en el portal cuando falla después de recibir un
-`JSESSIONID`, es decir en el segundo factor o en la verificación final. Llama a
-`CustomLogoutServlet` con las cookies del frasco, sin esperar más que su `PORTAL_TIMEOUT_MS`,
-ignora cualquier error de ese cierre y lanza después el mismo `409 PORTAL_LOGIN_REJECTED` o el
-mismo error de red que lanzaría hoy. Vale también para la importación, que usa el mismo
-`login`.
+`PortalClient.login` cierra la sesión que el portal abre cuando falla después de que el frasco
+del inicio de sesión recibe un `JSESSIONID`. Como ese `JSESSIONID` probablemente llega con el
+primer `GET`, el caso abarca la contraseña rechazada del paso 2, el código rechazado del paso
+3, la verificación final del paso 4 y un error de red o de tiempo a mitad de camino, no solo el
+segundo factor. El cierre pide `CustomLogoutServlet` con todas las cookies del frasco, por el
+mismo `hop` del inicio de sesión, y no con `logout()`, que exige `LtpaToken2`, una cookie que
+antes del segundo factor puede no existir. Espera a lo sumo su `PORTAL_TIMEOUT_MS`, también
+pasado el plazo de RS-BE-50, ignora cualquier error de ese cierre y lanza después el mismo
+`409 PORTAL_LOGIN_REJECTED`, `504 PORTAL_TIMEOUT` o error de red que lanzaría hoy. Un fallo
+anterior a cualquier `JSESSIONID` no llama al cierre. Como vive en `PortalClient.login`, vale
+para la recarga, para la importación con `credentials` y para `POST /auth/register`, que llama
+al mismo `login` (`auth.service.ts:236`) y suma así una petición al portal por intento
+fallido, sin cambiar su código ni su respuesta.
 
-`[@test] ../../../test/HU31_jeff/portal.client.login.test.ts` *(pendiente, casos nuevos)*
+`[@test] ../../../test/HU31_jeff/portal.client.login.test.ts` *(existe, casos nuevos)*
 
 ## Modelo de datos (migración `0015_portal_scores.sql`)
 
@@ -629,7 +784,7 @@ del dueño, antes del despliegue del código. La `0014` es la de
 ```sql
 CREATE TABLE IF NOT EXISTS student_portal_score (
   id integer GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-  enrollment_id integer NOT NULL REFERENCES enrollment(id),
+  enrollment_id integer NOT NULL REFERENCES enrollment(id) ON DELETE CASCADE,
   portal_key varchar(20) NOT NULL,
   group_name varchar(60),
   name varchar(150) NOT NULL,
@@ -666,20 +821,31 @@ ALTER TABLE enrollment ADD COLUMN IF NOT EXISTS portal_attendance_read_at timest
   pareja.
 - Por qué no `simulated_grades`. Es la proyección del propio alumno y pisarla destruiría su
   trabajo.
-- Sin `ON DELETE CASCADE`, como `student_score` y `simulated_grades`. El código no borra
-  matrículas.
-- `schema.ts` suma `studentPortalScore` y las dos columnas de `enrollment` con los mismos
-  nombres, restricciones e índices.
+- `ON DELETE CASCADE` en `enrollment_id`, a diferencia de `student_score` y
+  `simulated_grades`. Dos scripts de un solo uso borran matrículas,
+  `src/db/seed/propuesta_855.ts:125-127` y `src/db/seed/delegados_secciones.ts:478-481`,
+  después de limpiar a mano las tablas hijas que conocen (`section_representative`,
+  `student_score` y, en el segundo, `simulated_grades`). Sin cascada fallarían con `23503` en
+  cuanto un alumno de esas secciones tuviera filas en `student_portal_score`. Estas filas son
+  una copia de lo que publica la ULima y no tienen sentido sin su matrícula, así que borrarlas
+  con ella no pierde nada que no se pueda volver a leer. La alternativa, sin cascada, suma esos
+  dos scripts a `targets` para que borren también la tabla nueva (decisión abierta 5).
+- `schema.ts` suma `studentPortalScore`, con `onDelete: "cascade"` en `enrollmentId`, y las dos
+  columnas de `enrollment` con los mismos nombres, restricciones e índices.
 
 ## Costo de una recarga
 
-Con cinco cursos y el orden por defecto de RS-BE-53 son 26 peticiones (8 del inicio de sesión,
-1 del menú de Asistencia, 5 de asistencia, 1 del menú de Nota, 5 páginas de curso, 5 marcos y
-el cierre) en 22 rondas secuenciales. Si la verificación V3 permite las cadenas en paralelo,
-bajan a 14 rondas. Si además el marco responde sin la página del curso, son 20 peticiones en
-12 rondas. Todavía no hay ninguna medición del tiempo de una ronda desde `iad1`, y por eso el
-presupuesto de RS-BE-50 acota la respuesta y la decisión abierta 15 pide medir antes de
-publicar.
+Con cinco cursos y el orden por defecto de RS-BE-53 son 27 peticiones en 21 rondas
+secuenciales, que se reparten en 8 saltos del inicio de sesión, la ronda de apertura de
+RS-BE-49 con `layout.jsp` y los dos menús en paralelo, 5 páginas de asistencia en paralelo, 5
+páginas de curso y 5 marcos uno tras otro, y el cierre. Si la verificación V3 permite las
+cadenas en paralelo, bajan a 13 rondas. Si además el marco responde sin la página del curso
+(variante corta de RS-BE-53), son 22 peticiones en 12 rondas. Esa variante conserva el menú de
+Nota, que va en la ronda de apertura y es lo único que dice que el panel Nota ofrece esa aula.
+Dejar de pedirlo, con las aulas tomadas del mapa de la asistencia, ahorra una petición pero
+ninguna ronda (21 peticiones en 12 rondas), y esta spec no lo adopta. Todavía no hay ninguna
+medición del tiempo de una ronda desde `iad1`, y por eso el presupuesto de RS-BE-50 acota la
+respuesta y la decisión abierta 15 pide medir antes de publicar.
 
 ## Contrato
 
@@ -688,42 +854,50 @@ Detalle en `docs/specs/api-contracts.md`, secciones Portal Sync, Grades y Schedu
 - `POST /portal-sync/refresh` (RS-BE-49 a RS-BE-56).
 - `GET /grades/me/ulima` (RS-BE-57).
 - `asistenciaLeidaEn` en `GET /schedule/me/sessions` y `GET /course-detail/sections`
-  (RS-BE-58).
-- Ningún endpoint existente cambia de forma. La importación suma el rechazo compartido de
-  RS-BE-50, el orden de fases y los avisos de RS-BE-48 y la hora de lectura de RS-BE-58.
+  (RS-BE-58), un campo aditivo en dos endpoints existentes.
+- `POST /portal-sync/import` también cambia, siempre de forma aditiva. Suma el
+  `429 RATE_LIMITED` con `kind: "rejected_logins"` del tope compartido, el
+  `409 PORTAL_REFRESH_IN_PROGRESS` cuando hay una recarga en curso y, por defecto,
+  `kind: "quota"` en su `429` de cupo (RS-BE-50 y decisión abierta 3). Cambian además el orden
+  de sus fases, sus avisos de RS-BE-48, que nombran el aula cuando el curso se desconoce, y la
+  hora de lectura de RS-BE-58.
+- `POST /auth/register` no cambia de forma, pero cierra la sesión del portal cuando el inicio
+  de sesión falla a medias (RS-BE-60).
+- Ningún campo existente cambia de tipo ni desaparece.
 
 ## Pruebas por requisito
 
 | Requisito | Casos |
 | --- | --- |
-| RS-BE-48 | Los fixtures de arreglos de hoy (`asistencia-sidebar.html`, `delegado-sidebar.html`, `delegado-sidebar-cuenta2.html`) dan el mismo resultado que hoy, con `origen: "arreglos"`. El menú de lista da las aulas en orden, con `courseCode: null` y la sección del `<li>`. Un `<li>` sin enlace se salta. Un tramo con dos aulas distintas se descarta. Un enlace de otra función no cuenta. Aulas con letras, con 3 dígitos o con 9 se descartan. Una sección no numérica queda `null`. La misma aula con secciones en conflicto se descarta. `class="curso open"` sirve y `curso-body` no. Entidades HTML en el `<li>` se limpian. Una página con los dos formatos usa los arreglos. La página de inicio de sesión da `ok: false`. En el servicio de la importación, la sección del menú distinta de la de la página no escribe asistencia, y un aula de delegados sin curso en el mapa de asistencia no escribe claim y avisa. |
-| RS-BE-49 | Cuerpo sin `consent`, con `consent: false`, con `cookies` o con una clave de más da `400`. Sin matrícula activa da `409 IMPORT_REQUIRED` sin llamar al portal. Una segunda recarga simultánea da `409 PORTAL_REFRESH_IN_PROGRESS`. El usuario del inicio de sesión es `app_user.code`. Una página de asistencia de otro alumno aborta con `403` y no escribe nada. El cierre de sesión corre con éxito, con error y con presupuesto agotado. Nunca se escribe en las tablas de la lista de exclusión. |
-| RS-BE-50 | El sexto intento en la hora da `429` con `kind: "quota"`. Un rechazo devuelve el cupo y suma al tope. El cuarto rechazo en 15 minutos da `429` con `kind: "rejected_logins"` antes de llamar al portal, también si los rechazos vienen de la importación. Nunca hay más de 5 peticiones en vuelo. Con un reloj falso, ninguna petición empieza después del presupuesto, los cursos pendientes quedan `not_reached` y el aviso sale una sola vez. |
-| RS-BE-51 | Página de otro ciclo, `prm_sAaCicl` o `prm_sNuCicl` mal formados, curso sin matrícula, triple incoherente y fallo de red, cada uno con su estado y sin tocar la fila. La hora de lectura cambia solo cuando el `UPDATE` toca la fila. |
-| RS-BE-52 | Identificación correcta. La línea comentada con el nombre nunca aparece en el resultado. `min*` y `max*` distintos de cero no cambian nada. Marco de otra aula, marco ausente, `codCurso` ausente y página de inicio de sesión dan su motivo. Un agregado 0 da `null`. La etiqueta «Eval. Continua<br>2» sale con espacio. |
-| RS-BE-53 | Cabecera correcta e incorrecta. Las 20 celdas vacías del sondeo, reproducidas con datos inventados. Nota con punto, con coma, `NP`, `np`, `&nbsp;`, `21`, `-1`, `A` y `14.555`. Semana vacía, 0, 21 y con letras. Peso 0, 101 y con coma. Suma de 99,6 y de 100,4 aceptadas, de 99 rechazada. Dos grupos con pesos absolutos aceptados y con pesos relativos rechazados. Hoja huérfana, tercer nivel, id repetido y fila de cinco celdas rechazados. Un nombre con tilde y eñe en bytes ISO-8859-1 llega intacto. El chequeo del promedio avisa cuando difiere en más de 0,5 y calla cuando falta una nota. |
-| RS-BE-54 | Los patrones del hallazgo 5 con datos inventados, es decir ordinal final («Examen escrito 1/2/3»), ordinal con N («N1/N2/N3»), ordinal sin repetición («Exposición 1»), ordinal por nombre y no por posición, semana corrida en 1 (`week_shift`), en 3 (`none`), peso distinto (`none`), dos candidatas en la misma semana que desempata el nombre, empate sin salida (`none`), sílabo vacío y una candidata que nunca se empareja dos veces. El aviso de sílabo desactualizado sale con la mitad o más sin pareja. |
-| RS-BE-55 | El candado se toma antes de escribir. Un curso leído reemplaza todas sus filas y uno fallido conserva las suyas. Las filas cumplen los CHECK de la migración. |
-| RS-BE-56 | Forma de la respuesta con éxito parcial. Precedencia de errores sin ningún curso leído. `PORTAL_UNREADABLE` cuando los dos menús vienen en un formato desconocido. `Cache-Control: no-store`. |
+| RS-BE-48 | Los fixtures de arreglos de hoy (`asistencia-sidebar.html`, `delegado-sidebar.html`, `delegado-sidebar-cuenta2.html`) dan el mismo resultado que hoy, con `origen: "arreglos"`, y las pruebas que comparan con `toEqual` se actualizan con ese campo. El menú de lista da las aulas en orden, con `courseCode: null` y la sección del `<li>`. Un `<li>` sin enlace se salta. Un tramo con dos aulas distintas se descarta, también cuando una de ellas tiene letras. Un enlace de otra función no cuenta. Aulas con letras, con 3 dígitos o con 9 se descartan. Una sección no numérica queda `null`. La misma aula con secciones en conflicto se descarta. `class="curso open"` sirve y `curso-body` no. Entidades HTML en el `<li>` se limpian. Una página con los dos formatos usa los arreglos. La página de inicio de sesión da `ok: false`. En el servicio de la importación, con el menú de lista, la sección del menú distinta de la de la página no escribe asistencia, un aula cuya página de asistencia falla emite un aviso que nombra el aula y nunca `null`, un aula de delegados sin curso en el mapa no pide la nómina, no escribe claim y avisa, y un aula cuya página identifica el curso pero falla en los totales entra al mapa y sus delegados se escriben. |
+| RS-BE-49 | Cuerpo sin `consent`, con `consent: false`, con `cookies` o con una clave de más da `400`. Sin matrícula activa da `409 IMPORT_REQUIRED` sin llamar al portal. Una segunda recarga simultánea, o una recarga con una importación con `credentials` en curso, da `409 PORTAL_REFRESH_IN_PROGRESS`. El usuario del inicio de sesión es `app_user.code`. `layout.jsp` con otro ciclo da `409 IMPORT_REQUIRED` sin pedir ninguna página de curso y sin escribir, lo mismo que una página de asistencia de otro ciclo con `layout.jsp` del ciclo activo, y `layout.jsp` sin ciclo da `502 PORTAL_UNREADABLE`. Una página de asistencia con un código de alumno presente y distinto aborta con `403` y no escribe nada, y una sin código es un fallo común de ese curso. El cierre de sesión corre con éxito, con error y con presupuesto agotado. Nunca se escribe en las tablas de la lista de exclusión. |
+| RS-BE-50 | El sexto intento en la hora da `429` con `kind: "quota"`. `422 PORTAL_IDENTITY_UNVERIFIABLE`, el `409 IMPORT_REQUIRED` de la condición previa 1 y `409 PORTAL_REFRESH_IN_PROGRESS` devuelven el cupo, y el `409 IMPORT_REQUIRED` por cambio de ciclo no. Un rechazo devuelve el cupo y suma al tope. El cuarto rechazo en 15 minutos da `429` con `kind: "rejected_logins"` antes de llamar al portal, también si los rechazos vienen de la importación. Del lado de la importación (`service.import.test.ts`), tras tres rechazos de la recarga la importación con `credentials` da `429` con `kind: "rejected_logins"` sin llamar a `login`, un `PORTAL_LOGIN_REJECTED` de la importación suma al tope de la recarga, la importación con `cookies` no revisa el tope, la importación con `credentials` con una recarga en curso da `409 PORTAL_REFRESH_IN_PROGRESS` sin llamar a `login`, y su `429` de cupo lleva `kind: "quota"`. Nunca hay más de 5 peticiones en vuelo. Con un reloj falso, ningún salto del inicio de sesión ni ninguna petición de fase empieza después del presupuesto, el temporizador de un salto no pasa del tiempo que queda, un plazo vencido durante el inicio de sesión da `504`, los cursos pendientes quedan `not_reached` y el aviso sale una sola vez. En el entorno, 68 000 se acepta y 70 000 se rechaza, con `PORTAL_TIMEOUT_MS` de 15 000 el presupuesto efectivo baja a 54 000 y con 33 000 el arranque falla. |
+| RS-BE-51 | Página de otro ciclo, `prm_sAaCicl` o `prm_sNuCicl` mal formados, curso sin matrícula, triple incoherente y fallo de red, cada uno con su estado y sin tocar la fila. Solo los dos ocultos bien formados con otro ciclo dan `otroCiclo: true`. Una página que identifica bien el curso y falla en los totales devuelve `identificado`. En la importación (`service.asistencia.test.ts`), `cicloEsperado` es el ciclo de `layout.jsp` y una página de otro ciclo es un aviso de ese curso que no aborta. La hora de lectura cambia solo cuando el `UPDATE` toca la fila, y una lectura más vieja que `portal_attendance_read_at` no la toca. |
+| RS-BE-52 | Identificación correcta, con cada `var` sangrado con tabulaciones como en la página viva. La línea comentada con el nombre, también sangrada, nunca aparece en el resultado. `min*` y `max*` distintos de cero no cambian nada. Marco de otra aula, marco ausente, `codCurso` ausente y página de inicio de sesión dan su motivo. Un agregado 0 da `null`. La etiqueta «Eval. Continua<br>2» sale con espacio. En el servicio (`refresh.notas.test.ts`), la sección del menú distinta de la de la página, el mapa de asistencia con otro curso para esa aula y el mapa con otra sección no escriben notas y emiten `PARSER_FAILED` con `block: "nota"`. |
+| RS-BE-53 | Cabecera correcta e incorrecta. Las 20 celdas vacías del sondeo, reproducidas con datos inventados. Nota con punto, con coma, `NP`, `np`, `&nbsp;`, `21`, `-1`, `A` y `14.555`. Semana vacía, 0, 21 y con letras. Peso 0, 101 y con coma. Suma de 99,6 y de 100,4 aceptadas, de 99 rechazada. Dos grupos con pesos absolutos aceptados y con pesos relativos rechazados. Hoja huérfana, tercer nivel, id repetido y fila de cinco celdas rechazados. Un nombre con tilde y eñe en bytes ISO-8859-1 llega intacto. El chequeo del promedio avisa cuando difiere en más de 0,5 y calla cuando falta una nota. En el servicio (`refresh.notas.test.ts`), con un cliente falso que registra el orden, cada marco se pide justo después de la página de su curso, los cursos nunca se intercalan y nunca hay dos cadenas en vuelo. |
+| RS-BE-54 | Los patrones del hallazgo 5 con datos inventados, es decir ordinal final («Examen escrito 1/2/3»), ordinal con N («N1/N2/N3»), ordinal sin repetición («Exposición 1»), ordinal por nombre y no por posición, semana corrida en 1 (`week_shift`), en 3 (`none`), peso distinto (`none`), dos candidatas en la misma semana que desempata el nombre, empate sin salida (`none`), sílabo vacío y una candidata que nunca se empareja dos veces. Una evaluación de la ULima sin semana que R1 no empareja queda en R3. El aviso de sílabo desactualizado sale con la mitad o más sin pareja. En el repositorio, la consulta de candidatas filtra por la matrícula con la cadena hasta `assessment`. En el servicio, con dos cursos cuyos sílabos tienen evaluaciones de la misma semana y el mismo peso, cada evaluación de la ULima se empareja solo con una de su propio curso. |
+| RS-BE-55 | El candado se toma antes de escribir. Un curso leído reemplaza todas sus filas y uno fallido conserva las suyas. Una lectura más vieja que `portal_grades_read_at` no borra ni inserta y la hora no retrocede. Un `assessment_id` de otra oferta no produce fila y revierte la transacción. Las filas cumplen los CHECK de la migración, y la clave de `enrollment_id` lleva `ON DELETE CASCADE`. |
+| RS-BE-56 | Forma de la respuesta con éxito parcial. Con el menú de lista, la página de asistencia de un aula que falla se atribuye a su matrícula por la página de notas de la misma aula, que queda `unavailable` o `failed` con el aviso `<curso>/<sección>`, y sin esa página el aviso nombra el aula y la matrícula queda `missing`, o `not_reached` si el presupuesto se agota con aulas sin pedir. Precedencia de errores sin ningún curso leído. `PORTAL_UNREADABLE` cuando los dos menús vienen en un formato desconocido. `Cache-Control: no-store`. |
 | RS-BE-57 | Solo matrículas activas del período activo, del propio alumno. Curso nunca leído con `lastReadAt: null`. Orden por semana. Sin período activo responde vacío. Un token docente da `403`. |
-| RS-BE-58 | El campo nuevo en las dos rutas, `null` en filas de docente y de asesoría, y la importación fija la hora. |
-| RS-BE-59 | Cada lector devuelve exactamente los campos de su tipo. Con un registrador espía, ningún mensaje de la recarga contiene la contraseña, el código del autenticador, las cookies, una nota, un nombre ni un fragmento del HTML. Los fixtures nuevos solo contienen los códigos y nombres inventados de la lista de datos de ejemplo. |
-| RS-BE-60 | Un rechazo en el segundo factor y uno en la verificación final llaman al cierre de sesión con las cookies del frasco y lanzan el mismo `409`. Un fallo del cierre no cambia el error. |
+| RS-BE-58 | El campo nuevo en las dos rutas, `null` en filas de docente y de asesoría, y la importación fija la hora con el instante de la respuesta. |
+| RS-BE-59 | Cada lector devuelve exactamente los campos de su tipo. Con un registrador espía (`refresh.privacidad.test.ts`), ningún mensaje de la recarga contiene la contraseña, el código del autenticador, las cookies, una nota, un nombre ni un fragmento del HTML. Los fixtures nuevos solo contienen los códigos y nombres inventados de la lista de datos de ejemplo. |
+| RS-BE-60 | Un rechazo de la contraseña en el paso 2, uno en el segundo factor, uno en la verificación final y un error de red a mitad de camino llaman al cierre con las cookies del frasco, aunque falte `LtpaToken2`, y lanzan el mismo error. Un fallo del cierre no cambia el error. Un fallo anterior a cualquier `JSESSIONID` no llama al cierre. |
 
 ## Cambios en otras specs
 
 Todos son propuesta y siguen el estado de esta spec.
 
 - `asistencia-portal.spec.md`. El formato de lista del menú (RS-BE-48), el parámetro
-  `cicloEsperado` de `parseAsistenciaCurso` (RS-BE-51), la hora de lectura (RS-BE-58), la
-  muestra con faltas del 2026-09-25 en «Cobertura conocida y sesgada» y la reutilización del
-  parser en la recarga.
+  `cicloEsperado` de `parseAsistenciaCurso` con las marcas `otroCiclo`, `identityMismatch` e
+  `identificado` (RS-BE-49 y RS-BE-51), la hora de lectura (RS-BE-58), la muestra con faltas
+  del 2026-09-25 en «Cobertura conocida y sesgada» y la reutilización del parser en la recarga.
 - `portal-sync.spec.md`. RS-BE-4 y el inventario de §Privacidad y base legal, el orden de las
-  fases de asistencia y delegados, el tope compartido de rechazos, la nota de que las notas
-  parciales vienen del panel Nota y no de `ComandoListarConsNotas`, y el reemplazo de un código
-  de alumno real por una descripción.
-- `delegados-portal.spec.md`. RS-1 (dos formatos) y RS-11 (el par sale del mapa de asistencia
-  cuando el menú no trae el curso).
+  fases de asistencia y delegados, el tope compartido de rechazos, la guarda de inicio de
+  sesión en curso, `kind: "quota"` en el `429` de cupo, la nota de que las notas parciales
+  vienen del panel Nota y no de `ComandoListarConsNotas`, y el reemplazo de un código de
+  alumno real por una descripción.
+- `delegados-portal.spec.md`. RS-1 (dos formatos) y RS-11 (el par sale del mapa de
+  identificaciones verificadas de la asistencia cuando el menú no trae el curso).
 - `grades.spec.md`. `GET /grades/me/ulima` (RS-BE-57).
 - `official-grades.spec.md`. El papel de `/mis-notas` (decisión abierta 10).
 - `schedule.spec.md` y `course-detail.spec.md`. `asistenciaLeidaEn` (RS-BE-58).
@@ -754,18 +928,32 @@ aprobada. La numeración no cambia aunque se resuelvan, porque la citan los requ
 
 1. **RS-BE-48 como corrección aparte.** *Pendiente del dueño.* Por defecto, sí. Va primero, en
    un PR propio sobre `main`, con sus pruebas, sin cambio de BD ni de contrato, y se despliega
-   antes que el resto porque hoy la importación no actualiza la asistencia de nadie.
-   Alternativa, publicarlo junto con la recarga, lo que deja el fallo en producción hasta
-   entonces.
+   antes que el resto porque hoy la importación no actualiza la asistencia de nadie. Ese PR
+   lleva también la parte de delegados (orden de las fases, mapa de identificaciones y aviso
+   que nombra el aula, con la identificación verificada de RS-BE-51, punto 4), porque el
+   parser es el mismo y esa parte falla cerrada. Con arreglos
+   rige la lectura de hoy, con lista solo escribe el aula que una página de asistencia
+   verifica, y con un formato desconocido la fase falla como hoy, sin escribir ningún claim.
+   Por eso la verificación V4 se hace antes del merge si la decisión abierta 17 lo autoriza,
+   pero no lo bloquea. Alternativas, dejar la parte de delegados para un PR posterior a V4,
+   con la fase de delegados descartando mientras tanto toda aula con `courseCode: null` sin
+   pedir su nómina, o publicar RS-BE-48 junto con la recarga, lo que deja el fallo en
+   producción hasta entonces.
 2. **Endpoint propio o importación completa.** *Pendiente del dueño.* Por defecto, el endpoint
    propio `POST /portal-sync/refresh`, con un inicio de sesión, solo los paneles Nota y
    Asistencia, cupo propio y tope de rechazos. Alternativa, que los botones repitan
    `POST /portal-sync/import` con la pantalla de consentimiento en cada toque, 1 de los 5 cupos
    y una duración sin medir, y que además sume la lectura del panel Nota.
-3. **Cupo y tope de rechazos.** *Pendiente del dueño.* Por defecto, 5 recargas por hora por
-   alumno, aparte de las 5 de la importación, y 3 inicios de sesión rechazados cada 15 minutos,
-   contados junto con los de la importación. Alternativas, compartir las 5 por hora con la
-   importación, otros números, o un tope de rechazos solo para la recarga.
+3. **Cupo, tope de rechazos y guarda de inicio de sesión.** *Pendiente del dueño.* Por
+   defecto, 5 recargas por hora por alumno, aparte de las 5 de la importación, y 3 inicios de
+   sesión rechazados cada 15 minutos, contados junto con los de la importación con
+   `credentials`, que también responde el `429` con `kind: "rejected_logins"`. El `429` de cupo
+   de la importación suma `kind: "quota"`, y la guarda de inicio de sesión en curso la
+   comparten la recarga y la importación con `credentials`, que responde
+   `409 PORTAL_REFRESH_IN_PROGRESS` si hay una recarga en curso. Alternativas, compartir las 5
+   por hora con la importación, otros números, un tope de rechazos solo para la recarga, dejar
+   el `429` de cupo de la importación sin `kind`, o una guarda solo entre recargas, que deja a
+   una importación y una recarga simultáneas gastar el mismo código de un solo uso.
 4. **Consentimiento en cada recarga.** *Pendiente del dueño.* Por defecto, el aviso de la hoja
    aprobada («Al tocar “Actualizar” aceptas que ULima++ lea en miUlima tus notas parciales y
    tu asistencia. La contraseña y el código se usan una sola vez y no se guardan.») y
@@ -774,9 +962,13 @@ aprobada. La numeración no cambia aunque se resuelvan, porque la citan los requ
    hoja, sin marcar, que habilita «Actualizar», también en cada recarga.
 5. **Tabla, hora de lectura y migración.** *Pendiente del dueño, con aprobación de BD.* Por
    defecto, la tabla `student_portal_score` y las columnas `enrollment.portal_grades_read_at` y
-   `enrollment.portal_attendance_read_at`, en la migración `0015_portal_scores.sql`.
-   Alternativas, otro nombre para la tabla, la hora de las notas como columna de cada fila, o
-   una tabla aparte de lecturas por matrícula.
+   `enrollment.portal_attendance_read_at`, en la migración `0015_portal_scores.sql`, con
+   `ON DELETE CASCADE` desde `student_portal_score.enrollment_id` para que los dos scripts que
+   borran matrículas no fallen con `23503`. Alternativas, otro nombre para la tabla, la hora de
+   las notas como columna de cada fila, una tabla aparte de lecturas por matrícula, o la clave
+   sin cascada, como `student_score`, con `src/db/seed/propuesta_855.ts` y
+   `src/db/seed/delegados_secciones.ts` sumados a `targets` para que borren también la tabla
+   nueva.
 6. **Nota simulada cuando la ULima publica la misma evaluación.** *Pendiente del dueño.* Por
    defecto, el backend no toca `simulated_grades`, la app muestra la nota de la ULima en lugar
    de la simulada, como dice la maqueta aprobada, y la simulada reaparece si la ULima retira
@@ -835,6 +1027,16 @@ aprobada. La numeración no cambia aunque se resuelvan, porque la citan los requ
 18. **Mostrar el «Promedio» que publica la ULima.** *Pendiente del dueño.* Por defecto, no se
     guarda ni se muestra, y solo sirve al chequeo de RS-BE-53, punto 7. Alternativa, devolverlo
     en `GET /grades/me/ulima` cuando valga más que 0.
+19. **Cambio de ciclo durante la recarga.** *Pendiente del dueño.* Por defecto, la ronda de
+    apertura lee el ciclo de `layout.jsp` y la recarga termina con `409 IMPORT_REQUIRED`, sin
+    escribir nada y sin devolver el cupo, cuando ese ciclo o el de alguna página de asistencia
+    difiere del período activo (RS-BE-49). Cuesta una petición más, en una ronda que ya existe.
+    Si la importación deja el ciclo nuevo inactivo porque todavía no empieza
+    (`PERIOD_NOT_ACTIVATED_YET`), la recarga sigue respondiendo ese `409` hasta la fecha de
+    inicio, aunque el alumno vuelva a importar. Alternativas, confiar solo en el ciclo de las
+    páginas de asistencia, sin la petición extra, lo que deja sin guarda a las notas cuando
+    ninguna página de asistencia se identifica, o un código propio para ese caso, para que la
+    app no mande a `/portal-sync` a un alumno cuyo ciclo todavía no empieza.
 
 ## Verificación antes de publicar
 
@@ -849,8 +1051,10 @@ aprobada. La numeración no cambia aunque se resuelvan, porque la citan los requ
 - **V3.** Se pide el marco de dos aulas intercaladas, sin abrir antes la página de su curso y
   abriéndola, y se compara con el orden secuencial. Solo si todo coincide se habilitan las
   cadenas en paralelo o la variante corta de RS-BE-53.
-- **V4.** Sondeo del menú de Delegado para confirmar que usa el mismo formato de lista antes
-  de publicar la parte de delegados de RS-BE-48.
-- **V5.** La medición de la decisión abierta 15.
+- **V4.** Sondeo del menú de Delegado para confirmar que usa el mismo formato de lista y que sus
+  aulas son las mismas del panel Asistencia. Por defecto se hace antes del merge del PR de
+  RS-BE-48, pero no lo bloquea, porque la parte de delegados falla cerrada (decisión abierta 1).
+- **V5.** La medición de la decisión abierta 15, que registra también la duración de la
+  transacción para confirmar el margen de 6 s de RS-BE-50.
 - `bun run build` y `bun test` en verde, con las pruebas de «Pruebas por requisito» enlazadas
   y sin la marca *(pendiente)*.
