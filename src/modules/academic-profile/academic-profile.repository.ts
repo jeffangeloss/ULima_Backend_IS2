@@ -144,6 +144,7 @@ export class AcademicProfileRepository {
       select id, career_id, name, description, is_active
       from specialty
       where career_id = ${careerId}
+        and is_active = true
       order by name
     `) as unknown as SpecialtyRow[];
 
@@ -219,6 +220,7 @@ export class AcademicProfileRepository {
       from specialty
       where id = ${specialtyId}
         and career_id = ${careerId}
+        and is_active = true
       limit 1
     `) as unknown as Array<{ "?column?": number }>;
 
