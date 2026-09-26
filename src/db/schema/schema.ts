@@ -6,6 +6,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   primaryKey,
@@ -825,5 +826,34 @@ export const studentTimeBlockException = pgTable("student_time_block_exception",
   chkTimeBlockExcGrilla: check(
     "chk_time_block_exc_grilla",
     sql`${t.startTime} IS NULL OR (${t.startTime} >= '07:00' AND ${t.endTime} <= '22:00')`,
+  ),
+}));
+
+/**
+ * RS-BE-44 · Último resultado del test de especialidad, una fila por alumno.
+ *
+ * Solo el último (decisión 5 del dueño): rehacer el test reemplaza la fila con
+ * `on conflict (student_id) do update`, que vuelve a fijar `completed_at`. No
+ * se guardan respuestas, desempates, motivo ni líneas de Ulises. El ranking es
+ * `jsonb` porque se lee y se escribe entero y su orden es parte del dato; cada
+ * elemento es `{ key, specialtyId, affinity }` y lo valida Zod
+ * (`storedRankingSchema`), y el `specialtyId` no lleva FK: es una foto.
+ * Migración `drizzle/0014_specialty_test_result.sql`.
+ */
+export const studentSpecialtyTestResult = pgTable("student_specialty_test_result", {
+  studentId: integer("student_id").primaryKey().references(() => student.id, { onDelete: "cascade" }),
+  /** `AAAA-MM-DD.N`, la versión del contenido con la que se calculó. */
+  contentVersion: varchar("content_version", { length: 20 }).notNull(),
+  ranking: jsonb("ranking").notNull(),
+  isTie: boolean("is_tie").notNull(),
+  completedAt: timestamp("completed_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  chkSpecialtyTestVersion: check(
+    "chk_specialty_test_version",
+    sql`${t.contentVersion} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[0-9]+$'`,
+  ),
+  chkSpecialtyTestRanking: check(
+    "chk_specialty_test_ranking",
+    sql`jsonb_typeof(${t.ranking}) = 'array' and jsonb_array_length(${t.ranking}) = 4`,
   ),
 }));
