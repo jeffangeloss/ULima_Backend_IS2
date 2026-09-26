@@ -71,6 +71,17 @@ const TERCERA_PASA: Record<string, Answer> = {
   q13: "both", q14: "nada",
 };
 
+/**
+ * Las mismas respuestas que `SEGUNDA_EN_50` de `specialty-test-logic.test.ts`.
+ * Con «both» en tb-ti-si-1 y «none» en tb-ti-si-2 gana vj con 51, fuera del
+ * par ti-si, y si queda segunda en 50 exactos (S = 10500).
+ */
+const SEGUNDA_EN_50: Record<string, Answer> = {
+  q01: "none", q02: "bottom", q03: "bottom", q04: "un_poco", q05: "bottom", q06: "bottom",
+  q07: "bottom", q08: "me_encantaria", q09: "none", q10: "both", q11: "top", q12: "me_encantaria",
+  q13: "both", q14: "nada",
+};
+
 const { data: DATOS, respaldo: RESPALDO } = datosDe("ejemplo-2");
 
 /** Un motivo que cumple las siete reglas para el ejemplo-2. */
@@ -228,6 +239,16 @@ describe("datos y mensaje para Cohere (RS-BE-43)", () => {
     expect(datosDe("ejemplo-1").data.nombrables).toEqual(["Ingeniería de Software", "Sistemas de Información"]);
     expect(datosDe("ejemplo-5").data.nombrables).toEqual(["Desarrollo de Videojuegos"]);
     expect(datosDe("ejemplo-6").data.nombrables).toEqual(["Tecnologías de la Información"]);
+  });
+
+  test("la segunda en 50 exactos es nombrable aunque no este en el par de la ganadora", () => {
+    const ev = resolver(SEGUNDA_EN_50, ["both", "none"]);
+    expect(ev.ranking.slice(0, 2)).toEqual(["vj", "si"]);
+    expect(ev.pair).toEqual(["ti", "si"]);
+    expect(ev.scores.si.S).toBe(50 * 210);
+    const { data } = datosPara(SEGUNDA_EN_50, ["both", "none"]);
+    expect(data.desempate).toBeNull();
+    expect(data.nombrables).toEqual(["Desarrollo de Videojuegos", "Sistemas de Información"]);
   });
 
   for (const [id, main] of MAIN_POR_EJEMPLO) {

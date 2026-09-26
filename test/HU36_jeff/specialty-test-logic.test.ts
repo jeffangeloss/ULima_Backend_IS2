@@ -33,7 +33,9 @@ import type {
  * cubren: la aritmética exacta para todo h, n y e, el orden, el redondeo, los
  * umbrales de 10 y 11, el 10,83 tras el primer desempate, el segundo desempate
  * medido en el par y pedido al mismo par aunque una tercera lo pase, la
- * plantilla tiebreak solo con la ganadora en el par, y las líneas de Ulises.
+ * plantilla tiebreak solo con la ganadora en el par, D de 80 y de 60 exactos en
+ * strong, duelsOverScale y scaleOverDuels, la segunda en 50 exactos para
+ * second, y las líneas de Ulises.
  * Las respuestas de los casos de borde salen de una búsqueda sobre la versión
  * vigente; cada caso anota las afinidades que produce.
  */
@@ -101,6 +103,38 @@ const PAR_SE_SEPARA: Record<string, Answer> = {
   q01: "bottom", q02: "bottom", q03: "none", q04: "bastante", q05: "none", q06: "none",
   q07: "none", q08: "nada", q09: "both", q10: "both", q11: "bottom", q12: "un_poco",
   q13: "top", q14: "me_encantaria",
+};
+
+/** sw 76, vj 44, si 20 y ti 14, sin desempate; sw con D de 80 exacto (U = 16800) y e = 2. */
+const STRONG_EN_80: Record<string, Answer> = {
+  q01: "top", q02: "both", q03: "none", q04: "nada", q05: "bottom", q06: "none",
+  q07: "none", q08: "me_encantaria", q09: "bottom", q10: "none", q11: "top", q12: "bastante",
+  q13: "both", q14: "bastante",
+};
+
+/** ti 52, sw 38, vj 35 y si 27, sin desempate; ti con D de 60 exacto (U = 12600) y e = 1. */
+const DUELOS_EN_60: Record<string, Answer> = {
+  q01: "none", q02: "both", q03: "both", q04: "un_poco", q05: "both", q06: "bottom",
+  q07: "both", q08: "nada", q09: "bottom", q10: "top", q11: "bottom", q12: "bastante",
+  q13: "none", q14: "un_poco",
+};
+
+/** si 72, vj 35, sw 21 y ti 14, sin desempate; si con D de 60 exacto (U = 12600) y e = 3. */
+const ESCALA_CON_DUELOS_EN_60: Record<string, Answer> = {
+  q01: "bottom", q02: "none", q03: "both", q04: "nada", q05: "both", q06: "top",
+  q07: "top", q08: "nada", q09: "none", q10: "both", q11: "bottom", q12: "me_encantaria",
+  q13: "both", q14: "nada",
+};
+
+/**
+ * ti 52, si 51, vj 51 y sw 28 tras las 14. Con «both» en tb-ti-si-1 quedan
+ * si 53,33, vj 51 y ti 50,83; con «none» en tb-ti-si-2 gana vj con 51, fuera
+ * del par ti-si, y si queda segunda en 50 exactos (S = 10500).
+ */
+const SEGUNDA_EN_50: Record<string, Answer> = {
+  q01: "none", q02: "bottom", q03: "bottom", q04: "un_poco", q05: "bottom", q06: "bottom",
+  q07: "bottom", q08: "me_encantaria", q09: "none", q10: "both", q11: "top", q12: "me_encantaria",
+  q13: "both", q14: "nada",
 };
 
 describe("afinidad exacta (RS-BE-40)", () => {
@@ -254,6 +288,40 @@ describe("motivo con plantillas (RS-BE-42)", () => {
     expect(ev.pair).toEqual(["ti", "si"]);
     expect(ev.ranking[0]).toBe("vj");
     expect(buildTemplateReason(c, TERCERA_PASA, ev).used).toEqual(["low", "electives"]);
+  });
+
+  test("strong con D de 80 exacto y e de 2", () => {
+    const ev = evaluacion(STRONG_EN_80, []);
+    expect(ev.shown).toHaveLength(0);
+    expect(ev.ranking[0]).toBe("sw");
+    expect(ev.scores.sw).toMatchObject({ U: 80 * 210, e: 2 });
+    expect(buildTemplateReason(c, STRONG_EN_80, ev).used).toEqual(["strong", "electives"]);
+  });
+
+  test("duelsOverScale con D de 60 exacto y e de 1", () => {
+    const ev = evaluacion(DUELOS_EN_60, []);
+    expect(ev.shown).toHaveLength(0);
+    expect(ev.ranking[0]).toBe("ti");
+    expect(ev.scores.ti).toEqual({ S: 52 * 210, U: 60 * 210, e: 1 });
+    expect(buildTemplateReason(c, DUELOS_EN_60, ev).used).toEqual(["duelsOverScale", "electives"]);
+  });
+
+  test("con D de 60 exacto y e de 3 la plantilla es general y no scaleOverDuels", () => {
+    const ev = evaluacion(ESCALA_CON_DUELOS_EN_60, []);
+    expect(ev.shown).toHaveLength(0);
+    expect(ev.ranking[0]).toBe("si");
+    expect(ev.scores.si).toMatchObject({ U: 60 * 210, e: 3 });
+    expect(buildTemplateReason(c, ESCALA_CON_DUELOS_EN_60, ev).used).toEqual(["general", "electives"]);
+  });
+
+  test("second con la segunda en 50 exactos, fuera del par de la ganadora", () => {
+    const ev = evaluacion(SEGUNDA_EN_50, ["both", "none"]);
+    expect(ev.shown).toHaveLength(2);
+    expect(ev.pair).toEqual(["ti", "si"]);
+    expect(ev.ranking.slice(0, 2)).toEqual(["vj", "si"]);
+    expect(ev.scores.vj.S).toBe(51 * 210);
+    expect(ev.scores.si.S).toBe(50 * 210);
+    expect(buildTemplateReason(c, SEGUNDA_EN_50, ev).used).toEqual(["scaleOverDuels", "second", "electives"]);
   });
 
   test("{electivos} no repite un curso aunque dos tareas lo compartan", () => {
