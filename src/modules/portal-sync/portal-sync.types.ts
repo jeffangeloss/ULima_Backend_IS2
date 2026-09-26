@@ -219,3 +219,18 @@ export type AgregadoUlima = { clave: "EP" | "TA" | "EF" | "PROM"; etiqueta: stri
 /** RS-BE-52. Lo que se lee de la página de notas de un curso. Tres campos y
  *  ninguno con el nombre del alumno, del docente ni los datos de la clase. */
 export type NotaCurso = { courseCode: string; sectionCode: string; agregados: AgregadoUlima[] };
+
+/**
+ * RS-BE-53. Una evaluación de la tabla «Detalle Evaluaciones». SIETE CAMPOS Y
+ * NINGUNO MÁS. No hay campo para la mínima, la máxima, el promedio del grupo ni
+ * ningún texto del docente, y esa ausencia es la garantía de minimización.
+ */
+export type EvaluacionUlima = {
+  key: string;
+  group: string | null;
+  name: string;
+  week: number | null;
+  weight: number;
+  value: number | null;
+  mark: "graded" | "pending" | "np";
+};

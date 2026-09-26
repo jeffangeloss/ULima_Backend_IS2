@@ -1,5 +1,5 @@
-import { clean, stripTags, type ParseResult } from "./html.js";
-import type { AgregadoUlima, NotaCurso } from "../portal-sync.types.js";
+import { cellsOf, clean, normalizeLabel, stripTags, trsOf, type ParseResult } from "./html.js";
+import type { AgregadoUlima, EvaluacionUlima, NotaCurso } from "../portal-sync.types.js";
 
 /**
  * RS-BE-52 y RS-BE-53 · panel Nota del Aula Virtual, vista del alumno.
@@ -76,4 +76,119 @@ export const parseNotaCurso = (html: string, aulaEsperada: string): ParseResult<
     });
   }
   return { ok: true, data: { courseCode, sectionCode, agregados } };
+};
+
+const CABECERA = ["DETALLE EVALUACIONES", "SEMANA", "PESO", "NOTA"];
+const ID_FILA = /^\d{1,4}(\.\d{1,4}){0,3}$/;
+const SEMANA = /^\d{1,2}$/;
+const PESO = /^\d{1,3}([.,]\d{1,2})?$/;
+const NOTA = /^\d{1,2}([.,]\d{1,2})?$/;
+const TOLERANCIA_SUMA = 0.5;
+
+const decimal = (s: string): number => Number(s.replace(",", "."));
+const fallaTabla = (reason: string): ParseResult<EvaluacionUlima[]> => ({ ok: false, reason });
+
+type Fila = { id: string; padre: string | null; celdas: string[] };
+
+type LecturaNota =
+  | { ok: true; mark: EvaluacionUlima["mark"]; value: number | null }
+  | { ok: false; reason: string };
+
+/** Punto 4. Vacía es `pending`, NP es `np` y un número de 0 a 20 es `graded`. */
+const leerNota = (celda: string): LecturaNota => {
+  if (!celda) return { ok: true, mark: "pending", value: null };
+  if (/^np$/i.test(celda)) return { ok: true, mark: "np", value: null };
+  // Todavía no hay ninguna muestra con nota publicada (V2), así que cualquier
+  // otro texto hace fallar al curso en vez de adivinar.
+  if (!NOTA.test(celda)) return { ok: false, reason: "una nota tiene un formato desconocido" };
+  const valor = decimal(celda);
+  if (valor > 20) return { ok: false, reason: "una nota está fuera del rango de 0 a 20" };
+  return { ok: true, mark: "graded", value: Math.round(valor * 100) / 100 };
+};
+
+/**
+ * RS-BE-53 · marco «Detalle Evaluaciones». No trae ningún identificador, así
+ * que solo lo ata a su curso el orden de las peticiones (Tarea 17).
+ */
+export const parseDetalleEvaluaciones = (html: string): ParseResult<EvaluacionUlima[]> => {
+  const trs = trsOf(html);
+
+  // 1. Puerta de cabecera. Rechaza también la página de inicio de sesión.
+  const hayCabecera = trs
+    .map(cellsOf)
+    .some((c) => c.length === 6 && CABECERA.every((etiqueta, i) => normalizeLabel(c[i + 1]!) === etiqueta));
+  if (!hayCabecera) return fallaTabla("la tabla de evaluaciones no tiene la cabecera esperada");
+
+  // 2. Filas con data-tt-id, con comillas simples o dobles.
+  const filas: Fila[] = [];
+  const vistos = new Set<string>();
+  for (const tr of trs) {
+    const tag = /^<tr\b[^>]*>/i.exec(tr)?.[0] ?? "";
+    const id = atributo(tag, "data-tt-id");
+    if (id === null) continue;
+    if (!ID_FILA.test(id)) return fallaTabla("una fila de evaluaciones tiene un identificador desconocido");
+    if (vistos.has(id)) return fallaTabla("una fila de evaluaciones está repetida");
+    vistos.add(id);
+    const celdas = cellsOf(tr);
+    if (celdas.length !== 6) return fallaTabla("una fila de evaluaciones no tiene seis celdas");
+    filas.push({ id, padre: atributo(tag, "data-tt-parent-id"), celdas });
+  }
+
+  // 3. Grupos y hojas. No hay muestra de un tercer nivel.
+  const grupos = new Map(filas.filter((f) => f.padre === null).map((f) => [f.id, f]));
+  const hojas = filas.filter((f) => f.padre !== null);
+  for (const h of hojas) {
+    if (grupos.has(h.padre!)) continue;
+    return fallaTabla(vistos.has(h.padre!)
+      ? "la tabla tiene un nivel de evaluaciones que ULima++ todavía no lee"
+      : "una evaluación no tiene su grupo");
+  }
+  if (!hojas.length) return fallaTabla("la tabla no trae evaluaciones");
+
+  // 4 y 5. Celdas de cada hoja y nombre de su grupo. Las celdas 0 y 5 no se leen.
+  const evaluaciones: EvaluacionUlima[] = [];
+  for (const h of hojas) {
+    const [, nombre, semana, peso, nota] = h.celdas;
+    if (!nombre) return fallaTabla("una evaluación no tiene nombre");
+    if (nombre.length > 150) return fallaTabla("el nombre de una evaluación es demasiado largo");
+    let week: number | null = null;
+    if (semana) {
+      week = SEMANA.test(semana) ? Number(semana) : 0;
+      if (week < 1 || week > 20) return fallaTabla("la semana de una evaluación no es válida");
+    }
+    const weight = PESO.test(peso!) ? decimal(peso!) : 0;
+    if (weight <= 0 || weight > 100) return fallaTabla("el peso de una evaluación no es válido");
+    const leida = leerNota(nota!);
+    if (!leida.ok) return fallaTabla(leida.reason);
+    const nombreGrupo = grupos.get(h.padre!)!.celdas[1]!;
+    evaluaciones.push({
+      key: h.id,
+      group: nombreGrupo && nombreGrupo.length <= 60 ? nombreGrupo : null,
+      name: nombre,
+      week,
+      weight,
+      value: leida.value,
+      mark: leida.mark,
+    });
+  }
+
+  // 6. Pesos, en este orden.
+  const suma = (xs: EvaluacionUlima[]) => xs.reduce((s, e) => s + e.weight, 0);
+  const cerca = (a: number, b: number) => Math.abs(a - b) <= TOLERANCIA_SUMA;
+  const porGrupo = new Map<string, EvaluacionUlima[]>();
+  hojas.forEach((h, i) => porGrupo.set(h.padre!, [...(porGrupo.get(h.padre!) ?? []), evaluaciones[i]!]));
+  if (cerca(suma(evaluaciones), 100)) {
+    for (const [id, evs] of porGrupo) {
+      const pesoGrupo = grupos.get(id)!.celdas[3]!;
+      if (!pesoGrupo) continue;
+      if (!PESO.test(pesoGrupo) || !cerca(decimal(pesoGrupo), suma(evs))) {
+        return fallaTabla("el peso de un grupo no coincide con sus evaluaciones");
+      }
+    }
+    return { ok: true, data: evaluaciones };
+  }
+  if ([...porGrupo.values()].every((evs) => cerca(suma(evs), 100))) {
+    return fallaTabla("pesos por grupo, un formato que ULima++ todavía no lee");
+  }
+  return fallaTabla("los pesos de la ULima no suman 100");
 };
