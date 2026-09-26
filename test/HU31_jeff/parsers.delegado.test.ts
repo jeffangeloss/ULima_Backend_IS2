@@ -49,11 +49,11 @@ const motivo = (r: { ok: true } | { ok: false; reason: string }): string => {
 describe("parseAulas (RS-1)", () => {
   test("saca las 5 aulas del sidebar con su par curso/sección", () => {
     expect(datos(parseAulas(sidebar))).toEqual([
-      { aula: "154508", courseCode: "650033", sectionCode: "952" },
-      { aula: "154516", courseCode: "650035", sectionCode: "958" },
-      { aula: "154604", courseCode: "650067", sectionCode: "952" },
-      { aula: "154607", courseCode: "650070", sectionCode: "654" },
-      { aula: "154621", courseCode: "650084", sectionCode: "1051" },
+      { aula: "154508", courseCode: "650033", sectionCode: "952", origen: "arreglos" },
+      { aula: "154516", courseCode: "650035", sectionCode: "958", origen: "arreglos" },
+      { aula: "154604", courseCode: "650067", sectionCode: "952", origen: "arreglos" },
+      { aula: "154607", courseCode: "650070", sectionCode: "654", origen: "arreglos" },
+      { aula: "154621", courseCode: "650084", sectionCode: "1051", origen: "arreglos" },
     ]);
   });
 
@@ -76,6 +76,7 @@ describe("parseAulas (RS-1)", () => {
       aula: "154597",
       courseCode: "650066",
       sectionCode: "851",
+      origen: "arreglos",
     });
   });
 

@@ -1,0 +1,125 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!--
+  FIXTURE ARMADO A MANO (RS-BE-48). Reproduce la estructura del menú lateral
+  anterior del panel Asistencia, el de los arreglos JS aNuAula, aCurs y aSecc,
+  con los mismos datos inventados de menu-lista-asistencia.html. Los códigos de
+  curso (690417 a 690421), las aulas, las secciones, los nombres y el usuario
+  del docente son inventados.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script language="JavaScript" src="/portalUL/av/scripts/aVirtualBB.js"></script>
+<title>Aula Virtual</title>
+
+<SCRIPT LANGUAGE="JavaScript">
+
+	aDepc = new Array( ) ;
+	aCurs = new Array( ) ;
+	aSecc = new Array( ) ;
+
+	aNuAula = new Array( ) ;
+	aTipAV = new Array( ) ;
+	aNomDepc = new Array( ) ;
+	aNomCurs = new Array( ) ;
+
+	aUserDcte = new Array( ) ;
+	aCoordCurs = new Array( ) ;
+
+	var t=new Date();
+	var Url_JSP_AV = '/portalUL/av/servlets/';
+</SCRIPT>
+</head>
+
+<body>
+<form name="avForm" method="post" action="">
+<input type="hidden" name="prm_sNuAula" value="">
+<input type="hidden" name="prm_sCoUser" value="">
+<table width="100%">
+<tr>
+	<td align="center" class="titular">
+		Asistencia
+	</td>
+</tr>
+<tr>
+	<td>
+
+<ul class="asignaturas">
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[0]="002";
+		aNuAula[0]="900101";
+		aNomDepc[0]="CARRERA ING.SI.";
+		aNomCurs[0]="TALLER DE PROTOTIPAD";
+		aDepc[0]="690400";
+		aCurs[0]="690417";
+		aSecc[0]="812";
+		aUserDcte[0]="DOCENTE01";
+		aCoordCurs[0]="0";
+	</SCRIPT>
+		<li>CARRERA ING.SI. / TALLER DE PROTOTIPAD / 812</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900101');">Asistencia</a><br><br>
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[1]="002";
+		aNuAula[1]="900102";
+		aNomDepc[1]="CARRERA ING.SI.";
+		aNomCurs[1]="ANALITICA DE DATOS";
+		aDepc[1]="690400";
+		aCurs[1]="690418";
+		aSecc[1]="812";
+		aUserDcte[1]="DOCENTE02";
+		aCoordCurs[1]="0";
+	</SCRIPT>
+		<li>CARRERA ING.SI. / ANALITICA DE DATOS / 812</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900102');">Asistencia</a><br><br>
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[2]="002";
+		aNuAula[2]="900103";
+		aNomDepc[2]="CARRERA ING.SI.";
+		aNomCurs[2]="GESTION DE PROYECTOS";
+		aDepc[2]="690400";
+		aCurs[2]="690419";
+		aSecc[2]="815";
+		aUserDcte[2]="DOCENTE03";
+		aCoordCurs[2]="0";
+	</SCRIPT>
+		<li>CARRERA ING.SI. / GESTION DE PROYECTOS / 815</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900103');">Asistencia</a><br><br>
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[3]="002";
+		aNuAula[3]="900104";
+		aNomDepc[3]="CARRERA ING.SI.";
+		aNomCurs[3]="ETICA PROFESIONAL";
+		aDepc[3]="690400";
+		aCurs[3]="690420";
+		aSecc[3]="1020";
+		aUserDcte[3]="DOCENTE04";
+		aCoordCurs[3]="0";
+	</SCRIPT>
+		<li>CARRERA ING.SI. / ETICA PROFESIONAL / 1020</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900104');">Asistencia</a><br><br>
+
+	<SCRIPT LANGUAGE="JavaScript">
+		aTipAV[4]="002";
+		aNuAula[4]="900105";
+		aNomDepc[4]="CARRERA ING.SI.";
+		aNomCurs[4]="ESTADISTICA APLICADA";
+		aDepc[4]="690400";
+		aCurs[4]="690421";
+		aSecc[4]="903";
+		aUserDcte[4]="DOCENTE05";
+		aCoordCurs[4]="0";
+	</SCRIPT>
+		<li>CARRERA ING.SI. / ESTADISTICA APLICADA / 903</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900105');">Asistencia</a><br><br>
+
+</ul>
+
+	</td>
+</tr>
+</table>
+</form>
+</body>
+</html>
