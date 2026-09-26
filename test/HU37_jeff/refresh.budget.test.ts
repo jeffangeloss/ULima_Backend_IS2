@@ -85,6 +85,22 @@ describe("RS-BE-50 · presupuesto de la recarga entera", () => {
     expect(a.cierres()).toBe(1);
   });
 
+  test("si solo quedan sin pedir cursos de notas, el aviso va al bloque nota", async () => {
+    // Con 5 s por página, las tres de la apertura y las cinco de la asistencia
+    // llegan a 40 s, y cada curso de notas pide dos, así que a los 60 s solo
+    // caben dos cursos.
+    const a = armar({ reloj: { t: 0, paso: 5_000 } });
+    const res = await a.servicio.refresh(a.entrada({ recibidaEn: 0 }));
+    expect(res.courses.map((c) => [c.attendance, c.grades])).toEqual([
+      ["updated", "read"], ["updated", "read"],
+      ["updated", "not_reached"], ["updated", "not_reached"], ["updated", "not_reached"],
+    ]);
+    expect(res.warnings).toEqual([{
+      code: "REFRESH_BUDGET_EXCEEDED", block: "nota",
+      message: "La lectura de miUlima tardó demasiado y algunos cursos quedaron sin leer.",
+    }]);
+  });
+
   test("el presupuesto agotado sin ningún curso leído responde 504", async () => {
     const a = armar({
       reloj: { t: 0, paso: 10_000 },

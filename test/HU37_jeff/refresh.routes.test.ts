@@ -102,9 +102,21 @@ describe("POST /portal-sync/refresh", () => {
     expect(res.headers.get("X-RateLimit-Remaining")).toBe("5");
   });
 
+  test("el servicio marca el mismo rastro del limitador, y un 409 por cambio de ciclo no devuelve el cupo", async () => {
+    respuesta = async (e) => {
+      e.rastro.portalTocado = true;
+      throw new HttpError(409, "La ULima ya muestra otro ciclo. Carga tus datos del ciclo nuevo.", "IMPORT_REQUIRED");
+    };
+    const res = await post(token(9307), VALIDO);
+    expect(res.status).toBe(409);
+    expect(res.headers.get("X-RateLimit-Remaining")).toBe("4");
+  });
+
   test("la respuesta nunca repite las credenciales", async () => {
     respuesta = async () => RESULTADO;
-    const texto = await (await post(token(9306), VALIDO)).text();
+    const res = await post(token(9306), VALIDO);
+    expect(res.status).toBe(200);
+    const texto = await res.text();
     expect(texto).not.toContain("clave-sintetica");
     expect(texto).not.toContain("123456");
   });

@@ -397,6 +397,8 @@ Es la opción que el dueño aprueba en la decisión abierta 3, con el plazo de l
   HTTP. Nunca cuerpos, cookies, contraseña, código, notas, nombres ni códigos de alumno.
 
 `[@test] ../../../test/HU37_jeff/refresh.rate-limit.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.routes.test.ts` *(el rastro del limitador llega al servicio)*
+`[@test] ../../../test/HU37_jeff/refresh.service.test.ts` *(el rastro se marca antes del inicio de sesión)*
 `[@test] ../../../test/HU37_jeff/refresh.budget.test.ts`
 `[@test] ../../../test/HU37_jeff/env.refresh-budget.test.ts`
 `[@test] ../../../test/HU31_jeff/service.import.test.ts` *(existe, casos nuevos)*

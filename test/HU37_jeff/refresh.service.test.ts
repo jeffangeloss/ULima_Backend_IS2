@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { SyncWarning } from "../../src/modules/portal-sync/portal-sync.types.js";
 import { PORTAL_PATHS } from "../../src/services/portal.client.js";
 import { HttpError } from "../../src/shared/errors/http-error.js";
-import { ALUMNO, CURSOS, HOJAS, asistenciaDe, marco, notaDe } from "./recarga.dobles.js";
+import { ALUMNO, CURSOS, HOJAS, asistenciaDe, marco, menuLista, notaDe } from "./recarga.dobles.js";
 import { CREDENCIALES, MATRICULAS, STUDENT_ID, VISTA, armar } from "./recarga.servicio.js";
 
 /**
@@ -9,6 +10,7 @@ import { CREDENCIALES, MATRICULAS, STUDENT_ID, VISTA, armar } from "./recarga.se
  * y un reloj falsos (recarga.servicio.ts). Datos inventados de la spec.
  */
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const ILEGIBLE = "<html><body>otra cosa</body></html>";
 const caido = () => new HttpError(502, "No se pudo contactar a miUlima.", "PORTAL_UNAVAILABLE");
 
 describe("RS-BE-49 · condiciones previas, antes de tocar el portal", () => {
@@ -71,6 +73,12 @@ describe("RS-BE-49 · condiciones previas, antes de tocar el portal", () => {
     const b = armar({ userCode: null });
     b.guard.tryStart(STUDENT_ID, "refresh");
     await expect(b.servicio.refresh(b.entrada())).rejects.toMatchObject({ code: "PORTAL_IDENTITY_UNVERIFIABLE" });
+    // Con la guarda tomada y el tope alcanzado a la vez, gana la guarda.
+    const c = armar();
+    c.guard.tryStart(STUDENT_ID, "refresh");
+    for (let i = 0; i < 3; i++) c.guard.recordRejectedLogin(STUDENT_ID);
+    await expect(c.servicio.refresh(c.entrada())).rejects.toMatchObject({ code: "PORTAL_REFRESH_IN_PROGRESS" });
+    expect(c.logins).toHaveLength(0);
   });
 });
 
@@ -87,6 +95,14 @@ describe("RS-BE-49 · inicio de sesión y ronda de apertura", () => {
     const a = armar();
     const entrada = a.entrada();
     await a.servicio.refresh(entrada);
+    expect(entrada.rastro.portalTocado).toBe(true);
+  });
+
+  test("un inicio de sesión que se agota deja el rastro marcado, porque ya tocó el portal", async () => {
+    const a = armar({ loginFalla: new HttpError(504, "miUlima tardó demasiado en responder.", "PORTAL_TIMEOUT") });
+    const entrada = a.entrada();
+    await expect(a.servicio.refresh(entrada)).rejects.toMatchObject({ statusCode: 504, code: "PORTAL_TIMEOUT" });
+    expect(a.logins).toHaveLength(1);
     expect(entrada.rastro.portalTocado).toBe(true);
   });
 
@@ -264,13 +280,51 @@ describe("RS-BE-48 y RS-BE-56 · atribución y respuesta", () => {
   });
 
   test("una página de asistencia que no se entiende queda failed con el curso de su página de notas", async () => {
-    const a = armar({ paginas: { [PORTAL_PATHS.asistenciaAlumno("900101")]: "<html><body>otra cosa</body></html>" } });
+    const a = armar({ paginas: { [PORTAL_PATHS.asistenciaAlumno("900101")]: ILEGIBLE } });
     const res = await a.servicio.refresh(a.entrada());
     expect(res.courses[0]!.attendance).toBe("failed");
+    expect(res.attendance).toEqual({ updated: 4, skipped: 0, failed: 1, unavailable: 0 });
     expect(res.warnings).toContainEqual({
       code: "PARSER_FAILED", block: "asistencia",
       message: "No se entendió la asistencia de 690417/812: la respuesta no es una página de asistencia",
     });
+  });
+
+  test("una página de asistencia con otra sección que la del menú cuenta failed y avisa el contraste", async () => {
+    const menu = menuLista("OpenAsistenciaAlumno", CURSOS.map((c) => ({ aula: c.aula, seccion: c.aula === "900101" ? "999" : c.seccion })));
+    const a = armar({ paginas: { [PORTAL_PATHS.cursosAsistencia]: menu } });
+    const res = await a.servicio.refresh(a.entrada());
+    expect(res.attendance).toEqual({ updated: 4, skipped: 0, failed: 1, unavailable: 0 });
+    expect(res.courses[0]).toMatchObject({ courseCode: "690417", attendance: "failed", grades: "read" });
+    expect(a.de("updateAttendanceHours").map(([id]) => id)).not.toContain(501);
+    expect(res.warnings).toEqual([{
+      code: "PARSER_FAILED", block: "asistencia",
+      message: "La sección del menú no coincide con la de la página de asistencia del aula 900101.",
+    }]);
+  });
+
+  test("una página de notas que no se descarga cuenta unavailable y avisa con el curso de su asistencia", async () => {
+    const a = armar({ paginas: { [PORTAL_PATHS.notaCurso("900101")]: caido() } });
+    const res = await a.servicio.refresh(a.entrada());
+    expect(res.grades).toEqual({ read: 4, failed: 0, unavailable: 1, withValue: 0 });
+    expect(res.courses[0]).toMatchObject({ courseCode: "690417", attendance: "updated", grades: "unavailable" });
+    expect(a.de("markGradesRead").map(([id]) => id)).not.toContain(501);
+    expect(res.warnings).toEqual([{
+      code: "NOTAS_UNAVAILABLE", block: "nota", message: "No se pudieron traer las notas de 690417/812.",
+    }]);
+  });
+
+  test("una página de notas que no se entiende cuenta failed, no pide su marco y avisa con el motivo", async () => {
+    const a = armar({ paginas: { [PORTAL_PATHS.notaCurso("900101")]: ILEGIBLE } });
+    const res = await a.servicio.refresh(a.entrada());
+    expect(res.grades).toEqual({ read: 4, failed: 1, unavailable: 0, withValue: 0 });
+    expect(res.courses[0]).toMatchObject({ courseCode: "690417", attendance: "updated", grades: "failed" });
+    expect(a.pedidos.some((p) => p.path === PORTAL_PATHS.tareaAcademica("900101"))).toBe(false);
+    expect(a.de("markGradesRead").map(([id]) => id)).not.toContain(501);
+    expect(res.warnings).toEqual([{
+      code: "PARSER_FAILED", block: "nota",
+      message: "No se entendieron las notas de 690417/812: la respuesta no es la página de notas de un curso",
+    }]);
   });
 
   test("sin ninguna página que la identifique, los avisos nombran el aula y la matrícula queda missing", async () => {
@@ -293,6 +347,55 @@ describe("RS-BE-48 y RS-BE-56 · atribución y respuesta", () => {
     const a = armar({ reloj: { t: 1_000, paso: 1 } });
     const res = await a.servicio.refresh(a.entrada({ recibidaEn: 1_000 }));
     expect(res.readAt).toBe(new Date(a.reloj.t).toISOString());
+  });
+});
+
+describe("RS-BE-56 · un menú caído o ilegible con el otro panel bien", () => {
+  /**
+   * El panel que falla no pide ninguna página ni suma a sus contadores, sus
+   * matrículas quedan missing, el otro panel se lee y se escribe entero, y el
+   * único aviso de la respuesta es el del menú, con su texto fijo.
+   */
+  const sinAsistencia = async (menu: string | Error, aviso: Omit<SyncWarning, "block">) => {
+    const a = armar({ paginas: { [PORTAL_PATHS.cursosAsistencia]: menu } });
+    const res = await a.servicio.refresh(a.entrada());
+    expect(res.attendance).toEqual({ updated: 0, skipped: 0, failed: 0, unavailable: 0 });
+    expect(res.grades).toEqual({ read: 5, failed: 0, unavailable: 0, withValue: 0 });
+    expect(res.courses.map((c) => [c.attendance, c.grades])).toEqual(CURSOS.map(() => ["missing", "read"]));
+    expect(a.pedidos.some((p) => CURSOS.some((c) => p.path === PORTAL_PATHS.asistenciaAlumno(c.aula)))).toBe(false);
+    expect(a.de("updateAttendanceHours")).toHaveLength(0);
+    expect(a.de("markGradesRead").map(([id]) => id)).toEqual(CURSOS.map((c) => c.enrollmentId));
+    expect(res.warnings).toEqual([{ ...aviso, block: "asistencia" }]);
+  };
+
+  const sinNotas = async (menu: string | Error, aviso: Omit<SyncWarning, "block">) => {
+    const a = armar({ paginas: { [PORTAL_PATHS.cursosNota]: menu } });
+    const res = await a.servicio.refresh(a.entrada());
+    expect(res.attendance).toEqual({ updated: 5, skipped: 0, failed: 0, unavailable: 0 });
+    expect(res.grades).toEqual({ read: 0, failed: 0, unavailable: 0, withValue: 0 });
+    expect(res.courses.map((c) => [c.attendance, c.grades])).toEqual(CURSOS.map(() => ["updated", "missing"]));
+    expect(a.pedidos.some((p) => CURSOS.some((c) => p.path === PORTAL_PATHS.notaCurso(c.aula)))).toBe(false);
+    expect(a.de("markGradesRead")).toHaveLength(0);
+    expect(a.de("updateAttendanceHours").map(([id]) => id)).toEqual(CURSOS.map((c) => c.enrollmentId));
+    expect(res.warnings).toEqual([{ ...aviso, block: "nota" }]);
+  };
+
+  test("el menú de Asistencia que no se descarga avisa que no se pudo abrir su panel", async () => {
+    await sinAsistencia(caido(), {
+      code: "ASISTENCIA_UNAVAILABLE", message: "No se pudo abrir el panel de asistencia en miUlima.",
+    });
+  });
+
+  test("el menú de Asistencia ilegible avisa que no se entendió", async () => {
+    await sinAsistencia(ILEGIBLE, { code: "PARSER_FAILED", message: "No se entendió el menú de asistencia de miUlima." });
+  });
+
+  test("el menú de Nota que no se descarga avisa que no se pudo abrir su panel", async () => {
+    await sinNotas(caido(), { code: "NOTAS_UNAVAILABLE", message: "No se pudo abrir el panel de notas en miUlima." });
+  });
+
+  test("el menú de Nota ilegible avisa que no se entendió", async () => {
+    await sinNotas(ILEGIBLE, { code: "PARSER_FAILED", message: "No se entendió el menú de notas de miUlima." });
   });
 });
 
@@ -327,8 +430,8 @@ describe("RS-BE-56 · sin ningún curso leído", () => {
 
   test("los dos menús en un formato desconocido dan 502 PORTAL_UNREADABLE con su mensaje", async () => {
     const a = armar({ paginas: {
-      [PORTAL_PATHS.cursosAsistencia]: "<html><body>otra cosa</body></html>",
-      [PORTAL_PATHS.cursosNota]: "<html><body>otra cosa</body></html>",
+      [PORTAL_PATHS.cursosAsistencia]: ILEGIBLE,
+      [PORTAL_PATHS.cursosNota]: ILEGIBLE,
     } });
     await expect(a.servicio.refresh(a.entrada())).rejects.toMatchObject({
       statusCode: 502, code: "PORTAL_UNREADABLE", message: "miUlima responde con páginas que ULima++ no sabe leer.",
