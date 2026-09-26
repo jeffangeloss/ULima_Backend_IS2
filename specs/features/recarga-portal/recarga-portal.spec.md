@@ -18,22 +18,26 @@ targets:
   - ../../../docs/specs/api-contracts.md
   - ../../../test/HU31_jeff/**
   - ../../../test/HU37_jeff/**
-  # AGENTS.md y KNOWLEDGE.md entran solo si el dueño aprueba la decisión abierta 12.
+  # AGENTS.md y KNOWLEDGE.md entran por la decisión abierta 12, aprobada el 2026-09-26, en el PR de la recarga.
   - ../../../AGENTS.md
   - ../../../KNOWLEDGE.md
 ---
 
 # Recarga de notas parciales y asistencia desde la ULima
 
-> Estado. **Borrador del 2026-09-25, pendiente de aprobación del dueño.** Nada de esta spec
-> está aprobado, salvo lo que la sección «Pedido y decisiones del dueño» atribuye al dueño con
-> su fecha. Cada punto que el dueño todavía no decide figura en «Decisiones abiertas» con la
-> opción que la spec adopta por defecto, y esa opción tampoco cuenta como aprobada. El cambio
-> de base de datos (migración `0015`) pide además la aprobación explícita de BD que exige
-> `AGENTS.md`. Enmienda, también como propuesta, `asistencia-portal.spec.md`,
-> `portal-sync.spec.md`, `delegados-portal.spec.md`, `grades.spec.md`,
-> `official-grades.spec.md`, `schedule.spec.md` y `course-detail.spec.md` (ver «Cambios en
-> otras specs»). La rama `feat/recarga-notas-asistencia` parte de `origin/main` en `f10eb3f`, y
+> Estado. **APROBADA** por el dueño del proyecto el 2026-09-26 en la página de decisiones de la
+> recarga, con todas las decisiones abiertas en la opción que la spec adopta por defecto, que es
+> la recomendada, y lo confirma en el chat el mismo día. Esa aprobación suma las decisiones 4 a
+> 6 de «Pedido y decisiones del dueño», que fijan el plazo, los ajustes técnicos en bloque y los
+> puntos que son solo de la app. Incluye el cambio de base de datos que exige `AGENTS.md`, la
+> tabla `student_portal_score` y las dos columnas de `enrollment` de la migración `0015`, con
+> borrado en cascada. Aplicar la `0015` en producción pide además, en el momento del
+> despliegue, el respaldo y el permiso explícito del dueño, como con la `0012` y la `0013`.
+> Pendiente de implementar, empezando por RS-BE-48 en un PR propio (decisión abierta 1).
+> Enmienda `asistencia-portal.spec.md`, `portal-sync.spec.md`,
+> `delegados-portal.spec.md`, `grades.spec.md`, `official-grades.spec.md`, `schedule.spec.md`
+> y `course-detail.spec.md` (ver «Cambios en otras specs»), enmiendas que el dueño aprueba con
+> esta spec. La rama `feat/recarga-notas-asistencia` parte de `origin/main` en `f10eb3f`, y
 > todas las referencias de línea citan ese estado. Los `[@test]` con la marca *(pendiente)*
 > apuntan a pruebas que se crean con la implementación y hoy no existen. Los que llevan
 > *(existe, casos nuevos)* o *(existe, se actualiza)* apuntan a pruebas de `test/HU31_jeff/`
@@ -43,8 +47,9 @@ targets:
 > que cambian de forma. Los ejemplos usan datos inventados (alumno `20230001`, curso `690417`
 > TALLER DE PROTOTIPADO, sección `812`, aulas `900101` a `900105`). La contraparte de frontend,
 > con la maqueta aprobada, es `ULima_Frontend_IS2/specs/features/recarga-portal/recarga-portal.spec.md`
-> (RF-RCG-1 a RF-RCG-11), también en borrador, en la rama `feat/recarga-notas-asistencia-fe`
-> (`ba33c65`). Sus decisiones B1 a B18 llevan el número de «Decisiones abiertas».
+> (RF-RCG-1 a RF-RCG-11), en la rama `feat/recarga-notas-asistencia-fe`, que el dueño aprueba
+> el mismo día en `b8facce` con las mismas decisiones. Sus decisiones B1 a B19 llevan el número
+> de «Decisiones abiertas».
 
 ## El problema
 
@@ -60,13 +65,19 @@ A eso se suma un fallo en producción. La ULima cambia el menú lateral del Aula
 `parseAulas` ya no encuentra ninguna aula, así que la importación de hoy no actualiza la
 asistencia de nadie y muy probablemente tampoco los delegados (RS-BE-48).
 
-## Pedido y decisiones del dueño (2026-09-25, vinculantes)
+## Pedido y decisiones del dueño (2026-09-25 y 2026-09-26, vinculantes)
+
+Las decisiones 1 a 3 son el pedido del 2026-09-25. Las 4 a 6 salen de la aprobación de las
+specs del 2026-09-26, en la que el dueño elige la opción recomendada en cada punto.
 
 | # | Decisión | Requisitos |
 | --- | --- | --- |
 | 1 | Botones de recarga junto a las notas y junto a la asistencia, que vuelven a pedir los datos a la ULima con la contraseña de miUlima y el código del autenticador (SecurID de un solo uso), para traer la asistencia real y las notas parciales por evaluación del Aula Virtual. | RS-BE-49 a RS-BE-58 |
 | 2 | Un solo inicio de sesión trae notas y asistencia juntas, y cualquiera de los dos botones actualiza ambas. | RS-BE-49 |
 | 3 | La calculadora conserva su diseño actual y solo se reorganiza según la maqueta aprobada (`calculadora-reorganizada.html`). Los tres cambios, el resto que no cambia y lo que cada uno pide al backend están en «Diseño aprobado de la app». | RS-BE-56, RS-BE-57, RS-BE-58 |
+| 4 | **Plazo de la recarga** (aprobación de las specs, 2026-09-26). La lectura dura como máximo 65 s (`PORTAL_REFRESH_BUDGET_MS`) y la fórmula reserva 3 s para la red del teléfono, igual en el backend y en la app, así que el peor caso del backend queda en 87 s dentro de los 90 s de la app. La spec de la app alinea con este máximo su hueco 5 y su D18, que en `b8facce` todavía describen el máximo anterior de 68 000 sin margen para la red. | RS-BE-50 |
+| 5 | **Ajustes técnicos en bloque** (aprobación de las specs, 2026-09-26). Las citas cruzadas entre las dos specs se ponen al día con la de la app en `b8facce` y sus B1 a B19. Una matrícula cuya fila de asistencia salta la guarda de lectura más reciente cuenta como actualizada, igual que un curso de notas cuenta como `read`, y `skipped` queda para los totales que no cuadran. El `429` de cupo de la importación suma `kind: "quota"`, como la recarga. La `0015` se aplica antes de desplegar el código que la usa, porque la importación escribe la columna nueva, y la recarga nunca sale sin RS-BE-48. Si vence el plazo de la app o falla la red, la app vuelve a pedir las notas y da la recarga por guardada si la hora avanzó (D23 de la app). Las verificaciones V1 a V3 fijan la ruta del panel Nota, ajustan el lector con la primera nota publicada y habilitan los pedidos en paralelo solo si V3 lo permite. La recarga de la calculadora tras importar (D16) y el lugar del código y de las pruebas de la app (D20 y D21) son solo de la app. | RS-BE-48, RS-BE-50, RS-BE-51, RS-BE-52, RS-BE-53, RS-BE-55, RS-BE-56, RS-BE-57, RS-BE-58 |
+| 6 | **Puntos que son solo de la app** (aprobación de las specs, 2026-09-26). Los cuatro retoques a la maqueta (D8, D11, D13 y D14), el orden del sílabo en la tarjeta (D7), los dos colores que quedan como el resto de la app (D12 y D24) y los detalles de pantalla que fija su spec (D1 a D6, D9, D10, D17, D19 y D22) quedan en la opción recomendada. No cambian nada del backend. | Ninguno |
 
 ## Hallazgos verificados
 
@@ -137,7 +148,7 @@ spec de la app.
 | --- | --- |
 | El birrete gris sin texto pasa a una fila «Notas oficiales» con la hora de la última lectura («Última lectura hoy a las 10:42» o «Aún no se actualizan desde la ULima»), con el estilo de «Selecciona un Curso». | `lastReadAt` de `GET /grades/me/ulima` (RS-BE-57). |
 | `/mis-notas` conserva su diseño y suma la franja «Actualizar desde la ULima» con la última lectura, las evaluaciones de la ULima con semana, peso y nota o «Sin nota», la hoja de recarga (formato del modal «Registrar Nota», «Entras como <código>», contraseña, seis casillas del código, «Actualizar» apagado hasta completar y aviso de que nada se guarda) y el aviso rojo persistente con «Reintentar» si la lectura falla. | `POST /portal-sync/refresh` (RS-BE-49 a RS-BE-56), sus códigos de error y `GET /grades/me/ulima` (RS-BE-57). El código de «Entras como» ya lo tiene la app. |
-| En la calculadora, cada evaluación con nota de la ULima aparece como una fila de `nota_tile` con la marca «ULima» y sin tacho, y cuenta en el promedio. | `assessmentId` y `value` de cada evaluación en `GET /grades/me/ulima` (RS-BE-54, RS-BE-57). La maqueta muestra solo evaluaciones con pareja en el sílabo, y el caso sin pareja queda en la decisión abierta 7. |
+| En la calculadora, cada evaluación con nota de la ULima aparece como una fila de `nota_tile` con la marca «ULima» y sin tacho, y cuenta en el promedio. | `assessmentId` y `value` de cada evaluación en `GET /grades/me/ulima` (RS-BE-54, RS-BE-57). La maqueta muestra solo evaluaciones con pareja en el sílabo, y el caso sin pareja lo resuelve la decisión abierta 7, aprobada el 2026-09-26. |
 | El bloque de asistencia de la ficha del curso lleva su botón de recarga y la hora de la última lectura. | El mismo `POST /portal-sync/refresh` y `asistenciaLeidaEn` en `GET /schedule/me/sessions` y `GET /course-detail/sections` (RS-BE-58). |
 
 ## Requisitos
@@ -146,8 +157,8 @@ spec de la app.
 
 `parseAulas(html, fnEnlace)` acepta el formato de arreglos, que conserva las reglas de RS-1 de
 `delegados-portal.spec.md`, y el formato de lista del hallazgo 1. Es el único requisito de esta
-spec que corrige un fallo en producción, no necesita cambio de BD ni de contrato y la spec
-recomienda publicarlo antes que el resto, en un PR propio (decisión abierta 1).
+spec que corrige un fallo en producción, no necesita cambio de BD ni de contrato y se publica
+antes que el resto, en un PR propio (decisión abierta 1, aprobada el 2026-09-26).
 
 **Forma del resultado.** `parseAulas` devuelve `ParseResult<AulaMenu[]>`, con
 `AulaMenu = { aula: string; courseCode: string | null; sectionCode: string | null; origen:
@@ -243,7 +254,8 @@ Los mensajes llevan solo literales fijos y valores ya validados con una regex de
 ### RS-BE-49 · Endpoint de recarga, un solo inicio de sesión
 
 `POST /portal-sync/refresh` lee en miUlima la asistencia y las notas parciales del alumno
-autenticado con un solo inicio de sesión. Es la opción por defecto de la decisión abierta 2.
+autenticado con un solo inicio de sesión. Es la opción que el dueño aprueba en la decisión
+abierta 2.
 
 - **Autorización.** Hereda del módulo `authMiddleware` y `requireRole(...STUDENT_ROLES)`. Del
   contexto se leen solo `userId` y `studentId`.
@@ -310,7 +322,7 @@ autenticado con un solo inicio de sesión. Es la opción por defecto de la decis
 
 ### RS-BE-50 · Cupo, intentos rechazados, concurrencia y presupuesto de tiempo
 
-Opción por defecto de la decisión abierta 3.
+Es la opción que el dueño aprueba en la decisión abierta 3, con el plazo de la decisión 4.
 
 - **Cupo propio.** 5 recargas por alumno por hora, en un almacén propio
   (`portalRefreshRateLimit`), separado de los 5 de la importación. Se descuenta antes de
@@ -351,7 +363,9 @@ Opción por defecto de la decisión abierta 3.
   el mismo tope que ya asume la importación.
 - **Presupuesto de tiempo.** `PORTAL_REFRESH_BUDGET_MS`, variable nueva en `src/config/env.ts`
   validada con Zod como entero entre 20 000 y 65 000, con 60 000 por defecto. El máximo de
-  65 000 es el que pide la spec de la app (hueco 5 y D18) para su plazo de 90 s.
+  65 000, con 3 s reservados para la red, lo aprueba el dueño el 2026-09-26 para el backend y
+  la app (decisión 4), y la spec de la app alinea con él su hueco 5 y su D18 para su plazo de
+  90 s.
   `config.portal.refreshBudgetMs` vale el menor entre ese valor y
   81 000 − 2 · `PORTAL_TIMEOUT_MS`, que resta a los 90 s de la app una petición en vuelo y el
   cierre de sesión (2 · `PORTAL_TIMEOUT_MS`), 6 s para la transacción y la respuesta y 3 s para
@@ -418,8 +432,13 @@ Opción por defecto de la decisión abierta 3.
 6. La escritura es la de RS-BE-15 (`resolveAttendanceHours` y `updateAttendanceHours`, un solo
    `UPDATE` por asignación con el CHECK replicado en el `WHERE`), y el mismo `UPDATE` fija
    `portal_attendance_read_at` en el instante en que llega la respuesta de esa página, con la
-   guarda de lectura más reciente de RS-BE-55. Una fila que el `UPDATE` no toca queda
-   `skipped` y conserva su hora de lectura anterior.
+   guarda de lectura más reciente de RS-BE-55. Unos totales que `resolveAttendanceHours`
+   rechaza no llegan al `UPDATE` y dejan la matrícula `skipped`, que queda solo para los
+   totales que no cuadran. Como ese chequeo en memoria ya cubre el CHECK replicado en el
+   `WHERE`, un `UPDATE` que no toca la fila solo se debe a la guarda, porque la fila ya tiene
+   una lectura más reciente. Esa matrícula cuenta como `updated`, igual que un curso de notas
+   que salta su guarda cuenta como `read` (RS-BE-55), y la fila conserva sus horas y su hora de
+   lectura, que son las más nuevas (decisión 5).
 7. Un fallo de descarga o de lectura no toca la fila. Nunca se escribe 0 por un fallo.
 
 `[@test] ../../../test/HU37_jeff/refresh.asistencia.test.ts` *(pendiente)*
@@ -607,7 +626,9 @@ null; match: "exact" | "exact_other_name" | "week_shift" | "none" }`.
   criterio con que la asistencia nunca escribe 0 por un fallo.
 - **Asistencia.** La de RS-BE-51, dentro de la misma transacción. El `UPDATE` de las horas
   suma a su `WHERE` la misma guarda sobre `portal_attendance_read_at`, también en la
-  importación, y una fila que no toca queda `skipped`.
+  importación. Una fila que no toca por esa guarda cuenta como `updated` en la recarga y en
+  `attendanceUpdated` en la importación, y `skipped` y `attendanceSkipped` quedan para los
+  totales que no cuadran (RS-BE-51, punto 6).
 - Solo se escribe sobre matrículas activas del alumno en el período activo, resueltas en el
   servidor.
 - Los CHECK de la tabla repiten las validaciones de RS-BE-53, así que un valor que el lector
@@ -650,8 +671,9 @@ dos paneles.
   con `mark: "graded"`.
 - `courses` tiene una entrada por matrícula activa del alumno en el período activo, y su
   estado sale solo de las aulas atribuidas a esa matrícula por la regla de RS-BE-48.
-  `attendance` vale `updated`, `skipped`, `failed` (la página de un aula atribuida no se
-  entiende), `unavailable` (la descarga falla), `not_reached` o `missing`. `grades` vale
+  `attendance` vale `updated` (las horas se escriben o la fila ya tiene una lectura más
+  reciente), `skipped` (los totales de la página no cuadran), `failed` (la página de un aula
+  atribuida no se entiende), `unavailable` (la descarga falla), `not_reached` o `missing`. `grades` vale
   `read`, `failed`, `unavailable`, `not_reached` o `missing`. Una matrícula sin ningún aula
   atribuida queda `not_reached` si el presupuesto se agota con alguna aula de ese menú todavía
   sin pedir, y `missing` en otro caso, que abarca el curso que el menú no trae y el aula cuya
@@ -800,10 +822,14 @@ fallido, sin cambiar su código ni su respuesta.
 
 ## Modelo de datos (migración `0015_portal_scores.sql`)
 
-Opción por defecto de la decisión abierta 5. Es aditiva, idempotente y se aplica con
-`bun run db:apply drizzle/0015_portal_scores.sql`, con respaldo previo y el permiso explícito
-del dueño, antes del despliegue del código. La `0014` es la de
-`student_specialty_test_result` en la rama `feat/test-especialidad`.
+> **Cambio de base de datos aprobado por el dueño el 2026-09-26** con la spec, en la opción
+> recomendada de la decisión abierta 5. El `.sql` se escribe con la implementación. Aplicarlo
+> en producción pide además, en el momento del despliegue, el respaldo y el permiso explícito
+> del dueño, como con la `0012` y la `0013`, y nadie lo aplica antes.
+
+Es aditiva, idempotente y se aplica con `bun run db:apply drizzle/0015_portal_scores.sql`, con
+respaldo previo y el permiso explícito del dueño, antes del despliegue del código. La `0014` es
+la de `student_specialty_test_result` en la rama `feat/test-especialidad`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS student_portal_score (
@@ -852,8 +878,9 @@ ALTER TABLE enrollment ADD COLUMN IF NOT EXISTS portal_attendance_read_at timest
   `student_score` y, en el segundo, `simulated_grades`). Sin cascada fallarían con `23503` en
   cuanto un alumno de esas secciones tuviera filas en `student_portal_score`. Estas filas son
   una copia de lo que publica la ULima y no tienen sentido sin su matrícula, así que borrarlas
-  con ella no pierde nada que no se pueda volver a leer. La alternativa, sin cascada, suma esos
-  dos scripts a `targets` para que borren también la tabla nueva (decisión abierta 5).
+  con ella no pierde nada que no se pueda volver a leer. La alternativa descartada, sin
+  cascada, suma esos dos scripts a `targets` para que borren también la tabla nueva
+  (decisión abierta 5).
 - `schema.ts` suma `studentPortalScore`, con `onDelete: "cascade"` en `enrollmentId`, y las dos
   columnas de `enrollment` con los mismos nombres, restricciones e índices.
 
@@ -881,8 +908,9 @@ Detalle en `docs/specs/api-contracts.md`, secciones Portal Sync, Grades y Schedu
   (RS-BE-58), un campo aditivo en dos endpoints existentes.
 - `POST /portal-sync/import` también cambia, siempre de forma aditiva. Suma el
   `429 RATE_LIMITED` con `kind: "rejected_logins"` del tope compartido, el
-  `409 PORTAL_REFRESH_IN_PROGRESS` cuando hay una recarga en curso y, por defecto,
-  `kind: "quota"` en su `429` de cupo (RS-BE-50 y decisión abierta 3). Cambian además el orden
+  `409 PORTAL_REFRESH_IN_PROGRESS` cuando hay una recarga en curso y `kind: "quota"` en su
+  `429` de cupo (RS-BE-50 y decisión abierta 3). Cuenta además en `attendanceUpdated` la fila
+  que salta la guarda de lectura más reciente (RS-BE-55). Cambian además el orden
   de sus fases, sus avisos de RS-BE-48, que nombran el aula cuando el curso se desconoce, y la
   hora de lectura de RS-BE-58.
 - `POST /auth/register` no cambia de forma, pero cierra la sesión del portal cuando el inicio
@@ -896,7 +924,7 @@ Detalle en `docs/specs/api-contracts.md`, secciones Portal Sync, Grades y Schedu
 | RS-BE-48 | Los fixtures de arreglos de hoy (`asistencia-sidebar.html`, `delegado-sidebar.html`, `delegado-sidebar-cuenta2.html`) dan el mismo resultado que hoy, con `origen: "arreglos"`, y las pruebas que comparan con `toEqual` se actualizan con ese campo. El menú de lista da las aulas en orden, con `courseCode: null` y la sección del `<li>`. Un `<li>` sin enlace se salta. Un tramo con dos aulas distintas se descarta, también cuando una de ellas tiene letras. Un enlace de otra función no cuenta. Aulas con letras, con 3 dígitos o con 9 se descartan. Una sección no numérica queda `null`. La misma aula con secciones en conflicto se descarta. `class="curso open"` sirve y `curso-body` no. Entidades HTML en el `<li>` se limpian. Una página con los dos formatos usa los arreglos. La página de inicio de sesión da `ok: false`. En el servicio de la importación, con el menú de lista, la sección del menú distinta de la de la página no escribe asistencia, un aula cuya página de asistencia falla emite un aviso que nombra el aula y nunca `null`, un aula de delegados sin curso en el mapa no pide la nómina, no escribe claim y avisa, y un aula cuya página identifica el curso pero falla en los totales entra al mapa y sus delegados se escriben. |
 | RS-BE-49 | Cuerpo sin `consent`, con `consent: false`, con `cookies` o con una clave de más da `400`. Sin matrícula activa da `409 IMPORT_REQUIRED` sin llamar al portal. Una segunda recarga simultánea, o una recarga con una importación con `credentials` en curso, da `409 PORTAL_REFRESH_IN_PROGRESS`. El usuario del inicio de sesión es `app_user.code`. `layout.jsp` con otro ciclo da `409 IMPORT_REQUIRED` sin pedir ninguna página de curso y sin escribir, lo mismo que una página de asistencia de otro ciclo con `layout.jsp` del ciclo activo, y `layout.jsp` sin ciclo da `502 PORTAL_UNREADABLE`. Una página de asistencia con un código de alumno presente y distinto aborta con `403` y no escribe nada, y una sin código es un fallo común de ese curso. El cierre de sesión corre con éxito, con error y con presupuesto agotado. Nunca se escribe en las tablas de la lista de exclusión. |
 | RS-BE-50 | El sexto intento en la hora da `429` con `kind: "quota"`. `422 PORTAL_IDENTITY_UNVERIFIABLE`, el `409 IMPORT_REQUIRED` de la condición previa 1 y `409 PORTAL_REFRESH_IN_PROGRESS` devuelven el cupo, y el `409 IMPORT_REQUIRED` por cambio de ciclo no. Un rechazo devuelve el cupo y suma al tope. El cuarto rechazo en 15 minutos da `429` con `kind: "rejected_logins"` antes de llamar al portal, también si los rechazos vienen de la importación. Del lado de la importación (`service.import.test.ts`), tras tres rechazos de la recarga la importación con `credentials` da `429` con `kind: "rejected_logins"` sin llamar a `login`, un `PORTAL_LOGIN_REJECTED` de la importación suma al tope de la recarga, la importación con `cookies` no revisa el tope, la importación con `credentials` con una recarga en curso da `409 PORTAL_REFRESH_IN_PROGRESS` sin llamar a `login`, y su `429` de cupo lleva `kind: "quota"`. Nunca hay más de 5 peticiones en vuelo. Con un reloj falso, ningún salto del inicio de sesión ni ninguna petición de fase empieza después del presupuesto, el temporizador de un salto no pasa del tiempo que queda, un plazo vencido durante el inicio de sesión da `504`, los cursos pendientes quedan `not_reached` y el aviso sale una sola vez. En el entorno, 65 000 se acepta y 66 000 se rechaza. Con 65 000, un `PORTAL_TIMEOUT_MS` de 8 000 deja el presupuesto efectivo en 65 000, uno de 15 000 lo baja a 51 000 y uno de 30 000 a 21 000, y con 31 000 el arranque falla. |
-| RS-BE-51 | Página de otro ciclo, `prm_sAaCicl` o `prm_sNuCicl` mal formados, curso sin matrícula, triple incoherente y fallo de red, cada uno con su estado y sin tocar la fila. Solo los dos ocultos bien formados con otro ciclo dan `otroCiclo: true`. Una página que identifica bien el curso y falla en los totales devuelve `identificado`. En la importación (`service.asistencia.test.ts`), `cicloEsperado` es el ciclo de `layout.jsp` y una página de otro ciclo es un aviso de ese curso que no aborta. La hora de lectura cambia solo cuando el `UPDATE` toca la fila, y una lectura más vieja que `portal_attendance_read_at` no la toca. |
+| RS-BE-51 | Página de otro ciclo, `prm_sAaCicl` o `prm_sNuCicl` mal formados, curso sin matrícula, triple incoherente y fallo de red, cada uno con su estado y sin tocar la fila. Solo los dos ocultos bien formados con otro ciclo dan `otroCiclo: true`. Una página que identifica bien el curso y falla en los totales devuelve `identificado`. En la importación (`service.asistencia.test.ts`), `cicloEsperado` es el ciclo de `layout.jsp` y una página de otro ciclo es un aviso de ese curso que no aborta. La hora de lectura cambia solo cuando el `UPDATE` toca la fila, y una lectura más vieja que `portal_attendance_read_at` no la toca y deja la matrícula `updated`, mientras que unos totales que `resolveAttendanceHours` rechaza la dejan `skipped`. En la importación, esa misma lectura más vieja cuenta en `attendanceUpdated` y no en `attendanceSkipped`. |
 | RS-BE-52 | Identificación correcta, con cada `var` sangrado con tabulaciones como en la página viva. La línea comentada con el nombre, también sangrada, nunca aparece en el resultado. `min*` y `max*` distintos de cero no cambian nada. Marco de otra aula, marco ausente, `codCurso` ausente y página de inicio de sesión dan su motivo. Un agregado 0 da `null`. La etiqueta «Eval. Continua<br>2» sale con espacio. En el servicio (`refresh.notas.test.ts`), la sección del menú distinta de la de la página, el mapa de asistencia con otro curso para esa aula y el mapa con otra sección no escriben notas y emiten `PARSER_FAILED` con `block: "nota"`. |
 | RS-BE-53 | Cabecera correcta e incorrecta. Las 20 celdas vacías del sondeo, reproducidas con datos inventados. Nota con punto, con coma, `NP`, `np`, `&nbsp;`, `21`, `-1`, `A` y `14.555`. Semana vacía, 0, 21 y con letras. Peso 0, 101 y con coma. Suma de 99,6 y de 100,4 aceptadas, de 99 rechazada. Dos grupos con pesos absolutos aceptados y con pesos relativos rechazados. Hoja huérfana, tercer nivel, id repetido y fila de cinco celdas rechazados. Un nombre con tilde y eñe en bytes ISO-8859-1 llega intacto. El chequeo del promedio avisa cuando difiere en más de 0,5 y calla cuando falta una nota. En el servicio (`refresh.notas.test.ts`), con un cliente falso que registra el orden, cada marco se pide justo después de la página de su curso, los cursos nunca se intercalan y nunca hay dos cadenas en vuelo. |
 | RS-BE-54 | Los patrones del hallazgo 5 con datos inventados, es decir ordinal final («Examen escrito 1/2/3»), ordinal con N («N1/N2/N3»), ordinal sin repetición («Exposición 1»), ordinal por nombre y no por posición, semana corrida en 1 (`week_shift`), en 3 (`none`), peso distinto (`none`), dos candidatas en la misma semana que desempata el nombre, empate sin salida (`none`), sílabo vacío y una candidata que nunca se empareja dos veces. Una evaluación de la ULima sin semana que R1 no empareja queda en R3. El aviso de sílabo desactualizado sale con la mitad o más sin pareja. En el repositorio, la consulta de candidatas filtra por la matrícula con la cadena hasta `assessment`. En el servicio, con dos cursos cuyos sílabos tienen evaluaciones de la misma semana y el mismo peso, cada evaluación de la ULima se empareja solo con una de su propio curso. |
@@ -909,7 +937,9 @@ Detalle en `docs/specs/api-contracts.md`, secciones Portal Sync, Grades y Schedu
 
 ## Cambios en otras specs
 
-Todos son propuesta y siguen el estado de esta spec.
+El dueño los aprueba el 2026-09-26 con esta spec. Cada enmienda queda pendiente de
+implementar, y hasta que su implementación llegue a producción el backend desplegado sigue el
+texto sin enmendar.
 
 - `asistencia-portal.spec.md`. El formato de lista del menú (RS-BE-48), el parámetro
   `cicloEsperado` de `parseAsistenciaCurso` con las marcas `otroCiclo`, `identityMismatch` e
@@ -929,7 +959,8 @@ Todos son propuesta y siguen el estado de esta spec.
   frase según la cual la importación no toca las horas de asistencia, con el `summary`, los
   avisos, el `token` y los errores que le faltaban.
 - `docs/specs/feature-index.md`. La funcionalidad nueva y el estado de la asistencia.
-- `AGENTS.md` y `KNOWLEDGE.md`, solo con la decisión abierta 12.
+- `AGENTS.md` y `KNOWLEDGE.md`, con el texto de la decisión abierta 12, en el PR de la
+  recarga.
 
 ## Qué NO entra
 
@@ -947,125 +978,141 @@ Todos son propuesta y siguen el estado de esta spec.
 
 ## Decisiones abiertas
 
-Cada una trae la opción que la spec adopta por defecto y sus alternativas. Ninguna está
-aprobada. La numeración no cambia aunque se resuelvan, porque la citan los requisitos.
+El dueño las aprueba todas el 2026-09-26 en la página de decisiones de la recarga, cada una en
+la opción que la spec adopta por defecto, que es la recomendada, y ninguna cambia. Lo que esa
+aprobación suma fuera de esta lista queda en las decisiones 4 a 6 de «Pedido y decisiones del
+dueño». Cada punto conserva las alternativas que se descartan, y la numeración no cambia,
+porque la citan los requisitos y la spec de la app.
 
-1. **RS-BE-48 como corrección aparte.** *Pendiente del dueño.* Por defecto, sí. Va primero, en
-   un PR propio sobre `main`, con sus pruebas, sin cambio de BD ni de contrato, y se despliega
-   antes que el resto porque hoy la importación no actualiza la asistencia de nadie. Ese PR
-   lleva también la parte de delegados (orden de las fases, mapa de identificaciones y aviso
-   que nombra el aula, con la identificación verificada de RS-BE-51, punto 4), porque el
-   parser es el mismo y esa parte falla cerrada. Con arreglos
-   rige la lectura de hoy, con lista solo escribe el aula que una página de asistencia
-   verifica, y con un formato desconocido la fase falla como hoy, sin escribir ningún claim.
-   Por eso la verificación V4 se hace antes del merge si la decisión abierta 17 lo autoriza,
-   pero no lo bloquea. Alternativas, dejar la parte de delegados para un PR posterior a V4,
+1. **RS-BE-48 como corrección aparte.** *Aprobada por el dueño el 2026-09-26, en la opción
+   recomendada.* Sí. Va primero, en un PR propio sobre `main`, con sus pruebas, sin cambio de BD
+   ni de contrato, y se despliega antes que el resto porque hoy la importación no actualiza la
+   asistencia de nadie. Ese PR lleva también la parte de delegados (orden de las fases, mapa de
+   identificaciones y aviso que nombra el aula, con la identificación verificada de RS-BE-51,
+   punto 4), porque el parser es el mismo y esa parte falla cerrada. Con arreglos rige la
+   lectura de hoy, con lista solo escribe el aula que una página de asistencia verifica, y con
+   un formato desconocido la fase falla como hoy, sin escribir ningún claim. Por eso la
+   verificación V4, que autoriza la decisión abierta 17, se hace antes del merge pero no lo
+   bloquea. Alternativas descartadas, dejar la parte de delegados para un PR posterior a V4,
    con la fase de delegados descartando mientras tanto toda aula con `courseCode: null` sin
    pedir su nómina, o publicar RS-BE-48 junto con la recarga, lo que deja el fallo en
    producción hasta entonces.
-2. **Endpoint propio o importación completa.** *Pendiente del dueño.* Por defecto, el endpoint
-   propio `POST /portal-sync/refresh`, con un inicio de sesión, solo los paneles Nota y
-   Asistencia, cupo propio y tope de rechazos. Alternativa, que los botones repitan
-   `POST /portal-sync/import` con la pantalla de consentimiento en cada toque, 1 de los 5 cupos
-   y una duración sin medir, y que además sume la lectura del panel Nota.
-3. **Cupo, tope de rechazos y guarda de inicio de sesión.** *Pendiente del dueño.* Por
-   defecto, 5 recargas por hora por alumno, aparte de las 5 de la importación, y 3 inicios de
-   sesión rechazados cada 15 minutos, contados junto con los de la importación con
-   `credentials`, que también responde el `429` con `kind: "rejected_logins"`. El `429` de cupo
-   de la importación suma `kind: "quota"`, y la guarda de inicio de sesión en curso la
-   comparten la recarga y la importación con `credentials`, que responde
-   `409 PORTAL_REFRESH_IN_PROGRESS` si hay una recarga en curso. Alternativas, compartir las 5
-   por hora con la importación, otros números, un tope de rechazos solo para la recarga, dejar
-   el `429` de cupo de la importación sin `kind`, o una guarda solo entre recargas, que deja a
-   una importación y una recarga simultáneas gastar el mismo código de un solo uso.
-4. **Consentimiento en cada recarga.** *Pendiente del dueño.* Por defecto, el aviso de la hoja
-   aprobada («Al tocar “Actualizar” aceptas que ULima++ lea en miUlima tus notas parciales y
-   tu asistencia. La contraseña y el código se usan una sola vez y no se guardan.») y
-   `consent: true` obligatorio en el cuerpo, sin tocar el texto congelado de
-   `PortalConsentView` que usan `/registro` y la prueba HU34. Alternativa, una casilla en la
-   hoja, sin marcar, que habilita «Actualizar», también en cada recarga.
-5. **Tabla, hora de lectura y migración.** *Pendiente del dueño, con aprobación de BD.* Por
-   defecto, la tabla `student_portal_score` y las columnas `enrollment.portal_grades_read_at` y
-   `enrollment.portal_attendance_read_at`, en la migración `0015_portal_scores.sql`, con
-   `ON DELETE CASCADE` desde `student_portal_score.enrollment_id` para que los dos scripts que
-   borran matrículas no fallen con `23503`. Alternativas, otro nombre para la tabla, la hora de
-   las notas como columna de cada fila, una tabla aparte de lecturas por matrícula, o la clave
-   sin cascada, como `student_score`, con `src/db/seed/propuesta_855.ts` y
+2. **Endpoint propio o importación completa.** *Aprobada por el dueño el 2026-09-26, en la
+   opción recomendada.* El endpoint propio `POST /portal-sync/refresh`, con un inicio de sesión,
+   solo los paneles Nota y Asistencia, cupo propio y tope de rechazos. Alternativa descartada,
+   que los botones repitan `POST /portal-sync/import` con la pantalla de consentimiento en cada
+   toque, 1 de los 5 cupos y una duración sin medir, y que además sume la lectura del panel
+   Nota.
+3. **Cupo, tope de rechazos y guarda de inicio de sesión.** *Aprobada por el dueño el
+   2026-09-26, en la opción recomendada.* 5 recargas por hora por alumno, aparte de las 5 de la
+   importación, y 3 inicios de sesión rechazados cada 15 minutos, contados junto con los de la
+   importación con `credentials`, que también responde el `429` con
+   `kind: "rejected_logins"`. El `429` de cupo de la importación suma `kind: "quota"`, y la
+   guarda de inicio de sesión en curso la comparten la recarga y la importación con
+   `credentials`, que responde `409 PORTAL_REFRESH_IN_PROGRESS` si hay una recarga en curso.
+   Alternativas descartadas, compartir las 5 por hora con la importación, otros números, un
+   tope de rechazos solo para la recarga, dejar el `429` de cupo de la importación sin `kind`,
+   o una guarda solo entre recargas, que deja a una importación y una recarga simultáneas gastar
+   el mismo código de un solo uso.
+4. **Consentimiento en cada recarga.** *Aprobada por el dueño el 2026-09-26, en la opción
+   recomendada.* El aviso de la hoja aprobada («Al tocar “Actualizar” aceptas que ULima++ lea
+   en miUlima tus notas parciales y tu asistencia. La contraseña y el código se usan una sola
+   vez y no se guardan.») y `consent: true` obligatorio en el cuerpo, sin tocar el texto
+   congelado de `PortalConsentView` que usan `/registro` y la prueba HU34. Alternativa
+   descartada, una casilla en la hoja, sin marcar, que habilita «Actualizar», también en cada
+   recarga.
+5. **Tabla, hora de lectura y migración.** *Aprobada por el dueño el 2026-09-26, en la opción
+   recomendada y con la aprobación de BD.* La tabla `student_portal_score` y las columnas
+   `enrollment.portal_grades_read_at` y `enrollment.portal_attendance_read_at`, en la migración
+   `0015_portal_scores.sql`, con `ON DELETE CASCADE` desde `student_portal_score.enrollment_id`
+   para que los dos scripts que borran matrículas no fallen con `23503`. Aplicarla en
+   producción pide además, en el momento del despliegue, el respaldo y el permiso explícito del
+   dueño (ver «Modelo de datos»). Alternativas descartadas, otro nombre para la tabla, la hora
+   de las notas como columna de cada fila, una tabla aparte de lecturas por matrícula, o la
+   clave sin cascada, como `student_score`, con `src/db/seed/propuesta_855.ts` y
    `src/db/seed/delegados_secciones.ts` sumados a `targets` para que borren también la tabla
    nueva.
-6. **Nota simulada cuando la ULima publica la misma evaluación.** *Pendiente del dueño.* Por
-   defecto, el backend no toca `simulated_grades`, la app muestra la nota de la ULima en lugar
-   de la simulada, como dice la maqueta aprobada, y la simulada reaparece si la ULima retira
-   la nota. Alternativa, borrar la simulada al guardar la nota de la ULima.
-7. **Notas de la ULima sin pareja en el sílabo.** *Pendiente del dueño.* Por defecto, se
-   muestran en `/mis-notas`, no entran a la calculadora y la calculadora avisa que el sílabo
-   cargado no coincide con la ULima en ese curso, para no contar dos veces el mismo peso.
-   Alternativa, que entren a la calculadora como filas «ULima» con su peso, aunque la suma de
-   pesos pueda pasar de 100.
-8. **«NP».** *Pendiente del dueño.* Por defecto, se guarda como marca `np` sin valor, la app
-   lo muestra como «NP» y lo cuenta como 0 en el promedio, pendiente de confirmar con el
-   reglamento. Alternativas, no contarlo en el promedio, o hacer fallar al curso hasta tener
-   una muestra.
-9. **Umbral de aprobación.** *Pendiente del dueño.* Por defecto, ningún umbral único. Se
-   conservan los dos de hoy, 11 para el aviso «Desaprobado» de la calculadora y 10,5 para la
-   insignia «Final» de `/mis-notas`, porque la maqueta aprobada pone los dos en lo que no
-   cambia. Es la opción por defecto de B9 en la spec de la app. El 10,5 que usan en el backend
-   las alertas, el chatbot y las estadísticas de sección no cambia en esta entrega.
-   Alternativas, 10,5 en las dos pantallas si la ULima redondea el promedio final, que cambia
-   el aviso aprobado de la calculadora, u 11 en las dos si no lo redondea, que cambia la
-   insignia «Final» aprobada. El cotejo de RS-BE-53, punto 7, dice cuál de las dos
-   alternativas corresponde cuando cierre un curso.
-10. **Papel de `/mis-notas` y de las notas que carga el docente.** *Pendiente del dueño.* Por
-    defecto, `/mis-notas` lee `GET /grades/me/ulima`, `GET /official-grades/me` sigue
-    disponible sin cambios y el módulo del docente no cambia, pero sus notas dejan de tener
-    pantalla de alumno. Alternativas, mostrar las dos por evaluación con la de la ULima
-    mandando, o retirar la carga docente.
-11. **Alertas de riesgo y chatbot.** *Pendiente del dueño.* Por defecto, no leen las notas de
-    la ULima en esta entrega y siguen como hoy. Alternativa, que `academic_risk` y el chatbot
-    las lean, cada uno con su enmienda de spec.
-12. **Regla de `AGENTS.md` y `KNOWLEDGE.md`.** *Pendiente del dueño.* Hoy dicen que las notas
-    de la calculadora son personales y no oficiales. Por defecto, cambian en el PR de
-    implementación, al aprobarse la spec, con este texto. «La calculadora muestra además, fijas
-    y con la marca “ULima”, las notas parciales que publica la ULima (tabla
-    `student_portal_score`, que escribe solo `POST /portal-sync/refresh`). Las notas que el
-    alumno registra siguen siendo personales y no oficiales, en `simulated_grades`.»
-    `KNOWLEDGE.md` corrige además la línea que llama personales a las notas de
-    `student_score`. Alternativa, otro texto o no tocar la regla, y entonces la calculadora no
-    puede mostrar las notas de la ULima.
-13. **La importación completa también lee el panel Nota.** *Pendiente del dueño.* Por defecto,
-    no, para no alargar una importación sin medir. Alternativa, sumarle la fase de notas.
-14. **Borrado de las notas de la ULima a pedido del alumno.** *Pendiente del dueño.* Por
-    defecto, sin endpoint nuevo en esta entrega, igual que el resto del inventario de
-    `portal-sync`. Alternativa, `DELETE /grades/me/ulima`, que borra las filas del alumno y sus
+6. **Nota simulada cuando la ULima publica la misma evaluación.** *Aprobada por el dueño el
+   2026-09-26, en la opción recomendada.* El backend no toca `simulated_grades`, la app muestra
+   la nota de la ULima en lugar de la simulada, como dice la maqueta aprobada, y la simulada
+   reaparece si la ULima retira la nota. Alternativa descartada, borrar la simulada al guardar
+   la nota de la ULima.
+7. **Notas de la ULima sin pareja en el sílabo.** *Aprobada por el dueño el 2026-09-26, en la
+   opción recomendada.* Se muestran en `/mis-notas`, no entran a la calculadora y la
+   calculadora avisa que el sílabo cargado no coincide con la ULima en ese curso, para no
+   contar dos veces el mismo peso. Alternativa descartada, que entren a la calculadora como
+   filas «ULima» con su peso, aunque la suma de pesos pueda pasar de 100.
+8. **«NP».** *Aprobada por el dueño el 2026-09-26, en la opción recomendada.* Se guarda como
+   marca `np` sin valor, la app lo muestra como «NP» y lo cuenta como 0 en el promedio,
+   pendiente de confirmar con el reglamento. Alternativas descartadas, no contarlo en el
+   promedio, o hacer fallar al curso hasta tener una muestra.
+9. **Umbral de aprobación.** *Aprobada por el dueño el 2026-09-26, en la opción recomendada.*
+   Ningún umbral único. Se conservan los dos de hoy, 11 para el aviso «Desaprobado» de la
+   calculadora y 10,5 para la insignia «Final» de `/mis-notas`, porque la maqueta aprobada pone
+   los dos en lo que no cambia. Es también la opción de B9 en la spec de la app. El 10,5 que
+   usan en el backend las alertas, el chatbot y las estadísticas de sección no cambia en esta
+   entrega. Alternativas descartadas, 10,5 en las dos pantallas si la ULima redondea el
+   promedio final, que cambia el aviso aprobado de la calculadora, u 11 en las dos si no lo
+   redondea, que cambia la insignia «Final» aprobada. El cotejo de RS-BE-53, punto 7, dice
+   cuál de las dos alternativas corresponde cuando cierre un curso.
+10. **Papel de `/mis-notas` y de las notas que carga el docente.** *Aprobada por el dueño el
+    2026-09-26, en la opción recomendada.* `/mis-notas` lee `GET /grades/me/ulima`,
+    `GET /official-grades/me` sigue disponible sin cambios y el módulo del docente no cambia,
+    pero sus notas dejan de tener pantalla de alumno. Alternativas descartadas, mostrar las
+    dos por evaluación con la de la ULima mandando, o retirar la carga docente.
+11. **Alertas de riesgo y chatbot.** *Aprobada por el dueño el 2026-09-26, en la opción
+    recomendada.* No leen las notas de la ULima en esta entrega y siguen como hoy. Alternativa
+    descartada, que `academic_risk` y el chatbot las lean, cada uno con su enmienda de spec.
+12. **Regla de `AGENTS.md` y `KNOWLEDGE.md`.** *Aprobada por el dueño el 2026-09-26, en la
+    opción recomendada.* Hoy dicen que las notas de la calculadora son personales y no
+    oficiales. Cambian en el PR de implementación de la recarga con un solo texto, el mismo en
+    `AGENTS.md` y `KNOWLEDGE.md` de este repo y en los de la app (B12 de su spec). «Las notas
+    que el alumno registra en la calculadora son personales y no oficiales
+    (`simulated_grades`). La calculadora muestra además, fijas y con la marca “ULima”, las
+    notas parciales que publica la ULima, que guarda la tabla `student_portal_score`, escribe
+    solo `POST /portal-sync/refresh` y lee `GET /grades/me/ulima`.» `KNOWLEDGE.md` corrige
+    además la línea que llama personales a las notas de `student_score`. Alternativas
+    descartadas, un texto distinto en cada repo, otro texto o no tocar la regla, y entonces la
+    calculadora no puede mostrar las notas de la ULima.
+13. **La importación completa también lee el panel Nota.** *Aprobada por el dueño el
+    2026-09-26, en la opción recomendada.* No, para no alargar una importación sin medir.
+    Alternativa descartada, sumarle la fase de notas.
+14. **Borrado de las notas de la ULima a pedido del alumno.** *Aprobada por el dueño el
+    2026-09-26, en la opción recomendada.* Sin endpoint nuevo en esta entrega, igual que el
+    resto del inventario de `portal-sync`, y se puede sumar después con su propia spec.
+    Alternativa descartada, `DELETE /grades/me/ulima`, que borra las filas del alumno y sus
     horas de lectura de notas.
-15. **Medición desde `iad1` antes de publicar.** *Pendiente del dueño.* Por defecto,
-    obligatoria. Con la `0015` aplicada, el dueño corre tres recargas con su cuenta desde un
-    despliegue en `iad1` y se publica solo si las tres terminan en 45 s o menos y sin `504`,
-    con las duraciones por fase del registro de RS-BE-50. Como Preview comparte la base de
-    producción, esas recargas escriben solo las filas del dueño. Alternativas, otro umbral, o
-    publicar confiando solo en el presupuesto.
-16. **Quién carga las evaluaciones del sílabo en los ciclos futuros.** *Pendiente del dueño.*
-    Por defecto, la misma carga manual del 2026-09-04, a cargo del dueño antes de cada ciclo.
-    Mientras no se haga, las notas de la ULima quedan con `match: "none"` y solo se ven en
-    `/mis-notas`. Alternativa, una spec aparte para un cargador desde los PDF del sílabo.
-17. **Sondeos de solo lectura con la cuenta del dueño.** *Pendiente del dueño.* Por defecto,
-    autorizados para las verificaciones V1 a V4, con scripts desechables fuera del repositorio,
-    solo `GET` sobre los propios datos, el cierre de sesión al final y nada guardado dentro de
-    un repo. Alternativa, implementar sin sondear, con el riesgo de que el lector falle justo
-    cuando salga la primera nota.
-18. **Mostrar el «Promedio» que publica la ULima.** *Pendiente del dueño.* Por defecto, no se
-    guarda ni se muestra, y solo sirve al chequeo de RS-BE-53, punto 7. Alternativa, devolverlo
-    en `GET /grades/me/ulima` cuando valga más que 0.
-19. **Cambio de ciclo durante la recarga.** *Pendiente del dueño.* Por defecto, la ronda de
-    apertura lee el ciclo de `layout.jsp` y la recarga termina con `409 IMPORT_REQUIRED`, sin
-    escribir nada y sin devolver el cupo, cuando ese ciclo o el de alguna página de asistencia
-    difiere del período activo (RS-BE-49). Cuesta una petición más, en una ronda que ya existe.
-    Si la importación deja el ciclo nuevo inactivo porque todavía no empieza
-    (`PERIOD_NOT_ACTIVATED_YET`), la recarga sigue respondiendo ese `409` hasta la fecha de
-    inicio, aunque el alumno vuelva a importar. Alternativas, confiar solo en el ciclo de las
-    páginas de asistencia, sin la petición extra, lo que deja sin guarda a las notas cuando
-    ninguna página de asistencia se identifica, o un código propio para ese caso, para que la
-    app no mande a `/portal-sync` a un alumno cuyo ciclo todavía no empieza.
+15. **Medición desde `iad1` antes de publicar.** *Aprobada por el dueño el 2026-09-26, en la
+    opción recomendada.* Obligatoria. Con la `0015` aplicada, el dueño corre tres recargas con
+    su cuenta desde un despliegue en `iad1` y se publica solo si las tres terminan en 45 s o
+    menos y sin `504`, con las duraciones por fase del registro de RS-BE-50. Como Preview
+    comparte la base de producción, esas recargas escriben solo las filas del dueño.
+    Alternativas descartadas, otro umbral, o publicar confiando solo en el presupuesto.
+16. **Quién carga las evaluaciones del sílabo en los ciclos futuros.** *Aprobada por el dueño
+    el 2026-09-26, en la opción recomendada.* La misma carga manual del 2026-09-04, a cargo del
+    dueño antes de cada ciclo. Mientras no se haga, las notas de la ULima quedan con
+    `match: "none"` y solo se ven en `/mis-notas`. Alternativa descartada, una spec aparte para
+    un cargador desde los PDF del sílabo.
+17. **Sondeos de solo lectura con la cuenta del dueño.** *Aprobada por el dueño el 2026-09-26,
+    en la opción recomendada.* Autorizados para las verificaciones V1 a V4, con scripts
+    desechables fuera del repositorio, solo `GET` sobre los propios datos, el cierre de sesión
+    al final y nada guardado dentro de un repo. Alternativa descartada, implementar sin
+    sondear, con el riesgo de que el lector falle justo cuando salga la primera nota.
+18. **Mostrar el «Promedio» que publica la ULima.** *Aprobada por el dueño el 2026-09-26, en
+    la opción recomendada.* No se guarda ni se muestra, y solo sirve al chequeo de RS-BE-53,
+    punto 7. Alternativa descartada, devolverlo en `GET /grades/me/ulima` cuando valga más
+    que 0.
+19. **Cambio de ciclo durante la recarga.** *Aprobada por el dueño el 2026-09-26, en la opción
+    recomendada.* La ronda de apertura lee el ciclo de `layout.jsp` y la recarga termina con
+    `409 IMPORT_REQUIRED`, sin escribir nada y sin devolver el cupo, cuando ese ciclo o el de
+    alguna página de asistencia difiere del período activo (RS-BE-49). Cuesta una petición
+    más, en una ronda que ya existe. Si la importación deja el ciclo nuevo inactivo porque
+    todavía no empieza (`PERIOD_NOT_ACTIVATED_YET`), la recarga sigue respondiendo ese `409`
+    hasta la fecha de inicio, aunque el alumno vuelva a importar. Alternativas descartadas,
+    confiar solo en el ciclo de las páginas de asistencia, sin la petición extra, lo que deja
+    sin guarda a las notas cuando ninguna página de asistencia se identifica, o un código
+    propio para ese caso, para que la app no mande a `/portal-sync` a un alumno cuyo ciclo
+    todavía no empieza.
 
 ## Verificación antes de publicar
 
@@ -1081,15 +1128,18 @@ aprobada. La numeración no cambia aunque se resuelvan, porque la citan los requ
   abriéndola, y se compara con el orden secuencial. Solo si todo coincide se habilitan las
   cadenas en paralelo o la variante corta de RS-BE-53.
 - **V4.** Sondeo del menú de Delegado para confirmar que usa el mismo formato de lista y que sus
-  aulas son las mismas del panel Asistencia. Por defecto se hace antes del merge del PR de
-  RS-BE-48, pero no lo bloquea, porque la parte de delegados falla cerrada (decisión abierta 1).
+  aulas son las mismas del panel Asistencia. Se hace antes del merge del PR de RS-BE-48, con la
+  autorización de la decisión abierta 17, pero no lo bloquea, porque la parte de delegados
+  falla cerrada (decisión abierta 1).
 - **V5.** La medición de la decisión abierta 15, que registra también la duración de la
   transacción y, desde el teléfono, el tiempo total de cada recarga, para confirmar los márgenes
   de 6 s y de 3 s de RS-BE-50.
 - **Orden de publicación.** Los menús de Asistencia y de Nota llegan hoy en formato de lista, así
-  que la recarga nunca se despliega sin RS-BE-48, que va antes o en el mismo despliegue. La app
-  se publica solo con RS-BE-48 a RS-BE-60 desplegados, la `0015` aplicada con su aprobación de
-  BD, el máximo de 65 000 de RS-BE-50 y V5 hecha, como pide la «Verificación» de la spec de la
-  app (decisión B1).
+  que la recarga nunca se despliega sin RS-BE-48, que sale antes en su propio PR (decisión
+  abierta 1). La `0015` se aplica, con el respaldo y el permiso explícito del dueño, antes de
+  desplegar RS-BE-49 a RS-BE-60, porque la importación escribe la columna nueva (RS-BE-58). La
+  app se publica solo con RS-BE-48 a RS-BE-60 desplegados, la `0015` aplicada, el máximo de
+  65 000 de RS-BE-50 y V5 hecha, como pide la «Verificación» de la spec de la app (decisión
+  B1).
 - `bun run build` y `bun test` en verde, con las pruebas de «Pruebas por requisito» enlazadas
   y sin la marca *(pendiente)*.
