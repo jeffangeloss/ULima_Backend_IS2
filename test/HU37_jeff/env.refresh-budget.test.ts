@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   REFRESH_BUDGET_DEFAULT_MS, REFRESH_BUDGET_MAX_MS, REFRESH_BUDGET_MIN_MS,
-  effectiveRefreshBudgetMs, envSchema,
+  effectiveRefreshBudgetMs, env, envSchema,
 } from "../../src/config/env.js";
 import { config } from "../../src/config/app-config.js";
 
@@ -63,8 +64,28 @@ describe("presupuesto efectivo", () => {
     expect(arrancar({ PORTAL_REFRESH_BUDGET_MS: "65000", PORTAL_TIMEOUT_MS: "30501" }).success).toBe(false);
   });
 
+  test("config.portal.refreshBudgetMs sale del presupuesto y del timeout que valida el arranque", () => {
+    // Vale con cualquier .env local, porque compara contra lo que el arranque leyó.
+    expect(config.portal.refreshBudgetMs)
+      .toBe(effectiveRefreshBudgetMs(env.PORTAL_REFRESH_BUDGET_MS, env.PORTAL_TIMEOUT_MS));
+  });
+
   test("config.portal.refreshBudgetMs ya viene acotado por el timeout", () => {
-    // El entorno de las pruebas no define PORTAL_REFRESH_BUDGET_MS.
-    expect(config.portal.refreshBudgetMs).toBe(effectiveRefreshBudgetMs(60_000, config.portal.timeoutMs));
+    // Con el timeout de 8 000 de las pruebas la cota no actúa, así que config se
+    // lee en un proceso aparte con 15 000 y 65 000. Ese proceso corre en la
+    // carpeta de esta prueba, que no tiene .env, y su entorno lleva solo esas dos
+    // variables y los secretos ficticios de BASE.
+    const appConfig = join(import.meta.dir, "..", "..", "src", "config", "app-config.ts");
+    const hijo = Bun.spawnSync({
+      cmd: [
+        process.execPath, "-e",
+        `const { config } = await import(${JSON.stringify(appConfig)}); console.log(config.portal.refreshBudgetMs);`,
+      ],
+      cwd: import.meta.dir,
+      env: { ...BASE, PORTAL_TIMEOUT_MS: "15000", PORTAL_REFRESH_BUDGET_MS: "65000" },
+    });
+    expect(hijo.stderr.toString()).toBe("");
+    expect(hijo.exitCode).toBe(0);
+    expect(hijo.stdout.toString().trim()).toBe("51000");
   });
 });
