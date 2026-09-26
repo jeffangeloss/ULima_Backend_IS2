@@ -10,7 +10,7 @@
 
 **Spec:** `specs/features/specialty-test/specialty-test.spec.md` (RS-BE-37 a RS-BE-47, aprobada el 2026-09-25) y su enmienda en `specs/features/academic-profile/academic-profile.spec.md` (BR-AP-07 y BR-AP-08). El contrato está en `docs/specs/api-contracts.md`, sección «Specialty Test». La spec fija los valores exactos (textos, códigos, mensajes, prompt y límites) y este plan fija el orden, los archivos, el código y las pruebas. Si difieren, manda la spec y la tarea se detiene para avisar.
 
-**Repo y rama:** El worktree `$REPO`, rama `feat/test-especialidad`, sobre `5842b0b` más el commit de este plan.
+**Repo y rama:** El worktree `$REPO`, rama `feat/test-especialidad`, sobre `5842b0b` más uno o más commits de este plan, que solo tocan este archivo.
 
 ## Restricciones globales
 
@@ -32,7 +32,7 @@ El plan no fija rutas de una máquina. Cada llamada de shell empieza con `export
 
 - `REPO` es la ruta absoluta del worktree de la rama `feat/test-especialidad`, la que muestra `git worktree list`.
 - `BUN` es el ejecutable de bun, que no está en `PATH`, dentro de la carpeta temporal de la sesión (`$SCRATCH/bunhome/node_modules/.bin/bun`).
-- `FUENTE` es la carpeta `especialidad/` de la sesión que escribió la spec, con `contenido-test.json`, `generar.py`, `extraer-lucide.py` y `lucide-nombres.txt`. El Paso 0 comprueba sus cuatro SHA-256.
+- `FUENTE` es la copia permanente del contenido aprobado 2026-09-25.4, la carpeta `contenido-test-especialidad/` de la raíz del proyecto, que no es un repo git y contiene `ULima_Backend_IS2`, `ULima_Frontend_IS2` y `.worktrees/`. Esa carpeta trae `contenido-test.json`, `generar.py`, `extraer-lucide.py` y `lucide-nombres.txt`, y el Paso 0 comprueba sus cuatro SHA-256. La copia de la carpeta temporal de la sesión que escribió la spec no sirve de fuente, porque esa carpeta se borra al cerrar la sesión.
 - `SCRATCH` es la carpeta temporal de la sesión, fuera del repo, donde se guarda el script de la Tarea 13.
 
 ## Cifras de las pruebas
@@ -113,10 +113,10 @@ Todas las cifras salen de correr el código y las pruebas de este mismo texto, t
 - [ ] **Paso 0: Punto de partida, autor y fuente**
 
 ```bash
-cd "${REPO:?}" && git rev-parse --abbrev-ref HEAD && git log --oneline 5842b0b..HEAD && git status --short && git config user.email | grep -c '@users\.noreply\.github\.com$' && shasum -a 256 "${FUENTE:?}/contenido-test.json" "${FUENTE:?}/generar.py" "${FUENTE:?}/extraer-lucide.py" "${FUENTE:?}/lucide-nombres.txt" | cut -c1-64
+cd "${REPO:?}" && git rev-parse --abbrev-ref HEAD && git merge-base --is-ancestor 5842b0b HEAD && echo "base 5842b0b" && git log --oneline 5842b0b..HEAD && git rev-list --count --merges 5842b0b..HEAD && git log --no-renames --pretty=format: --name-only 5842b0b..HEAD | sed '/^$/d' | sort -u && git status --short && git config user.email | grep -c '@users\.noreply\.github\.com$' && shasum -a 256 "${FUENTE:?}/contenido-test.json" "${FUENTE:?}/generar.py" "${FUENTE:?}/extraer-lucide.py" "${FUENTE:?}/lucide-nombres.txt" | cut -c1-64
 ```
 
-**Esperado:** la rama `feat/test-especialidad`, un solo commit sobre `5842b0b` (el de este plan, `docs(specialty-test): plan de implementación del backend…`), `git status --short` sin líneas, un `1` del noreply y estas cuatro huellas, en este orden.
+**Esperado:** la rama `feat/test-especialidad`, la línea `base 5842b0b`, uno o más commits `docs(specialty-test): …` del plan, con `docs(specialty-test): plan de implementación del backend…` como el más antiguo, y un `0` de merges. Sigue una sola línea con la ruta del plan, `docs/superpowers/plans/2026-09-25-specialty-test-backend.md`, porque esos commits no tocan otro archivo, y después `git status --short` sin líneas, un `1` del noreply y estas cuatro huellas, en este orden.
 
 ```
 ae9076e621ad446ae6aae321ebe82730a45d6c9ceaa13a6e4574e743e75153e6
@@ -125,7 +125,7 @@ ae9076e621ad446ae6aae321ebe82730a45d6c9ceaa13a6e4574e743e75153e6
 f213f981c0e73025b6b31b7e9525e5d5a6b55e1e15d7d3b096e0d00d819e783c
 ```
 
-Cualquier otra rama, otro commit encima, un archivo en `git status --short`, un `0` del noreply u otra huella detiene el plan antes de escribir nada. La spec ya está aprobada (`AGENTS.md` pide la aprobación antes del código) y su estado lo dice en la línea 22.
+Cualquier otra rama, la falta de la línea `base 5842b0b`, un merge encima de la base, un commit encima que toque otro archivo, un archivo en `git status --short`, un `0` del noreply u otra huella detiene el plan antes de escribir nada. La cantidad de commits del plan no importa, porque cada corrección del plan antes de implementar entra como un commit propio que solo toca este archivo. La spec ya está aprobada (`AGENTS.md` pide la aprobación antes del código) y su estado lo dice en la línea 22.
 
 Después se mide la línea base.
 
