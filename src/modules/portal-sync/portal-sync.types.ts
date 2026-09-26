@@ -234,3 +234,12 @@ export type EvaluacionUlima = {
   value: number | null;
   mark: "graded" | "pending" | "np";
 };
+
+/** RS-BE-54. Una evaluación del sílabo cargado en ULima++, candidata a pareja. */
+export type EvaluacionSilabo = { assessmentId: number; name: string; typeName: string; week: number; weight: number };
+
+/** RS-BE-54. Regla con la que una evaluación de la ULima encontró pareja. */
+export type MatchRule = "exact" | "exact_other_name" | "week_shift" | "none";
+
+/** RS-BE-54. Evaluación de la ULima con su pareja del sílabo, o sin ella. */
+export type EvaluacionEmparejada = EvaluacionUlima & { assessmentId: number | null; match: MatchRule };
