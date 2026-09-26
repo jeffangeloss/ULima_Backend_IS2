@@ -25,17 +25,17 @@ targets:
 > aprobación incluye el cambio de base de datos que exige `AGENTS.md`, la tabla
 > `student_specialty_test_result` de RS-BE-44 (migración `0014`). Aplicar la `0014` en
 > producción pide además, en el momento del despliegue, el respaldo y el permiso explícito del
-> dueño, como con la `0012` y la `0013`. Pendiente de implementar.
+> dueño, como con la `0012` y la `0013`. Implementada en la rama `feat/test-especialidad`, con la
+> `0014` escrita y sin aplicar.
 > Enmienda `specs/features/academic-profile/academic-profile.spec.md` (BR-AP-07 y BR-AP-08,
 > ver «Enmienda a la spec de Academic Profile»), enmienda que el dueño aprueba con esta spec.
 > La contraparte de frontend es
 > `ULima_Frontend_IS2/specs/features/specialty-test/specialty-test.spec.md` (RF-TEST-1 a
 > RF-TEST-14, rama `feat/test-especialidad-fe`), aprobada el mismo día con las mismas
-> decisiones 8 y 9. Las dos describen la versión `2026-09-25.4` del contenido. Todos los
-> `[@test]` apuntan a pruebas que se crean con la implementación y hoy no existen, así que
-> cada uno lleva la marca *(pendiente)*. Los ejemplos usan datos inventados. La rama parte de
-> `38024d4` y trae `main` en `f10eb3f` con un merge, que suma el ajuste del chatbot y la
-> migración `0013`, así que todas las referencias de línea citan ese estado.
+> decisiones 8 y 9. Las dos describen la versión `2026-09-25.4` del contenido. Cada `[@test]`
+> apunta a una prueba de `test/HU36_jeff/` que ya existe. Los ejemplos usan datos inventados.
+> La rama parte de `38024d4` y trae `main` en `f10eb3f` con un merge, que suma el ajuste del
+> chatbot y la migración `0013`, así que todas las referencias de línea citan ese estado.
 
 ## El problema
 
@@ -137,7 +137,7 @@ parte que la app necesita (RS-BE-38).
   3.1.15, y se vuelve a extraer antes de generar otra versión si la app cambia la versión del
   paquete.
 
-`[@test] ../../../test/HU36_jeff/specialty-test-content.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test-content.test.ts`
 
 ### RS-BE-38 · Lo que la app recibe del contenido
 
@@ -178,8 +178,8 @@ conducir el test sin red entre pregunta y pregunta.
   comprobación del 2026-09-25, las cuatro claves de Ingeniería de Sistemas corresponden a los
   ids 1, 5, 6 y 7, algo que el dueño confirma antes del merge.
 
-`[@test] ../../../test/HU36_jeff/specialty-test.routes.test.ts` *(pendiente)*
-`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test.routes.test.ts`
+`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts`
 
 ### RS-BE-39 · Evaluación sin estado y validación de la petición
 
@@ -224,8 +224,8 @@ El servidor no comprueba que el alumno haya visto las preguntas ni cuánto tarda
 es solo suyo y solo lo ve él, así que alterar las respuestas no le da nada que no pueda
 obtener respondiendo.
 
-`[@test] ../../../test/HU36_jeff/specialty-test.routes.test.ts` *(pendiente)*
-`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test.routes.test.ts`
+`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts`
 
 ### RS-BE-40 · Afinidad y orden
 
@@ -266,7 +266,7 @@ empate, su número de desempates, sus plantillas (RS-BE-42) y su motivo, letra p
 `2026-09-25.4` trae los mismos ejemplos y las mismas respuestas, porque solo suma los íconos
 (RS-BE-37).
 
-`[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts`
 
 ### RS-BE-41 · Cuándo toca un desempate y cuál
 
@@ -293,8 +293,8 @@ exacto de solo lectura sobre la versión `2026-09-25.3` da un 50,5 % de tests si
 cifras valen igual para la `2026-09-25.4`, cuyas preguntas, desempates y pesos no cambian. Con
 alumnos reales, que no responden al azar, se esperan menos desempates.
 
-`[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts` *(pendiente)*
-`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts`
+`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts`
 
 ### RS-BE-42 · Resultado final, motivo con plantillas y líneas de Ulises
 
@@ -341,7 +341,7 @@ desempates mostrados.
   `closing` y `retake` van siempre, porque el test se puede rehacer desde el Perfil
   (decisión 1).
 
-`[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test-logic.test.ts`
 
 ### RS-BE-43 · Motivo redactado por Cohere
 
@@ -469,7 +469,7 @@ REGLAS
   el texto aceptado. Espían `console` para fijar que ningún registro lleva el texto de Cohere,
   `error.message`, las respuestas ni el id del alumno.
 
-`[@test] ../../../test/HU36_jeff/specialty-test-reason.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test-reason.test.ts`
 
 ### RS-BE-44 · Guardado del último resultado
 
@@ -496,10 +496,10 @@ REGLAS
 - **Borrado.** La fila cae con el alumno (`ON DELETE CASCADE`). No hay ruta para borrarla
   aparte (ver «Qué NO entra»).
 
-`[@test] ../../../test/HU36_jeff/migration-0014.test.ts` *(pendiente)*
-`[@test] ../../../test/HU36_jeff/specialty-test.repository.test.ts` *(pendiente)*
-`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts` *(pendiente)*
-`[@test] ../../../test/HU36_jeff/specialty-test.postgres.test.ts` *(pendiente, corre solo con `TEST_DATABASE_URL`)*
+`[@test] ../../../test/HU36_jeff/migration-0014.test.ts`
+`[@test] ../../../test/HU36_jeff/specialty-test.repository.test.ts`
+`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts`
+`[@test] ../../../test/HU36_jeff/specialty-test.postgres.test.ts` *(corre solo con `TEST_DATABASE_URL`)*
 
 ### RS-BE-45 · Último resultado para el Perfil
 
@@ -523,8 +523,8 @@ REGLAS
   resultado vacío, siguiendo la regla de no ocultar fallos de la base
   (`academic-profile.repository.ts:49-53`).
 
-`[@test] ../../../test/HU36_jeff/specialty-test.routes.test.ts` *(pendiente)*
-`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test.routes.test.ts`
+`[@test] ../../../test/HU36_jeff/specialty-test.service.test.ts`
 
 ### RS-BE-46 · Autorización, límites y errores
 
@@ -555,8 +555,8 @@ REGLAS
   `413 PAYLOAD_TOO_LARGE`, `429 RATE_LIMITED` y `500 INTERNAL_SERVER_ERROR` para un fallo de
   la base. Cohere nunca produce un error (RS-BE-43).
 
-`[@test] ../../../test/HU36_jeff/specialty-test.routes.test.ts` *(pendiente)*
-`[@test] ../../../test/HU36_jeff/specialty-test.rate-limit.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/specialty-test.routes.test.ts`
+`[@test] ../../../test/HU36_jeff/specialty-test.rate-limit.test.ts`
 
 ### RS-BE-47 · El chatbot no lee el resultado
 
@@ -566,14 +566,14 @@ resultado dice qué le gusta al alumno y no tiene por qué salir hacia el provee
 sin una decisión aparte. Una prueba lo fija leyendo el código del chatbot, sin tocarlo
 (decisión abierta 12).
 
-`[@test] ../../../test/HU36_jeff/chatbot-isolation-specialty-test.test.ts` *(pendiente)*
+`[@test] ../../../test/HU36_jeff/chatbot-isolation-specialty-test.test.ts`
 
 ## Modelo de datos (migración `0014_specialty_test_result.sql`)
 
 > **Cambio de base de datos aprobado por el dueño el 2026-09-25** con la spec, en la página de
-> revisión. El `.sql` se escribe con la implementación. Aplicarlo en producción pide además, en
-> el momento del despliegue, el respaldo y el permiso explícito del dueño, como con la `0012`
-> y la `0013`, y nadie lo aplica antes.
+> revisión. El `.sql` ya está escrito en `drizzle/0014_specialty_test_result.sql`. Aplicarlo en
+> producción pide además, en el momento del despliegue, el respaldo y el permiso explícito del
+> dueño, como con la `0012` y la `0013`, y nadie lo aplica antes.
 
 Número. La `0013` es `drizzle/0013_chatbot_message_history.sql`, del historial del
 chatbot, que ya está en `main` (PR #8, merge `1801a02`) y que `MIGRATIONS.md` registra como
@@ -728,7 +728,7 @@ GET /specialty-test/me/result
 
 ## Pruebas por regla
 
-Todas se crean con la implementación, en `test/HU36_jeff/`, y hoy no existen.
+Todas viven en `test/HU36_jeff/`.
 
 | Regla | Pruebas | Qué fijan |
 | --- | --- | --- |

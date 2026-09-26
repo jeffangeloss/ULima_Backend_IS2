@@ -8,7 +8,7 @@ targets:
 # Academic Profile
 
 > **Enmienda propuesta el 2026-09-25 por `specs/features/specialty-test/specialty-test.spec.md`
-> y aprobada por el dueño el 2026-09-25 con esa spec, pendiente de implementar.** Agrega
+> y aprobada por el dueño el 2026-09-25 con esa spec, implementada en la rama `feat/test-especialidad`.** Agrega
 > BR-AP-07 (solo las especialidades oficiales, decisión 6 del dueño) y BR-AP-08 (reemplazo
 > atómico, decisión abierta 14 de esa spec), y marca los cambios en BR-AP-03 y BR-AP-04.
 > Hasta que la implementación llegue a producción, el backend desplegado sigue el texto sin
@@ -89,7 +89,7 @@ targets:
 - La app puede tener en caché un id antiguo. `getEspecialidadName()` del frontend
   (`lib/services/auth_service.dart`, cerca de la línea 92) devuelve entonces una cadena vacía,
   y ese caso lo cubre la spec del frontend.
-- `[@test] ../../../test/HU36_jeff/academic-profile-official.test.ts` *(pendiente)*
+- `[@test] ../../../test/HU36_jeff/academic-profile-official.test.ts`
 
 ### BR-AP-08: Reemplazo atómico (2026-09-25, decisión abierta 14 de `specialty-test.spec.md`, aprobada por el dueño ese día)
 
@@ -104,7 +104,7 @@ targets:
   deja que los services importen `db`. El service sigue validando cada id antes, como hoy, y
   sigue traduciendo la violación de unicidad a `409 DUPLICATE_PRIMARY`.
 - «Elegir como principal» y los corazones de interés del resultado del test usan esta ruta.
-- `[@test] ../../../test/HU36_jeff/academic-profile-atomic.test.ts` *(pendiente)*
+- `[@test] ../../../test/HU36_jeff/academic-profile-atomic.test.ts`
 
 ## Endpoints
 

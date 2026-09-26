@@ -173,7 +173,7 @@ Especialidades filtradas por carrera. Si `careerId` se omite, usa la carrera del
     ]
   }
   ```
-- **Solo lo oficial** *(aprobada por el dueño el 2026-09-25, BR-AP-07 de `academic-profile.spec.md`, pendiente de implementar)*. Con `careerId` y sin él, la lista trae solo las especialidades con `is_active = true`, que en Ingeniería de Sistemas son los cuatro diplomas oficiales. `is_active` sigue en cada elemento, ahora siempre `true`, y `display_order` se numera después del filtro. Los datos de `specialty` no cambian.
+- **Solo lo oficial** *(aprobada por el dueño el 2026-09-25, BR-AP-07 de `academic-profile.spec.md`, implementada en la rama `feat/test-especialidad`, pendiente de despliegue)*. Con `careerId` y sin él, la lista trae solo las especialidades con `is_active = true`, que en Ingeniería de Sistemas son los cuatro diplomas oficiales. `is_active` sigue en cada elemento, ahora siempre `true`, y `display_order` se numera después del filtro. Los datos de `specialty` no cambian.
 
 ### PUT /academic-profile/me/specialties
 
@@ -199,7 +199,7 @@ Reemplaza las especialidades activas del estudiante autenticado. Escribe en `stu
   }
   ```
 - **Errors**: `400` `INVALID_BODY`, `404` `SPECIALTY_NOT_FOUND`, `409` `DUPLICATE_PRIMARY`
-- **Solo lo oficial y reemplazo atómico** *(aprobada por el dueño el 2026-09-25, BR-AP-07 y BR-AP-08, pendiente de implementar)*. `404 SPECIALTY_NOT_FOUND` también para una especialidad que existe pero tiene `is_active = false`, con el mismo mensaje que una de otra carrera. El desactivado, los `upsert` y la marca de `specialty_setup_completed` corren en una sola transacción. La forma de la ruta no cambia.
+- **Solo lo oficial y reemplazo atómico** *(aprobada por el dueño el 2026-09-25, BR-AP-07 y BR-AP-08, implementadas en la rama `feat/test-especialidad`, pendiente de despliegue)*. `404 SPECIALTY_NOT_FOUND` también para una especialidad que existe pero tiene `is_active = false`, con el mismo mensaje que una de otra carrera. El desactivado, los `upsert` y la marca de `specialty_setup_completed` corren en una sola transacción. La forma de la ruta no cambia.
 
 Notas:
 
@@ -883,7 +883,7 @@ Los bloques ya concretos de una ventana de fechas: el servidor expande cada regl
 - Sin ocurrencias en la ventana: `occurrences` sale vacío y cada semana que toca la ventana sale con `hours: 0`.
 - **Errors**: `400` `INVALID_QUERY_PARAMS` (falta `from` o `to`, alguna no es una fecha válida, o `to` es anterior a `from`), `400` `TIME_BLOCK_WINDOW_TOO_WIDE` (más de 120 días).
 
-## Specialty Test (test de especialidad), APROBADO el 2026-09-25 y pendiente de implementar
+## Specialty Test (test de especialidad), APROBADO el 2026-09-25 e implementado en la rama `feat/test-especialidad`, pendiente de despliegue
 
 Test que conduce Ulises y que recomienda uno de los cuatro diplomas oficiales. El backend sirve el contenido versionado, calcula el puntaje con la fórmula del contenido, decide los desempates, pide a Cohere el motivo con respaldo de plantillas y guarda solo el último resultado del alumno. Detalle en `specs/features/specialty-test/specialty-test.spec.md` (RS-BE-37 a RS-BE-47). El resultado vive en `student_specialty_test_result` (migración `drizzle/0014_specialty_test_result.sql`, cambio de BD aprobado por el dueño el 2026-09-25, que se aplica en producción en el despliegue con el respaldo y su permiso explícito). El contenido vigente es la versión `2026-09-25.4`, con un ícono de Lucide por tarea.
 
