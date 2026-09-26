@@ -45,11 +45,30 @@ const resolver = (answers: Readonly<Record<string, Answer>>, respuestas: readonl
   return paso.evaluation;
 };
 
+const datosPara = (
+  answers: Readonly<Record<string, Answer>>,
+  respuestas: readonly DuelAnswer[],
+): { data: ReasonData; respaldo: string } => {
+  const ev = resolver(answers, respuestas);
+  const plantillas = buildTemplateReason(c, answers, ev);
+  return { data: buildReasonData(c, answers, ev, plantillas.main), respaldo: plantillas.text };
+};
+
 const datosDe = (id: string): { data: ReasonData; respaldo: string } => {
   const e = c.weights.examples.find((x) => x.id === id)!;
-  const ev = resolver(e.answers, e.tiebreakAnswers);
-  const plantillas = buildTemplateReason(c, e.answers, ev);
-  return { data: buildReasonData(c, e.answers, ev, plantillas.main), respaldo: plantillas.text };
+  return datosPara(e.answers, e.tiebreakAnswers);
+};
+
+/**
+ * Las mismas respuestas que `TERCERA_PASA` de `specialty-test-logic.test.ts`.
+ * Con «none» en tb-ti-si-1 y en tb-ti-si-2 gana vj con 41, fuera del par ti-si,
+ * y la segunda queda en 35. Ninguno de los ocho ejemplos tiene un desempate con
+ * la ganadora fuera del par.
+ */
+const TERCERA_PASA: Record<string, Answer> = {
+  q01: "top", q02: "none", q03: "bottom", q04: "un_poco", q05: "none", q06: "bottom",
+  q07: "both", q08: "bastante", q09: "bottom", q10: "both", q11: "bottom", q12: "bastante",
+  q13: "both", q14: "nada",
 };
 
 const { data: DATOS, respaldo: RESPALDO } = datosDe("ejemplo-2");
@@ -151,17 +170,30 @@ describe("datos y mensaje para Cohere (RS-BE-43)", () => {
     expect(data.lectura).toBe("Las dos primeras quedan empatadas.");
   });
 
-  test("sin la ganadora en el par, desempate va en null", () => {
-    // ejemplo-7 gana si y el par es sw-si: está en el par. ejemplo-1 no tuvo desempate.
-    expect(datosDe("ejemplo-1").data.desempate).toBeNull();
-    expect(datosDe("ejemplo-7").data.desempate).toEqual({
+  test("con la ganadora en el par, desempate trae al rival y el rival es nombrable", () => {
+    // En ejemplo-7 gana si con el par sw-si y en ejemplo-4 gana ti con el par sw-ti. En los
+    // dos, sw queda segunda por debajo de 50, así que solo el par la vuelve nombrable.
+    const siete = datosDe("ejemplo-7").data;
+    expect(siete.desempate).toEqual({
       rival: "Ingeniería de Software",
       tareaElegida: "unir en una base de datos las ventas de todas las sedes",
     });
-    expect(datosDe("ejemplo-4").data.desempate).toEqual({
+    expect(siete.nombrables).toEqual(["Sistemas de Información", "Ingeniería de Software"]);
+    const cuatro = datosDe("ejemplo-4").data;
+    expect(cuatro.desempate).toEqual({
       rival: "Ingeniería de Software",
       tareaElegida: null,
     });
+    expect(cuatro.nombrables).toEqual(["Tecnologías de la Información", "Ingeniería de Software"]);
+  });
+
+  test("sin desempate o sin la ganadora en el par, desempate va en null y el par no suma nombrables", () => {
+    // ejemplo-1 no tiene desempate.
+    expect(datosDe("ejemplo-1").data.desempate).toBeNull();
+    const { data } = datosPara(TERCERA_PASA, ["none", "none"]);
+    expect(data.ganadoras).toEqual(["Desarrollo de Videojuegos"]);
+    expect(data.desempate).toBeNull();
+    expect(data.nombrables).toEqual(["Desarrollo de Videojuegos"]);
   });
 });
 
