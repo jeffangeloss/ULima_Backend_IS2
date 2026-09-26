@@ -547,9 +547,18 @@ describe("RS-BE-50 · cupo de la importación", () => {
         retryAfterMinutes: 12, kind: "rejected_logins",
       }),
     ];
+    // Se exige también el cuerpo, porque desde el sexto intento sin devolución
+    // el limitador responde su propio 429 de cupo, con el mismo estado que el
+    // tope de rechazos, y solo el code, el kind y el mensaje los distinguen.
     for (const [i, error] of errores.entries()) {
       const app = appImportacionCon(9210 + i, error);
-      for (let k = 0; k < 7; k++) expect((await importarHttp(app)).status).toBe(error.statusCode);
+      for (let k = 0; k < 7; k++) {
+        const res = await importarHttp(app);
+        expect(res.status).toBe(error.statusCode);
+        expect(await res.json()).toEqual({
+          error: { code: error.code, message: error.message, details: error.details },
+        });
+      }
     }
   });
 
