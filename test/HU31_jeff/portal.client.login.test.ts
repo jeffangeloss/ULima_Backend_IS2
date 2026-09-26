@@ -291,12 +291,8 @@ describe("RS-BE-60 · cierre de la sesión cuando el inicio de sesión falla a m
 describe("RS-BE-50 · plazo del inicio de sesión", () => {
   const CACTUS = "https://cactus.ulima.edu.pe";
 
-  /** Un fetch que nunca responde, salvo que lo aborten. */
-  const colgado = ((_url: string, init?: RequestInit) => new Promise((_ok, falla) => {
-    init?.signal?.addEventListener("abort", () => falla(Object.assign(new Error("abortado"), { name: "AbortError" })));
-  })) as unknown as typeof fetch;
-
-  test("ningún salto empieza después del plazo, y el vencido da 504 después del cierre", async () => {
+  /** Camino feliz con un reloj que avanza 400 ms en cada petición. */
+  const felizConReloj = () => {
     let t = 0;
     const vistos: Array<{ url: string; t: number }> = [];
     const { fetchImpl } = fakePortal(rutasFelices());
@@ -305,13 +301,31 @@ describe("RS-BE-50 · plazo del inicio de sesión", () => {
       t += 400;
       return fetchImpl(url, init);
     }) as unknown as typeof fetch;
-    const client = new PortalClient(BASE, 5000, conReloj, CACTUS, () => t);
+    return { client: new PortalClient(BASE, 5000, conReloj, CACTUS, () => t), vistos };
+  };
+
+  /** Un fetch que nunca responde, salvo que lo aborten. */
+  const colgado = ((_url: string, init?: RequestInit) => new Promise((_ok, falla) => {
+    init?.signal?.addEventListener("abort", () => falla(Object.assign(new Error("abortado"), { name: "AbortError" })));
+  })) as unknown as typeof fetch;
+
+  test("ningún salto empieza después del plazo, y el vencido da 504 después del cierre", async () => {
+    const { client, vistos } = felizConReloj();
     const err = await client.login("20230001", "clave", "123456", { deadline: 1000 }).catch((e) => e);
     expect(err).toMatchObject({ statusCode: 504, code: "PORTAL_TIMEOUT" });
     const saltos = vistos.filter((v) => !esCierre(v));
     expect(saltos.length).toBe(3);
     for (const s of saltos) expect(s.t).toBeLessThan(1000);
     expect(esCierre(vistos.at(-1)!)).toBe(true);
+  });
+
+  test("un salto de redirección tampoco empieza después del plazo", async () => {
+    // Con plazo 700, el GET de solicitarValidarToken.jsp que sigue chase caería
+    // en t = 800, así que no llega a pedirse.
+    const { client, vistos } = felizConReloj();
+    const err = await client.login("20230001", "clave", "123456", { deadline: 700 }).catch((e) => e);
+    expect(err).toMatchObject({ statusCode: 504, code: "PORTAL_TIMEOUT" });
+    expect(vistos.filter((v) => !esCierre(v)).map((v) => v.t)).toEqual([0, 400]);
   });
 
   test("el temporizador de un salto no pasa del tiempo que queda", async () => {
