@@ -210,18 +210,46 @@ describe("POST /specialty-test/me/evaluate en el service (RS-BE-39)", () => {
     expect(llamadas).toEqual([]);
   });
 
-  test("con respuestas validas, un alumno sin fila da 404 USER_NOT_FOUND", async () => {
-    await expect(armar({ alumno: false }).service.evaluate(ALUMNO, cuerpo("ejemplo-1"))).rejects.toMatchObject({
-      statusCode: 404, code: "USER_NOT_FOUND",
-    });
+  test("las 14 preguntas con una sola respuesta del otro tipo dan 400 solo con invalid, sin consultar", async () => {
+    for (const [id, valor] of [["q01", "bastante"], ["q04", "top"]] as const) {
+      const { service, llamadas } = armar();
+      const answers = { ...ejemplo("ejemplo-1").answers, [id]: valor };
+      await expect(service.evaluate(ALUMNO, { version: CURRENT_VERSION, answers })).rejects.toMatchObject({
+        statusCode: 400,
+        code: "SPECIALTY_TEST_INVALID_ANSWERS",
+        details: { missing: [], unexpected: [], invalid: [id] },
+      });
+      expect(llamadas).toEqual([]);
+    }
   });
 
-  test("sin sus cuatro especialidades activas da 404 SPECIALTY_TEST_NOT_AVAILABLE y no guarda", async () => {
-    const { service, llamadas } = armar({ activas: ACTIVAS.slice(0, 3) });
-    await expect(service.evaluate(ALUMNO, cuerpo("ejemplo-1"))).rejects.toMatchObject({
-      statusCode: 404, code: "SPECIALTY_TEST_NOT_AVAILABLE",
-    });
-    expect(llamadas).not.toContain("saveResult");
+  // El paso 6 (alumno y especialidades) va antes del paso 7 (desempates), así
+  // que el 404 sale aunque las respuestas pidan un desempate o traigan uno
+  // que no toca. El ejemplo-1 llega directo al resultado y no lo distingue.
+  const ANTES_DEL_DESEMPATE: Array<[string, EvaluateBody]> = [
+    ["resultado directo", cuerpo("ejemplo-1")],
+    ["pide un desempate", cuerpo("ejemplo-2")],
+    ["desempate que no toca", cuerpo("ejemplo-2", [{ id: "tb-sw-ti-1", answer: "top" }])],
+  ];
+
+  test("con respuestas validas, un alumno sin fila da 404 USER_NOT_FOUND antes de mirar los desempates", async () => {
+    for (const [caso, body] of ANTES_DEL_DESEMPATE) {
+      const { service, llamadas } = armar({ alumno: false });
+      await expect(service.evaluate(ALUMNO, body), caso).rejects.toMatchObject({
+        statusCode: 404, code: "USER_NOT_FOUND",
+      });
+      expect(llamadas, caso).toEqual([`findStudentCareer:${ALUMNO}`]);
+    }
+  });
+
+  test("sin sus cuatro especialidades activas da 404 SPECIALTY_TEST_NOT_AVAILABLE antes de mirar los desempates y no guarda", async () => {
+    for (const [caso, body] of ANTES_DEL_DESEMPATE) {
+      const { service, llamadas } = armar({ activas: ACTIVAS.slice(0, 3) });
+      await expect(service.evaluate(ALUMNO, body), caso).rejects.toMatchObject({
+        statusCode: 404, code: "SPECIALTY_TEST_NOT_AVAILABLE",
+      });
+      expect(llamadas, caso).toEqual([`findStudentCareer:${ALUMNO}`, "findActiveSpecialties:3"]);
+    }
   });
 
   test("un desempate que no toca da 400 SPECIALTY_TEST_TIEBREAK_MISMATCH con el esperado", async () => {
