@@ -29,8 +29,9 @@ import {
 import { SIN_EQUIVALENCIA_CONOCIDA } from "../../db/seed/equivalencias.logic.js";
 import { PORTAL_PATHS } from "../../services/portal.client.js";
 import type {
-  AsistenciaCurso, DelegadosNomina,
+  AsistenciaCurso, AsistenciaIdentificada, AulaMenu, DelegadosNomina,
   ImportResult, ImportSummary, PortalCookies, RecordRow, SyllabusEntry, SyncStatus, SyncWarning,
+  WarningCode,
 } from "./portal-sync.types.js";
 
 /** Perfil de alumno tal como lo devuelve `findStudent`. */
@@ -65,6 +66,20 @@ const emptySummary = (): ImportSummary => ({
   claimsUpserted: 0, claimsDeleted: 0, representativesPromoted: 0, alertsDeleted: 0,
   attendanceUpdated: 0, attendanceSkipped: 0,
 });
+
+/**
+ * RS-BE-48. Aviso de un aula que se arma al final de las fases del portal.
+ * `mensaje` recibe «de <curso>/<sección>» o «del aula <aula>» y la etiqueta
+ * sola, y lleva solo literales fijos y valores ya validados con una regex de
+ * dígitos. `fase` e `i` fijan el orden del menú, que las descargas en paralelo
+ * no respetan.
+ */
+type AvisoDeAula = {
+  fase: 0 | 1; i: number;
+  code: WarningCode; block: "asistencia" | "delegado";
+  aula: AulaMenu;
+  mensaje: (de: string, etiqueta: string) => string;
+};
 
 /** `approved` > `in_progress` > `failed`. `student_course_status` también tiene
  *  `withdrawn`, pero el récord académico nunca lo produce: `progressStatusFor`
@@ -297,7 +312,81 @@ export class PortalSyncService {
     // parcial de período activo y responde 500. Leerlo antes no elimina la
     // carrera (haría falta un advisory lock) pero saca de en medio la segunda
     // conexión y la lectura obsoleta dentro de la propia transacción.
-    // ── 3.6 Delegados: sidebar + una nómina por aula, FUERA de la transacción.
+    // ── 3.6 Asistencia del Aula Virtual (RS-BE-15), FUERA de la transacción.
+    // Fase HERMANA y SECUENCIAL a la de delegados, no fusionada: fusionarlas
+    // llevaría el pico a 10 peticiones concurrentes sobre un solo JSESSIONID de
+    // WebSphere, y no hay medición de cómo responde a eso.
+    //
+    // RS-BE-48. Corre ANTES que la de delegados porque el menú de lista no trae
+    // el código del curso, y el aula es el mismo número en los tres paneles. Las
+    // páginas de asistencia identifican cada aula, y ese mapa es el que usa
+    // después la fase de delegados.
+    //
+    // Degrada igual que delegados: cada petición y cada parseo en su propio
+    // try, y un fallo acá NUNCA aborta la importación. La asistencia es
+    // secundaria y no puede borrar notas, horario ni matrícula.
+    const asistenciaByCourse = new Map<string, AsistenciaCurso>();
+    // Aula -> (curso, sección) según la identificación verificada de su página
+    // de asistencia, que sale también cuando la página falla en los totales.
+    const cursoPorAula = new Map<string, AsistenciaIdentificada>();
+    // Los avisos de cada aula se arman al final, cuando ya terminaron todas las
+    // fases, para nombrar el curso de un aula que su propia página no identifica.
+    const avisosDeAula: AvisoDeAula[] = [];
+    try {
+      const sidebar = await this.client.fetchPage(PORTAL_PATHS.cursosAsistencia, cookies);
+      const aulas = parseAulas(sidebar, "OpenAsistenciaAlumno");
+      if (!aulas.ok) {
+        warnings.push({ code: "PARSER_FAILED", block: "asistencia", message: aulas.reason });
+      } else {
+        await Promise.all(aulas.data.map(async (a, i) => {
+          const aviso = (code: WarningCode, mensaje: AvisoDeAula["mensaje"]) =>
+            avisosDeAula.push({ fase: 0, i, code, block: "asistencia", aula: a, mensaje });
+          let html: string;
+          try {
+            html = await this.client.fetchPage(PORTAL_PATHS.asistenciaAlumno(a.aula), cookies);
+          } catch {
+            aviso("ASISTENCIA_UNAVAILABLE", (de) => `No se pudo traer la asistencia ${de}.`);
+            return;
+          }
+          // `userCode` ya se verificó contra `app_user`: si la página declara
+          // otro alumno, el parser la rechaza sin imprimir ningún código.
+          const parsed = parseAsistenciaCurso(html, a.aula, userCode);
+          const id = parsed.identificado;
+          // RS-BE-48. Si el menú trae una sección y la página declara otra, no
+          // hay forma segura de saber cuál vale. El curso no se escribe y el
+          // aula no entra al mapa.
+          if (id && a.sectionCode !== null && a.sectionCode !== id.sectionCode) {
+            aviso("PARSER_FAILED", () =>
+              `La sección del menú no coincide con la de la página de asistencia del aula ${a.aula}.`);
+            return;
+          }
+          if (id) cursoPorAula.set(a.aula, id);
+          if (!parsed.ok) {
+            aviso("PARSER_FAILED", (de) => `No se entendió la asistencia ${de}: ${parsed.reason}`);
+            return;
+          }
+          asistenciaByCourse.set(`${parsed.data.courseCode}|${parsed.data.sectionCode}`, parsed.data);
+        }));
+      }
+    } catch {
+      warnings.push({
+        code: "ASISTENCIA_UNAVAILABLE", block: "asistencia",
+        message: "No se pudo abrir el panel de asistencia en miUlima.",
+      });
+    }
+
+    /**
+     * RS-BE-48. Curso y sección de un aula, en este orden, de los arreglos del
+     * menú o de la identificación verificada de la página de asistencia de esa
+     * misma aula. `null` cuando ninguna lo da. La importación no tiene fase de
+     * notas, así que no hay un tercer panel que consultar.
+     */
+    const parDeAula = (a: AulaMenu): AsistenciaIdentificada | null =>
+      a.courseCode !== null && a.sectionCode !== null
+        ? { courseCode: a.courseCode, sectionCode: a.sectionCode }
+        : (cursoPorAula.get(a.aula) ?? null);
+
+    // ── 3.7 Delegados: sidebar + una nómina por aula, FUERA de la transacción.
     //
     // `ComandoIngresarAulaVirtualBBDelegado` no sirve: devuelve un frameset. El
     // dato vive dos saltos más adentro, y el sidebar es además quien mapea
@@ -317,17 +406,33 @@ export class PortalSyncService {
       if (!aulas.ok) {
         warnings.push({ code: "PARSER_FAILED", block: "delegado", message: aulas.reason });
       } else {
-        await Promise.all(aulas.data.map(async (a) => {
-          const donde = `${a.courseCode}/${a.sectionCode}`;
+        // RS-BE-48. Con arreglos rige la lectura de hoy. Con el menú de lista,
+        // el par sale del mapa de la asistencia, y se consulta ANTES de pedir la
+        // nómina, así que un aula sin curso conocido no gasta ninguna petición
+        // ni escribe ningún claim. Un aula cuya sección del menú no coincide con
+        // la del mapa corre la misma suerte.
+        const identificadas: Array<{ a: AulaMenu; i: number; par: AsistenciaIdentificada }> = [];
+        aulas.data.forEach((a, i) => {
+          const par = parDeAula(a);
+          if (!par || (a.courseCode === null && a.sectionCode !== null && a.sectionCode !== par.sectionCode)) {
+            avisosDeAula.push({
+              fase: 1, i, code: "PARSER_FAILED", block: "delegado", aula: a,
+              mensaje: () => `No se pudo identificar el curso del aula ${a.aula}.`,
+            });
+            return;
+          }
+          identificadas.push({ a, i, par });
+        });
+
+        await Promise.all(identificadas.map(async ({ a, i, par }) => {
+          const aviso = (mensaje: AvisoDeAula["mensaje"], code: WarningCode = "PARSER_FAILED") =>
+            avisosDeAula.push({ fase: 1, i, code, block: "delegado", aula: a, mensaje });
           let html: string;
           try {
             html = await this.client.fetchPage(PORTAL_PATHS.nominaDelegado(a.aula), cookies);
           } catch {
             // El mensaje NUNCA lleva fragmentos del HTML del portal.
-            warnings.push({
-              code: "DELEGADOS_UNAVAILABLE", block: "delegado",
-              message: `No se pudo traer la nómina de ${donde}.`,
-            });
+            aviso((de) => `No se pudo traer la nómina ${de}.`, "DELEGADOS_UNAVAILABLE");
             return;
           }
           // El instante de la RESPUESTA, no el del INSERT: la escritura ocurre
@@ -336,18 +441,15 @@ export class PortalSyncService {
           const observedAt = new Date();
           const parsed = parseDelegados(html, a.aula);
           if (!parsed.ok) {
-            warnings.push({
-              code: "PARSER_FAILED", block: "delegado",
-              message: `No se entendió la nómina de ${donde}: ${parsed.reason}`,
-            });
+            aviso((de) => `No se entendió la nómina ${de}: ${parsed.reason}`);
             return;
           }
           // Cargos que el portal marcó pero que vinieron inservibles. Se
           // reportan acá; el repositorio ya sabe que no debe borrarlos.
           for (const w of parsed.data.warnings ?? []) {
-            warnings.push({ code: "PARSER_FAILED", block: "delegado", message: `${donde}: ${w.reason}` });
+            aviso((_de, etiqueta) => `${etiqueta}: ${w.reason}`);
           }
-          delegadosBySection.set(`${a.courseCode}|${a.sectionCode}`, { delegados: parsed.data, observedAt });
+          delegadosBySection.set(`${par.courseCode}|${par.sectionCode}`, { delegados: parsed.data, observedAt });
         }));
 
         // Que el sidebar y el consolidado de matrícula no coincidan en NADA es
@@ -360,9 +462,14 @@ export class PortalSyncService {
         // sencillamente falso y manda a soporte a buscar donde no es. Es el
         // mismo error de diagnóstico que este módulo ya se prohíbe a sí mismo
         // en el mensaje de SYLLABUS_UNAVAILABLE.
+        //
+        // RS-BE-48. Solo cuentan las aulas identificadas. Un aula sin curso
+        // conocido ya tiene su propio aviso, y sumarla acá acusaría un cambio
+        // del portal que nadie observó.
         const matriculado = new Set(mat.data.rows.map((r) => `${r.courseCode}|${r.sectionCode}`));
-        const empatan = aulas.data.filter((x) => matriculado.has(`${x.courseCode}|${x.sectionCode}`)).length;
-        if (aulas.data.length > 0 && empatan === 0) {
+        const empatan = identificadas
+          .filter(({ par }) => matriculado.has(`${par.courseCode}|${par.sectionCode}`)).length;
+        if (identificadas.length > 0 && empatan === 0) {
           warnings.push({
             code: "PARSER_FAILED", block: "delegado",
             message: "Ninguna de las aulas del panel de delegados empató con tu matrícula.",
@@ -376,51 +483,15 @@ export class PortalSyncService {
       });
     }
 
-    // ── Asistencia del Aula Virtual (RS-BE-15) ───────────────────────────────
-    // Fase HERMANA y SECUENCIAL a la de delegados, no fusionada: fusionarlas
-    // llevaría el pico a 10 peticiones concurrentes sobre un solo JSESSIONID de
-    // WebSphere, y no hay medición de cómo responde a eso.
-    //
-    // Degrada igual que delegados: cada petición y cada parseo en su propio
-    // try, y un fallo acá NUNCA aborta la importación. La asistencia es
-    // secundaria y no puede borrar notas, horario ni matrícula.
-    const asistenciaByCourse = new Map<string, AsistenciaCurso>();
-    try {
-      const sidebar = await this.client.fetchPage(PORTAL_PATHS.cursosAsistencia, cookies);
-      const aulas = parseAulas(sidebar, "OpenAsistenciaAlumno");
-      if (!aulas.ok) {
-        warnings.push({ code: "PARSER_FAILED", block: "asistencia", message: aulas.reason });
-      } else {
-        await Promise.all(aulas.data.map(async (a) => {
-          const donde = `${a.courseCode}/${a.sectionCode}`;
-          let html: string;
-          try {
-            html = await this.client.fetchPage(PORTAL_PATHS.asistenciaAlumno(a.aula), cookies);
-          } catch {
-            warnings.push({
-              code: "ASISTENCIA_UNAVAILABLE", block: "asistencia",
-              message: `No se pudo traer la asistencia de ${donde}.`,
-            });
-            return;
-          }
-          // `userCode` ya se verificó contra `app_user`: si la página declara
-          // otro alumno, el parser la rechaza sin imprimir ningún código.
-          const parsed = parseAsistenciaCurso(html, a.aula, userCode);
-          if (!parsed.ok) {
-            warnings.push({
-              code: "PARSER_FAILED", block: "asistencia",
-              message: `No se entendió la asistencia de ${donde}: ${parsed.reason}`,
-            });
-            return;
-          }
-          asistenciaByCourse.set(`${parsed.data.courseCode}|${parsed.data.sectionCode}`, parsed.data);
-        }));
-      }
-    } catch {
-      warnings.push({
-        code: "ASISTENCIA_UNAVAILABLE", block: "asistencia",
-        message: "No se pudo abrir el panel de asistencia en miUlima.",
-      });
+    // RS-BE-48. Los avisos de cada aula se arman ahora, con todas las fases
+    // terminadas, en el orden de cada menú. Con curso conocido nombran
+    // `<curso>/<sección>` y sin él nombran el aula. Ningún aviso lleva `null`.
+    avisosDeAula.sort((x, y) => x.fase - y.fase || x.i - y.i);
+    for (const x of avisosDeAula) {
+      const par = parDeAula(x.aula);
+      const etiqueta = par ? `${par.courseCode}/${par.sectionCode}` : `aula ${x.aula.aula}`;
+      const de = par ? `de ${etiqueta}` : `del aula ${x.aula.aula}`;
+      warnings.push({ code: x.code, block: x.block, message: x.mensaje(de, etiqueta) });
     }
 
     const activeBeforeTx = await this.repository.findActivePeriod();

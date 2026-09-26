@@ -102,6 +102,8 @@ const fakeRepo = (over: Partial<PortalSyncRepository> = {}): PortalSyncRepositor
     upsertSection: async () => ({ id: 40, created: true }),
     upsertScheduleSession: async () => {},
     upsertEnrollment: async () => ({ id: 50, created: true }),
+    // RS-BE-48: con el menú de lista la asistencia sí se escribe en estos tests.
+    updateAttendanceHours: async () => true,
     upsertRepresentativeClaims: async () => ({ upserted: 0, deleted: 0 }),
     promoteClaimIfAny: async () => null,
     deleteClaimsOfInactivePeriods: async () => 0,
@@ -772,5 +774,175 @@ describe("PortalSyncService — RS-13 y RS-18: promoción y token re-firmado", (
 
     expect(cap.reissues).toEqual([{ userId: 3, role: "student" }]);
     expect(r.token).toBe("tok");
+  });
+});
+
+// ── RS-BE-48 · el menú de lista ──────────────────────────────────────────────
+// El menú nuevo no trae el código del curso. La fase de delegados lo toma del
+// mapa aula -> (curso, sección) que arman las páginas de asistencia de la misma
+// importación, así que el doble sirve además el panel Asistencia. Las aulas
+// 900101 a 900105 son inventadas y declaran los pares del fixture de matrícula.
+const cursoAsistencia = await Bun.file("test/HU31_jeff/fixtures/asistencia-curso-154508.html").text();
+const PAR_LISTA: Record<string, { courseCode: string; sectionCode: string }> = {
+  "900101": { courseCode: "650033", sectionCode: "952" },
+  "900102": { courseCode: "650035", sectionCode: "958" },
+  "900103": { courseCode: "650067", sectionCode: "952" },
+  "900104": { courseCode: "650070", sectionCode: "654" },
+  "900105": { courseCode: "650084", sectionCode: "1051" },
+};
+const AULAS_LISTA = Object.keys(PAR_LISTA);
+const RUTA_ASISTENCIA = "av/servlets/ComandoListarAsistenciaAulaVirtualAlumno?prm_sNuAula=";
+
+/** Menú de lista armado a mano, con la estructura de `menu-lista-asistencia.html`. */
+const menuLista = (fn: string, secciones: Record<string, string> = {}): string =>
+  `<html><body><ul class="asignaturas">\n${AULAS_LISTA.map((aula) =>
+    `<li class="curso">CARRERA ING.SI. / CURSO INVENTADO / ${secciones[aula] ?? PAR_LISTA[aula]!.sectionCode}</li>\n`
+    + `&nbsp;&nbsp;&nbsp;- <a href="javascript:${fn}('${aula}');">Abrir</a><br><br>\n`).join("")}`
+  + "</ul></body></html>";
+
+/** Página de asistencia del aula, con el alumno autenticado y el par que se pida. */
+const asistenciaDe = (aula: string, par = PAR_LISTA[aula]!): string =>
+  cursoAsistencia
+    .replaceAll("154508", aula)
+    .replace(/(name="prm_sCoUserAlum"[^>]*value=")[^"]*/i, `$1${CODE_EN_FIXTURE}`)
+    .replace(/(name="prm_sCoCurs"[^>]*value=")[^"]*/i, `$1${par.courseCode}`)
+    .replace(/(name="prm_sCoSecc"[^>]*value=")[^"]*/i, `$1${par.sectionCode}`);
+
+/** Portal con los menús de Asistencia y de Delegado en formato de lista. */
+const clienteLista = (
+  rutas: string[],
+  opciones: {
+    asistencia?: (aula: string) => string;
+    panelAsistenciaCaido?: boolean;
+    seccionesDelegado?: Record<string, string>;
+  } = {},
+): PortalClient => fakeClient({
+  fetchPage: async (path: string) => {
+    rutas.push(path);
+    if (path === PORTAL_PATHS.layout) return layout;
+    if (path === PORTAL_PATHS.cursosAsistencia) {
+      if (opciones.panelAsistenciaCaido) throw new Error("ECONNRESET");
+      return menuLista("OpenAsistenciaAlumno");
+    }
+    if (path.startsWith(RUTA_ASISTENCIA)) {
+      const aula = path.slice(RUTA_ASISTENCIA.length);
+      return (opciones.asistencia ?? asistenciaDe)(aula);
+    }
+    if (path === PORTAL_PATHS.cursosDelegado) return menuLista("OpenDelegado", opciones.seccionesDelegado);
+    const aula = aulaDeRuta(path);
+    if (aula) return nominaDe(aula);
+    throw new Error(`ruta no prevista por el doble: ${path}`);
+  },
+} as Partial<PortalClient>);
+
+/** Id de la sección que la importación creó para el par del aula de lista. */
+const seccionDeLista = (cap: Captura, aula: string): number => {
+  const par = PAR_LISTA[aula]!;
+  const s = cap.secciones.find(
+    (x) => x.offeringId === Number(par.courseCode) && x.sectionCode === par.sectionCode,
+  );
+  if (!s) throw new Error(`la importación no creó sección para el aula ${aula}`);
+  return s.id;
+};
+const claimDeLista = (cap: Captura, aula: string) =>
+  cap.claims.find((c) => c.sectionId === seccionDeLista(cap, aula));
+const sinIdentificar = (aula: string) => ({
+  code: "PARSER_FAILED", block: "delegado", message: `No se pudo identificar el curso del aula ${aula}.`,
+});
+
+describe("PortalSyncService — RS-BE-48: delegados con el menú de lista", () => {
+  test("el curso de cada aula sale de su página de asistencia y el claim va a la sección de esa aula", async () => {
+    const rutas: string[] = [];
+    const { repo, cap } = conCapturas();
+    const r = await new PortalSyncService(repo, clienteLista(rutas)).importFromPortal(3, 7, { cookies });
+
+    for (const aula of AULAS_LISTA) {
+      expect(claimDeLista(cap, aula)?.delegados.delegate?.code).toBe(codigoDelegado(aula));
+      expect(claimDeLista(cap, aula)?.delegados.subdelegate?.code).toBe(codigoSubdelegado(aula));
+    }
+    expect(cap.claims).toHaveLength(5);
+    expect(delegadoWarnings(r.warnings)).toEqual([]);
+  });
+
+  test("la fase de asistencia termina antes de que se pida la primera nómina", async () => {
+    const rutas: string[] = [];
+    const { repo } = conCapturas();
+    await new PortalSyncService(repo, clienteLista(rutas)).importFromPortal(3, 7, { cookies });
+
+    const ultimaAsistencia = Math.max(...rutas.map((p, i) => (p.startsWith(RUTA_ASISTENCIA) ? i : -1)));
+    const primeraNomina = rutas.findIndex((p) => aulaDeRuta(p) !== null);
+    expect(ultimaAsistencia).toBeGreaterThan(-1);
+    expect(primeraNomina).toBeGreaterThan(ultimaAsistencia);
+  });
+
+  test("un aula sin curso en el mapa no pide su nómina, no escribe claim y avisa con el aula", async () => {
+    const rutas: string[] = [];
+    const { repo, cap } = conCapturas();
+    const client = clienteLista(rutas, {
+      asistencia: (aula) => { if (aula === "900103") throw new Error("ETIMEDOUT"); return asistenciaDe(aula); },
+    });
+    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, { cookies });
+
+    expect(rutas).not.toContain(PORTAL_PATHS.nominaDelegado("900103"));
+    expect(cap.claims).toHaveLength(4);
+    expect(claimDeLista(cap, "900103")).toBeUndefined();
+    expect(delegadoWarnings(r.warnings)).toEqual([sinIdentificar("900103")]);
+    expect(r.warnings.map((w) => w.message).join(" | ")).not.toContain("null");
+  });
+
+  test("un aula cuya página de asistencia identifica el curso y falla en los totales conserva sus delegados", async () => {
+    const rutas: string[] = [];
+    const { repo, cap } = conCapturas();
+    const client = clienteLista(rutas, {
+      asistencia: (aula) => {
+        const html = asistenciaDe(aula);
+        return aula === "900104" ? html.replace(/Total horas programadas/, "Total horas dictadas") : html;
+      },
+    });
+    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, { cookies });
+
+    expect(claimDeLista(cap, "900104")?.delegados.delegate?.code).toBe(codigoDelegado("900104"));
+    expect(cap.claims).toHaveLength(5);
+    expect(delegadoWarnings(r.warnings)).toEqual([]);
+  });
+
+  test("la sección del menú de delegados distinta de la del mapa no pide la nómina y avisa con el aula", async () => {
+    const rutas: string[] = [];
+    const { repo, cap } = conCapturas();
+    const client = clienteLista(rutas, { seccionesDelegado: { "900102": "959" } });
+    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, { cookies });
+
+    expect(rutas).not.toContain(PORTAL_PATHS.nominaDelegado("900102"));
+    expect(cap.claims).toHaveLength(4);
+    expect(delegadoWarnings(r.warnings)).toEqual([sinIdentificar("900102")]);
+  });
+
+  test("sin el panel de asistencia no se pide ninguna nómina ni se acusa un desempate con la matrícula", async () => {
+    const rutas: string[] = [];
+    const { repo, cap } = conCapturas();
+    const r = await new PortalSyncService(repo, clienteLista(rutas, { panelAsistenciaCaido: true }))
+      .importFromPortal(3, 7, { cookies });
+
+    expect(rutas.filter((p) => aulaDeRuta(p) !== null)).toEqual([]);
+    expect(cap.claims).toHaveLength(0);
+    expect(delegadoWarnings(r.warnings)).toEqual(AULAS_LISTA.map(sinIdentificar));
+    expect(r.summary.enrollmentsUpserted).toBe(5);
+  });
+
+  test("el aviso de que ninguna aula empató se mide sobre las aulas identificadas", async () => {
+    // Las páginas identifican cursos que la matrícula no tiene. Las cinco aulas
+    // quedan identificadas y ninguna empata, que sí es señal de un cambio.
+    const rutas: string[] = [];
+    const { repo, cap } = conCapturas();
+    const client = clienteLista(rutas, {
+      asistencia: (aula) => asistenciaDe(aula, { courseCode: "659999", sectionCode: PAR_LISTA[aula]!.sectionCode }),
+    });
+    const r = await new PortalSyncService(repo, client).importFromPortal(3, 7, { cookies });
+
+    expect(cap.claims).toHaveLength(0);
+    expect(delegadoWarnings(r.warnings)).toEqual([{
+      code: "PARSER_FAILED", block: "delegado",
+      message: "Ninguna de las aulas del panel de delegados empató con tu matrícula.",
+    }]);
   });
 });

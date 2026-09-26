@@ -109,3 +109,39 @@ describe("nunca inventa un cero", () => {
     expect(parseAsistenciaCurso(roto, "154508", ALUMNO).ok).toBe(false);
   });
 });
+
+describe("identificación verificada (RS-BE-48, con RS-BE-51 punto 4)", () => {
+  // Con el menú de lista, el aula no dice de qué curso es. La página de
+  // asistencia lo dice, y ese par tiene que sobrevivir aunque la página falle
+  // después, porque de él salen los delegados y el nombre del curso en los avisos.
+  const PAR = { courseCode: "650033", sectionCode: "952" };
+
+  test("una página leída entera trae el par en identificado, fuera de los cinco campos", () => {
+    const r = parseAsistenciaCurso(curso508, "154508", ALUMNO);
+    expect(r.identificado).toEqual(PAR);
+    expect(r.ok && Object.keys(r.data)).toHaveLength(5);
+  });
+
+  test("una página que identifica el curso y falla en los totales devuelve identificado", () => {
+    const roto = curso508.replace(/Total horas programadas/, "Total horas dictadas");
+    const r = parseAsistenciaCurso(roto, "154508", ALUMNO);
+    expect(r.ok).toBe(false);
+    expect(r.identificado).toEqual(PAR);
+  });
+
+  test("también cuando falla en el cotejo con las sesiones", () => {
+    const roto = curso508.replace('<strong class="textos">8</strong>', '<strong class="textos">99</strong>');
+    const r = parseAsistenciaCurso(roto, "154508", ALUMNO);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.reason).toBe("los totales no cuadran con las sesiones listadas");
+    expect(r.identificado).toEqual(PAR);
+  });
+
+  test("sin el aula pedida o sin el alumno autenticado no hay identificación", () => {
+    expect(parseAsistenciaCurso(curso508, "999999", ALUMNO).identificado).toBeUndefined();
+    expect(parseAsistenciaCurso(curso508, "154508", "20200999").identificado).toBeUndefined();
+    expect(parseAsistenciaCurso("<html><body>login</body></html>", "154508", ALUMNO).identificado)
+      .toBeUndefined();
+  });
+});

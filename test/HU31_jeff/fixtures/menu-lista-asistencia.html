@@ -1,0 +1,59 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!--
+  FIXTURE ARMADO A MANO (RS-BE-48). Reproduce la estructura del menú lateral
+  nuevo del panel Asistencia que describe el hallazgo 1 de
+  recarga-portal.spec.md y no contiene ningún dato real. Las aulas (900101 a
+  900105), los nombres de curso y las secciones son inventados. El menú nuevo
+  no declara los arreglos de índices ni trae el código del curso.
+-->
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<script language="JavaScript" src="/portalUL/av/scripts/aVirtualBB.js"></script>
+<title>Aula Virtual</title>
+
+<SCRIPT LANGUAGE="JavaScript">
+	var t=new Date();
+	var serverAV = 'http://acad.ulima.edu.pe';
+	var Url_JSP_GADA = '/portalUL/gada/servlets/';
+	var Url_JSP_AV = '/portalUL/av/servlets/';
+</SCRIPT>
+</head>
+
+<body>
+<form name="avForm" method="post" action="">
+<input type="hidden" name="prm_sNuAula" value="">
+<input type="hidden" name="prm_sCoUser" value="">
+<table width="100%">
+<tr>
+	<td align="center" class="titular">
+		Asistencia
+	</td>
+</tr>
+<tr>
+	<td>
+
+<ul class="asignaturas">
+
+		<li class="curso">CARRERA ING.SI. / TALLER DE PROTOTIPAD / 812</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900101');">Asistencia</a><br><br>
+
+		<li class="curso">CARRERA ING.SI. / ANALITICA DE DATOS / 812</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900102');">Asistencia</a><br><br>
+
+		<li class="curso">CARRERA ING.SI. / GESTION DE PROYECTOS / 815</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900103');">Asistencia</a><br><br>
+
+		<li class="curso">CARRERA ING.SI. / ETICA PROFESIONAL / 1020</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900104');">Asistencia</a><br><br>
+
+		<li class="curso">CARRERA ING.SI. / ESTADISTICA APLICADA / 903</li>
+			&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('900105');">Asistencia</a><br><br>
+
+</ul>
+
+	</td>
+</tr>
+</table>
+</form>
+</body>
+</html>
