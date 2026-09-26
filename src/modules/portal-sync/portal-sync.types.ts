@@ -210,3 +210,12 @@ export type AsistenciaCurso = {
  * autenticado. Viaja fuera de `AsistenciaCurso`, que conserva sus cinco campos.
  */
 export type AsistenciaIdentificada = { courseCode: string; sectionCode: string };
+
+/** RS-BE-52. Un agregado de la página de notas de un curso. `valor` es null
+ *  cuando el portal publica 0, que usa para decir «sin nota». Solo sirve al
+ *  chequeo del promedio de RS-BE-53, punto 7, y nunca se guarda. */
+export type AgregadoUlima = { clave: "EP" | "TA" | "EF" | "PROM"; etiqueta: string; valor: number | null };
+
+/** RS-BE-52. Lo que se lee de la página de notas de un curso. Tres campos y
+ *  ninguno con el nombre del alumno, del docente ni los datos de la clase. */
+export type NotaCurso = { courseCode: string; sectionCode: string; agregados: AgregadoUlima[] };
