@@ -145,3 +145,78 @@ describe("identificación verificada (RS-BE-48, con RS-BE-51 punto 4)", () => {
       .toBeUndefined();
   });
 });
+
+// ── RS-BE-49 y RS-BE-51 (recarga-portal) · ciclo e identidad ────────────────
+// Fixture armado a mano con los datos inventados de la spec (RS-BE-59).
+const PAGINA_900101 = await Bun.file("test/HU37_jeff/fixtures/asistencia-curso-900101.html").text();
+const ALUMNO_900101 = "20230001";
+
+/** Cambia el `value` de un oculto. */
+const conOculto = (html: string, nombre: string, valor: string) =>
+  html.replace(new RegExp(`(name="${nombre}" value=")[^"]*`), (_t, pre: string) => pre + valor);
+/** Quita un oculto entero. */
+const sinOculto = (html: string, nombre: string) =>
+  html.replace(new RegExp(`<INPUT[^>]*name="${nombre}"[^>]*>`, "i"), "");
+
+describe("fixture armado a mano de la recarga (RS-BE-59)", () => {
+  test("lee 48 programadas, 4 asistidas y 2 de falta, con el ciclo esperado", () => {
+    expect(parseAsistenciaCurso(PAGINA_900101, "900101", ALUMNO_900101, "2026-2")).toEqual({
+      ok: true,
+      data: { courseCode: "690417", sectionCode: "812", totalHours: 48, attendedHours: 4, absentHours: 2 },
+      identificado: { courseCode: "690417", sectionCode: "812" },
+    });
+  });
+});
+
+describe("ciclo esperado (RS-BE-51, punto 3)", () => {
+  test("otro ciclo con los dos ocultos bien formados marca otroCiclo y no identifica", () => {
+    const r = parseAsistenciaCurso(conOculto(PAGINA_900101, "prm_sNuCicl", "1"), "900101", ALUMNO_900101, "2026-2");
+    expect(r).toEqual({ ok: false, reason: "la página es de otro ciclo", otroCiclo: true });
+  });
+
+  test("un año mal formado es un fallo común, sin otroCiclo", () => {
+    const r = parseAsistenciaCurso(conOculto(PAGINA_900101, "prm_sAaCicl", "26"), "900101", ALUMNO_900101, "2026-2");
+    expect(r).toEqual({ ok: false, reason: "la página es de otro ciclo" });
+  });
+
+  test("un número de ciclo fuera de 0 a 3 es un fallo común, sin otroCiclo", () => {
+    const r = parseAsistenciaCurso(conOculto(PAGINA_900101, "prm_sNuCicl", "4"), "900101", ALUMNO_900101, "2026-2");
+    expect(r).toEqual({ ok: false, reason: "la página es de otro ciclo" });
+  });
+
+  test("un oculto del ciclo ausente es un fallo común, sin otroCiclo", () => {
+    const r = parseAsistenciaCurso(sinOculto(PAGINA_900101, "prm_sNuCicl"), "900101", ALUMNO_900101, "2026-2");
+    expect(r).toEqual({ ok: false, reason: "la página es de otro ciclo" });
+  });
+
+  test("sin cicloEsperado no se revisa el ciclo", () => {
+    const r = parseAsistenciaCurso(conOculto(PAGINA_900101, "prm_sNuCicl", "1"), "900101", ALUMNO_900101);
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe("identidad (RS-BE-49)", () => {
+  test("un código presente y distinto marca identityMismatch sin imprimir ningún código", () => {
+    const r = parseAsistenciaCurso(PAGINA_900101, "900101", "20230002", "2026-2");
+    expect(r).toEqual({
+      ok: false, reason: "la página declara un código de alumno distinto del autenticado", identityMismatch: true,
+    });
+  });
+
+  test("un código vacío es un fallo común con su propio motivo", () => {
+    const r = parseAsistenciaCurso(conOculto(PAGINA_900101, "prm_sCoUserAlum", ""), "900101", ALUMNO_900101, "2026-2");
+    expect(r).toEqual({ ok: false, reason: "la página no trae el código de alumno" });
+  });
+
+  test("sin el oculto del alumno, el mismo fallo común", () => {
+    const r = parseAsistenciaCurso(sinOculto(PAGINA_900101, "prm_sCoUserAlum"), "900101", ALUMNO_900101, "2026-2");
+    expect(r).toEqual({ ok: false, reason: "la página no trae el código de alumno" });
+  });
+
+  test("la identidad se revisa antes que el ciclo", () => {
+    const ajena = conOculto(conOculto(PAGINA_900101, "prm_sCoUserAlum", "20230002"), "prm_sNuCicl", "1");
+    const r = parseAsistenciaCurso(ajena, "900101", ALUMNO_900101, "2026-2");
+    expect(r.identityMismatch).toBe(true);
+    expect(r.otroCiclo).toBeUndefined();
+  });
+});

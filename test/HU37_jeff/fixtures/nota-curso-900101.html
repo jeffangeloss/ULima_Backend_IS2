@@ -1,0 +1,41 @@
+<html>
+<head>
+<!--
+  FIXTURE ARMADO A MANO (RS-BE-52 y RS-BE-59). Reproduce la estructura de la
+  página de notas de un curso del panel Nota del Aula Virtual con datos
+  inventados. El curso 690417, la sección 812 y el aula 900101 son los de
+  recarga-portal.spec.md. Cada asignación va sangrada con un tabulador, como en
+  la página viva. La línea comentada lleva un nombre inventado, y los mínimos y
+  máximos son distintos de cero, para probar que nada de eso cambia el resultado.
+-->
+<title>Notas del curso</title>
+<script language="JavaScript">
+	var codCurso = '690417';
+	var nomCurso = 'TALLER DE PROTOTIPADO';
+	var seccion = '812';
+	//var nomAlumno = 'PRUEBA RAMOS, LUCIA';
+	var notaEP = '0';
+	var minEP = '6';
+	var maxEP = '19';
+	var nomEP = 'Eval. Continua';
+	var notaTA = '0';
+	var minTA = '7';
+	var maxTA = '18';
+	var nomTA = 'Eval. Continua<br>2';
+	var notaEF = '0';
+	var minEF = '5';
+	var maxEF = '17';
+	var nomEF = 'Eval. Final';
+	var notaPROM = '0';
+	var minPROM = '8';
+	var maxPROM = '16';
+	var nomPROM = 'Promedio';
+</script>
+</head>
+<body>
+<table width="100%">
+  <tr><td class="titular">TALLER DE PROTOTIPADO</td></tr>
+</table>
+<iframe name="ifrTareaAcad" id="ifrTareaAcad" src="/portalUL/gada/servlets/ComandoConsultarTareaAcademica?prm_sNuAula=900101" width="100%" height="420" frameborder="0" scrolling="auto"></iframe>
+</body>
+</html>

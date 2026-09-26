@@ -29,7 +29,21 @@ export const isAllowedSyllabusBaseUrl = (value: string): boolean => {
   }
 };
 
-const envSchema = z.object({
+/** RS-BE-50. Límites de PORTAL_REFRESH_BUDGET_MS (decisión 4 de recarga-portal.spec.md). */
+export const REFRESH_BUDGET_MIN_MS = 20_000;
+export const REFRESH_BUDGET_MAX_MS = 65_000;
+export const REFRESH_BUDGET_DEFAULT_MS = 60_000;
+
+/**
+ * RS-BE-50. Presupuesto efectivo de la recarga. A los 90 s de la app se les
+ * restan una petición en vuelo y el cierre de sesión (2 · PORTAL_TIMEOUT_MS),
+ * 6 s para la transacción y la respuesta y 3 s para la red del teléfono, así
+ * que el peor caso de la respuesta nunca pasa de 87 s.
+ */
+export const effectiveRefreshBudgetMs = (budgetMs: number, timeoutMs: number): number =>
+  Math.min(budgetMs, 81_000 - 2 * timeoutMs);
+
+export const envSchema = z.object({
   DATABASE_URL: z.string().url("DATABASE_URL debe ser una URL de conexión válida de PostgreSQL"),
   JWT_SECRET: z.string().min(8, "JWT_SECRET debe tener al menos 8 caracteres"),
   JWT_EXPIRES_IN: z.string().optional()
@@ -88,11 +102,36 @@ const envSchema = z.object({
     const n = parseInt(v ?? "8000", 10);
     return Number.isInteger(n) && n > 0 ? n : 8000;
   }),
+  // RS-BE-50. Presupuesto de tiempo de POST /portal-sync/refresh, en ms. Un
+  // valor fuera de 20 000 a 65 000 detiene el arranque en vez de caer en
+  // silencio al valor por defecto, porque de él depende el plazo de la app.
+  PORTAL_REFRESH_BUDGET_MS: z.string().optional().transform((v, ctx) => {
+    const n = Number(v ?? String(REFRESH_BUDGET_DEFAULT_MS));
+    if (!Number.isInteger(n) || n < REFRESH_BUDGET_MIN_MS || n > REFRESH_BUDGET_MAX_MS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "PORTAL_REFRESH_BUDGET_MS debe ser un entero entre 20000 y 65000",
+      });
+      return z.NEVER;
+    }
+    return n;
+  }),
   // Sílabos (base Domino ac_bd001.nsf). Host FIJO por seguridad, igual que
   // PORTAL_BASE_URL pero con su propia allowlist: debe seguir siendo
   // cactus.ulima.edu.pe; cualquier otro valor es rechazado (anti-SSRF).
   SYLLABUS_BASE_URL: z.string().url().optional().default("https://cactus.ulima.edu.pe")
     .refine(isAllowedSyllabusBaseUrl, "SYLLABUS_BASE_URL debe apuntar a cactus.ulima.edu.pe"),
+}).superRefine((e, ctx) => {
+  // RS-BE-50. Con un PORTAL_TIMEOUT_MS mayor que 30 500 el presupuesto efectivo
+  // queda bajo 20 000 y la recarga no alcanzaría a leer nada.
+  if (typeof e.PORTAL_REFRESH_BUDGET_MS !== "number" || typeof e.PORTAL_TIMEOUT_MS !== "number") return;
+  if (effectiveRefreshBudgetMs(e.PORTAL_REFRESH_BUDGET_MS, e.PORTAL_TIMEOUT_MS) < REFRESH_BUDGET_MIN_MS) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["PORTAL_TIMEOUT_MS"],
+      message: "PORTAL_TIMEOUT_MS deja el presupuesto de la recarga bajo 20000 ms",
+    });
+  }
 });
 
 const parsed = envSchema.safeParse(process.env);

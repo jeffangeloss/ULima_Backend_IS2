@@ -70,7 +70,8 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         coalesce(avg(sscore.value), 0) as promedio,
         coalesce(max(mia.attended_hours), 0) as attended_hours,
         coalesce(max(mia.absent_hours), 0) as absent_hours,
-        coalesce(max(mia.total_hours), 0) as total_hours
+        coalesce(max(mia.total_hours), 0) as total_hours,
+        to_char(max(mia.portal_attendance_read_at) at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as asistencia_leida_en
       from section sec
       join teacher t on t.id = sec.teacher_id
       join course_offering co on co.id = sec.course_offering_id
@@ -95,6 +96,10 @@ export const createCourseDetailRoutes = (controller: CourseDetailController) => 
         total: Number(row.total_hours ?? 0),
         asistenciaDisponible: Number(row.total_hours ?? 0) > 0,
         horasTranscurridas: Number(row.attended_hours ?? 0) + Number(row.absent_hours ?? 0),
+        // RS-BE-58. Hora de la última lectura de la asistencia de la matrícula
+        // del alumno autenticado, o null. Un docente no tiene matrícula, así
+        // que recibe null.
+        asistenciaLeidaEn: row.asistencia_leida_en ?? null,
       })),
     });
   });

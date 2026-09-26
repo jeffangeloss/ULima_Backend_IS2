@@ -33,6 +33,15 @@ const assertAula = (aula: string): string => {
   return aula;
 };
 
+/**
+ * RS-BE-52. Servlet de la página de notas de un curso, tal como lo arma
+ * `OpenNotaAlumnoPrePost` en `aVirtualBB.js` (verificación V1). Su único
+ * parámetro es el aula. Si algún día pide un código de alumno, la recarga se
+ * detiene y se escala, con el mismo criterio de la ruta prohibida de
+ * asistencia-portal.spec.md.
+ */
+const NOTA_CURSO_SERVLET = "gada/servlets/ComandoListarNotasAcadAlum";
+
 /** Rutas fijas. Lo único interpolado son el COCICLO (`^\d{5}$`, validado en
  *  `fetchAll`) y el aula del panel de delegados (`^\d{4,8}$`, validada acá
  *  mismo por `assertAula`). */
@@ -79,6 +88,20 @@ export const PORTAL_PATHS = {
    */
   asistenciaAlumno: (aula: string) =>
     `av/servlets/ComandoListarAsistenciaAulaVirtualAlumno?prm_sNuAula=${assertAula(aula)}`,
+
+  // ── Panel Nota (RS-BE-52 y RS-BE-53) ─────────────────────────────────────
+
+  /** Menú del panel. Un `OpenNotaAlumnoPrePost('<aula>')` por curso, en el
+   *  mismo formato de lista que el de Asistencia, así que lo lee `parseAulas`. */
+  cursosNota: "av/servlets/ComandoListarCursosXOpcionAulaVirtualNota",
+
+  /** Página de notas de un curso. El aula pasa por `assertAula`. */
+  notaCurso: (aula: string) => `${NOTA_CURSO_SERVLET}?prm_sNuAula=${assertAula(aula)}`,
+
+  /** Marco «Detalle Evaluaciones». El cliente arma esta ruta con el aula del
+   *  menú y nunca sigue el `src` del marco que trae el HTML. */
+  tareaAcademica: (aula: string) =>
+    `gada/servlets/ComandoConsultarTareaAcademica?prm_sNuAula=${assertAula(aula)}`,
 } as const;
 
 /** Vista Domino de sílabos. Vive en un host DISTINTO de `webaloe` (ver
@@ -105,15 +128,28 @@ const loginRejected = () =>
     "PORTAL_LOGIN_REJECTED",
   );
 
+/** RS-BE-50. Un plazo vencido responde lo mismo que un timeout de red. */
+const portalTimeout = () =>
+  new HttpError(504, "miUlima tardó demasiado en responder.", "PORTAL_TIMEOUT");
+
 /**
- * Traduce un fallo de red — o de LECTURA del cuerpo, que es el mismo fallo más
- * tarde — a un `HttpError` de mensaje fijo. Nunca se propaga el error original:
- * puede llevar cabeceras o cuerpo del portal.
+ * Traduce un fallo de red, o de LECTURA del cuerpo, que es el mismo fallo más
+ * tarde, a un `HttpError` de mensaje fijo. Nunca se propaga el error original,
+ * porque puede llevar cabeceras o cuerpo del portal.
  */
 const portalFailure = (e: unknown): HttpError =>
   (e as Error)?.name === "AbortError"
-    ? new HttpError(504, "miUlima tardó demasiado en responder.", "PORTAL_TIMEOUT")
+    ? portalTimeout()
     : new HttpError(502, "No se pudo contactar a miUlima.", "PORTAL_UNAVAILABLE");
+
+/** RS-BE-52 y RS-BE-53. Opciones de una página del Aula Virtual. */
+export type OpcionesPagina = {
+  /** Fuerza la decodificación. El marco de evaluaciones declara ISO-8859-1 y
+   *  el cliente no depende de lo que anuncie la cabecera (RS-BE-53, punto 8). */
+  charset?: "iso-8859-1";
+  /** Ruta bajo /portalUL/ que el navegador mandaría como Referer. */
+  refererPath?: string;
+};
 
 export class PortalClient {
   constructor(
@@ -123,6 +159,8 @@ export class PortalClient {
     /** Público a propósito: el parser del sílabo arma la URL que se persiste
      *  con ESTA base, la misma con la que se descargó (ver `parseSyllabusEntry`). */
     readonly syllabusBaseUrl: string = config.syllabus.baseUrl,
+    /** RS-BE-50. Reloj del plazo del inicio de sesión, falso en las pruebas. */
+    private readonly now: () => number = Date.now,
   ) {}
 
   /** Cookies para `webaloe`: las tres, tal como las mandaría el navegador. */
@@ -154,7 +192,7 @@ export class PortalClient {
    * host que responde 200 y deja de emitir bytes (proxy a medio morir,
    * respuesta chunked truncada) colgaba la promesa para siempre.
    */
-  async fetchPage(path: string, cookies: PortalCookies): Promise<string> {
+  async fetchPage(path: string, cookies: PortalCookies, opciones: OpcionesPagina = {}): Promise<string> {
     const url = `${this.baseUrl}${ROOT}${path}`;
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), this.timeoutMs);
@@ -165,7 +203,10 @@ export class PortalClient {
           method: "GET",
           redirect: "manual",                       // un 302 a inicio.jsp = sesión inválida
           signal: ac.signal,
-          headers: { Cookie: this.cookieHeader(cookies), "User-Agent": UA, Accept: "text/html,*/*;q=0.8" },
+          headers: {
+            Cookie: this.cookieHeader(cookies), "User-Agent": UA, Accept: "text/html,*/*;q=0.8",
+            ...(opciones.refererPath ? { Referer: `${this.baseUrl}${ROOT}${opciones.refererPath}` } : {}),
+          },
         });
       } catch (e) {
         throw portalFailure(e);
@@ -179,7 +220,8 @@ export class PortalClient {
       if (res.status >= 500) throw new HttpError(502, "miUlima devolvió un error.", "PORTAL_UNAVAILABLE");
       if (res.status !== 200) throw new HttpError(502, "Respuesta inesperada de miUlima.", "PORTAL_UNAVAILABLE");
 
-      const charset = res.headers.get("Content-Type")?.match(/charset=([\w-]+)/i)?.[1] ?? "ISO-8859-1";
+      const declarado = res.headers.get("Content-Type")?.match(/charset=([\w-]+)/i)?.[1] ?? "ISO-8859-1";
+      const charset = opciones.charset ?? declarado;
       let buf: ArrayBuffer;
       try {
         buf = await res.arrayBuffer();            // sigue bajo el mismo timeout
@@ -314,13 +356,19 @@ export class PortalClient {
   }
 
   /** Una petición del login: manda el jar, recoge lo que llegue, no sigue
-   *  redirecciones (las sigue `chase`, que necesita ver cada salto). */
+   *  redirecciones (las sigue `chase`, que necesita ver cada salto).
+   *
+   *  RS-BE-50. Con `deadline`, ningún salto empieza después del plazo y su
+   *  temporizador es el menor entre PORTAL_TIMEOUT_MS y el tiempo que queda,
+   *  porque un inicio de sesión a medias no sirve de nada. */
   private async hop(
     jar: Map<string, string>, method: "GET" | "POST", url: string,
-    form?: Record<string, string>, referer?: string,
+    form?: Record<string, string>, referer?: string, deadline?: number,
   ): Promise<{ status: number; location: string | null; body: string }> {
+    const espera = deadline === undefined ? this.timeoutMs : Math.min(this.timeoutMs, deadline - this.now());
+    if (espera <= 0) throw portalTimeout();
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), this.timeoutMs);
+    const timer = setTimeout(() => ac.abort(), espera);
     try {
       const cookie = [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
       const headers: Record<string, string> = { "User-Agent": UA };
@@ -351,8 +399,9 @@ export class PortalClient {
   /** Sigue la cadena de 302 acumulando cookies. Devuelve dónde terminó. */
   private async chase(
     jar: Map<string, string>, inicio: { status: number; location: string | null; body: string },
-    urlActual: string, saltos = 8,
+    urlActual: string, deadline?: number,
   ): Promise<{ url: string; body: string }> {
+    const saltos = 8;
     let paso = inicio;
     let url = urlActual;
     for (let i = 0; i < saltos && paso.status >= 300 && paso.status < 400 && paso.location; i++) {
@@ -362,7 +411,7 @@ export class PortalClient {
       // pedirla tumba la sesión recién creada. Se corta acá y el paso 4 va
       // directo a layout.jsp.
       if (url.includes("redirectJsp.jsp")) return { url, body: "" };
-      paso = await this.hop(jar, "GET", url, undefined, urlActual);
+      paso = await this.hop(jar, "GET", url, undefined, urlActual, deadline);
     }
     return { url, body: paso.body };
   }
@@ -373,20 +422,51 @@ export class PortalClient {
    * `userCode` NO viene del cliente: sale de `app_user.code` a partir del JWT.
    * `password` y `passcode` se usan y se descartan: no se registran en ningún
    * log, no se persisten y no aparecen en ningún mensaje de error.
+   *
+   * RS-BE-50. La recarga pasa `deadline`, y la importación y el registro no.
+   *
+   * RS-BE-60. Si falla después de que el frasco recibe un JSESSIONID, cierra
+   * esa sesión con todas las cookies del frasco por el mismo `hop`, y no con
+   * `logout()`, que exige LtpaToken2, una cookie que antes del segundo factor
+   * puede no existir. El cierre espera a lo sumo su PORTAL_TIMEOUT_MS, también
+   * pasado el plazo, y nunca cambia el error que se lanza.
    */
-  async login(userCode: string, password: string, passcode: string): Promise<PortalCookies> {
+  async login(
+    userCode: string, password: string, passcode: string,
+    opciones: { deadline?: number } = {},
+  ): Promise<PortalCookies> {
     const jar = new Map<string, string>();
+    try {
+      return await this.pasosDeLogin(jar, userCode, password, passcode, opciones.deadline);
+    } catch (e) {
+      if (jar.has("JSESSIONID")) await this.cerrarFrasco(jar);
+      throw e;
+    }
+  }
+
+  /** RS-BE-60. Cierre de la sesión a medias. Cualquier error se ignora. */
+  private async cerrarFrasco(jar: Map<string, string>): Promise<void> {
+    try {
+      await this.hop(jar, "GET", `${this.baseUrl}${ROOT}${PORTAL_PATHS.logout}`);
+    } catch {
+      /* el cierre nunca cambia el error del inicio de sesión */
+    }
+  }
+
+  private async pasosDeLogin(
+    jar: Map<string, string>, userCode: string, password: string, passcode: string, deadline?: number,
+  ): Promise<PortalCookies> {
     const base = `${this.baseUrl}${ROOT}`;
 
     // 1. Sin sesión: fija WASReqURL y rebota a inicio.jsp.
-    const p1 = await this.hop(jar, "GET", `${base}${PORTAL_PATHS.layout}`);
-    await this.chase(jar, p1, `${base}${PORTAL_PATHS.layout}`);
+    const p1 = await this.hop(jar, "GET", `${base}${PORTAL_PATHS.layout}`, undefined, undefined, deadline);
+    await this.chase(jar, p1, `${base}${PORTAL_PATHS.layout}`, deadline);
 
     // 2. Usuario y contraseña. `ac` es el timestamp que manda el formulario.
     const p2 = await this.hop(jar, "POST", `${base}${PORTAL_PATHS.securityCheck}`, {
       ac: String(Date.now()), url2: "", j_username: userCode, j_password: password,
-    }, `${base}inicio.jsp`);
-    const tras2 = await this.chase(jar, p2, `${base}${PORTAL_PATHS.securityCheck}`);
+    }, `${base}inicio.jsp`, deadline);
+    const tras2 = await this.chase(jar, p2, `${base}${PORTAL_PATHS.securityCheck}`, deadline);
 
     // Volver a inicio.jsp sin pasar por el segundo factor = credenciales malas.
     if (tras2.url.includes("inicio.jsp") && !tras2.url.includes("solicitarValidarToken")) {
@@ -395,17 +475,19 @@ export class PortalClient {
 
     // 3. Segundo factor, si el portal lo pide.
     if (tras2.url.includes("solicitarValidarToken")) {
-      const p3 = await this.hop(jar, "POST", tras2.url, { url2: "", sPasscode: passcode }, tras2.url);
+      const p3 = await this.hop(jar, "POST", tras2.url, { url2: "", sPasscode: passcode }, tras2.url, deadline);
       // TRAMPA: un passcode rechazado devuelve 200 con la MISMA página y sin
       // mensaje de error. La redirección es la única señal fiable de éxito, así
       // que el criterio es esa y no el status ni el texto.
       if (p3.status < 300 || p3.status >= 400) throw loginRejected();
-      await this.chase(jar, p3, tras2.url);
+      await this.chase(jar, p3, tras2.url, deadline);
     }
 
     // 4. Verificación. Se va DIRECTO a layout.jsp (ver la trampa de `chase`).
-    const p4 = await this.hop(jar, "GET", `${base}${PORTAL_PATHS.layout}`, undefined, `${base}redirectJsp.jsp`);
-    const tras4 = await this.chase(jar, p4, `${base}${PORTAL_PATHS.layout}`);
+    const p4 = await this.hop(
+      jar, "GET", `${base}${PORTAL_PATHS.layout}`, undefined, `${base}redirectJsp.jsp`, deadline,
+    );
+    const tras4 = await this.chase(jar, p4, `${base}${PORTAL_PATHS.layout}`, deadline);
     const cuerpo = tras4.body || p4.body;
     if (tras4.url.includes("inicio.jsp") || !cuerpo.includes("Bienvenid")) throw loginRejected();
 

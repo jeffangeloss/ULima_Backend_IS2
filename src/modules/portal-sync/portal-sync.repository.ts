@@ -372,6 +372,38 @@ export const levelNeverGoesDown = (calculado: number | null, guardado: number | 
 export const withdrawalWouldLockOut = (activeCount: number, toWithdraw: number): boolean =>
   activeCount - toWithdraw <= 0;
 
+/** RS-BE-15. Las tres horas de una matrícula, ya validadas por `resolveAttendanceHours`. */
+export type HorasAsistencia = { total: string; attended: string; absent: string };
+
+/**
+ * RS-BE-15, RS-BE-55 y RS-BE-58. El UPDATE de las horas de UNA matrícula, que
+ * comparten la importación y la recarga.
+ *
+ * UNA sola sentencia con las tres columnas: escribir `attended` por separado,
+ * con `total` todavía en el DEFAULT '0', violaría el CHECK al cerrar ese
+ * statement. El WHERE repite la condición del CHECK como cinturón.
+ *
+ * Fija además `portal_attendance_read_at` con el instante en que llegó la
+ * página, y la guarda de lectura más reciente deja fuera una lectura más vieja
+ * que la guardada, así que un UPDATE que no toca la fila quiere decir que la
+ * fila ya tiene horas más nuevas. El instante viaja como texto ISO 8601 con
+ * `::timestamptz`, nunca como `Date`, que postgres.js rechaza al preparar.
+ */
+export const sqlActualizarAsistencia = (enrollmentId: number, h: HorasAsistencia, leidaEn: string) => sql`
+  update enrollment
+     set total_hours    = ${h.total}::numeric,
+         attended_hours = ${h.attended}::numeric,
+         absent_hours   = ${h.absent}::numeric,
+         portal_attendance_read_at = ${leidaEn}::timestamptz
+   where id = ${enrollmentId}
+     and ${h.total}::numeric > 0
+     and ${h.attended}::numeric >= 0
+     and ${h.absent}::numeric >= 0
+     and ${h.attended}::numeric + ${h.absent}::numeric <= ${h.total}::numeric
+     and (portal_attendance_read_at is null or portal_attendance_read_at < ${leidaEn}::timestamptz)
+  returning id
+`;
+
 export class PortalSyncRepository {
   constructor(readonly database: typeof db) {}
 
@@ -621,13 +653,8 @@ export class PortalSyncRepository {
   }
 
   /**
-   * RS-BE-15. Escribe las tres horas de asistencia de UNA matrícula.
-   *
-   * UNA sola sentencia con las tres columnas: escribir `attended` por separado,
-   * con `total` todavía en el DEFAULT '0', violaría el CHECK al cerrar ese
-   * statement. Y el WHERE repite la condición del CHECK como cinturón: si el
-   * triple fuera incoherente, actualiza 0 filas y el service lo cuenta como
-   * omitido, en vez de levantar un 23514 que aborta la transacción entera.
+   * RS-BE-15 y RS-BE-58. Escribe las tres horas de asistencia de UNA matrícula
+   * y la hora de su lectura (ver `sqlActualizarAsistencia`).
    *
    * Es ASIGNACIÓN, no `greatest` ni acumulación: el portal publica el acumulado
    * a la fecha y el docente puede corregir una marca, así que este es el único
@@ -636,20 +663,10 @@ export class PortalSyncRepository {
   async updateAttendanceHours(
     tx: Tx,
     enrollmentId: number,
-    h: { total: string; attended: string; absent: string },
+    h: HorasAsistencia,
+    leidaEn: string,
   ): Promise<boolean> {
-    const filas = (await tx.execute(sql`
-      update enrollment
-         set total_hours    = ${h.total}::numeric,
-             attended_hours = ${h.attended}::numeric,
-             absent_hours   = ${h.absent}::numeric
-       where id = ${enrollmentId}
-         and ${h.total}::numeric > 0
-         and ${h.attended}::numeric >= 0
-         and ${h.absent}::numeric >= 0
-         and ${h.attended}::numeric + ${h.absent}::numeric <= ${h.total}::numeric
-      returning id
-    `)) as unknown as Array<unknown>;
+    const filas = (await tx.execute(sqlActualizarAsistencia(enrollmentId, h, leidaEn))) as unknown as Array<unknown>;
     return filas.length > 0;
   }
 

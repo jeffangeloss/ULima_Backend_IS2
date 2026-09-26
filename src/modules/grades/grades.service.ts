@@ -1,12 +1,14 @@
 import type { EventBus } from "../../events/index.js";
 import type { GradesRepository } from "./grades.repository.js";
 import { calcularPromedioPonderado, sumaDePesos } from "./grades.logic.js";
+import { construirVistaUlima } from "./grades-ulima.logic.js";
 import type {
   NotaInput,
   CalculateAverageResponse,
   SaveNotasRequest,
   LoadNotasResponse,
   CursoNotasEntry,
+  UlimaGradesView,
 } from "./grades.types.js";
 
 export class GradesService {
@@ -110,5 +112,10 @@ export class GradesService {
     }
 
     return { cursos: [...grupos.values()] };
+  }
+
+  /** RS-BE-57. Notas de la ULima del propio alumno. */
+  async getUlimaGrades(studentId: number): Promise<UlimaGradesView> {
+    return construirVistaUlima(await this.repository.findUlimaGrades(studentId));
   }
 }

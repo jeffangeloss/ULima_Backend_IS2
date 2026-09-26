@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { PortalSyncService } from "../../src/modules/portal-sync/portal-sync.service.js";
 import type { PortalSyncRepository } from "../../src/modules/portal-sync/portal-sync.repository.js";
 import type { PortalClient } from "../../src/services/portal.client.js";
+import { Hono } from "hono";
+import { HttpError } from "../../src/shared/errors/http-error.js";
+import { errorHandler } from "../../src/shared/middleware/error-handler.js";
+import { portalSyncRateLimit } from "../../src/shared/middleware/rate-limit.js";
+import { PortalLoginGuard } from "../../src/modules/portal-sync/portal-login-guard.js";
 
 const layout = await Bun.file("test/HU31_jeff/fixtures/layout.html").text();
 const matricula = await Bun.file("test/HU31_jeff/fixtures/matricula.html").text();
@@ -501,3 +506,132 @@ describe("alerta de impedimento de matrícula (retirada el 2026-09-04)", () => {
   });
 });
 
+
+// ── RS-BE-50 (recarga-portal) · cupo de la importación ──────────────────────
+// Alumnos del rango 92xx, porque el almacén del limitador es de módulo.
+
+const appImportacionCon = (studentId: number, error?: HttpError) => {
+  const app = new Hono();
+  app.onError(errorHandler);
+  app.use("*", async (c, next) => {
+    c.set("studentId" as never, studentId as never);
+    await next();
+  });
+  app.post("/import", portalSyncRateLimit, (c) => {
+    if (error) throw error;
+    return c.json({ ok: true });
+  });
+  return app;
+};
+const importarHttp = (app: Hono) => app.request("/import", { method: "POST" });
+
+describe("RS-BE-50 · cupo de la importación", () => {
+  test("su 429 de cupo suma kind quota", async () => {
+    const app = appImportacionCon(9201);
+    for (let k = 0; k < 5; k++) expect((await importarHttp(app)).status).toBe(200);
+    const sexto = await importarHttp(app);
+    expect(sexto.status).toBe(429);
+    expect(await sexto.json()).toEqual({
+      error: {
+        code: "RATE_LIMITED",
+        message: "Demasiadas sincronizaciones. Intenta de nuevo en 60 minuto(s).",
+        details: { retryAfterMinutes: 60, kind: "quota" },
+      },
+    });
+  });
+
+  test("devuelve el cupo ante una recarga en curso y ante el tope de rechazos", async () => {
+    const errores = [
+      new HttpError(409, "Ya hay una lectura de miUlima en curso. Espera a que termine.", "PORTAL_REFRESH_IN_PROGRESS"),
+      new HttpError(429, "Demasiados intentos con datos rechazados. Intenta de nuevo en 12 minuto(s).", "RATE_LIMITED", {
+        retryAfterMinutes: 12, kind: "rejected_logins",
+      }),
+    ];
+    // Se exige también el cuerpo, porque desde el sexto intento sin devolución
+    // el limitador responde su propio 429 de cupo, con el mismo estado que el
+    // tope de rechazos, y solo el code, el kind y el mensaje los distinguen.
+    for (const [i, error] of errores.entries()) {
+      const app = appImportacionCon(9210 + i, error);
+      for (let k = 0; k < 7; k++) {
+        const res = await importarHttp(app);
+        expect(res.status).toBe(error.statusCode);
+        expect(await res.json()).toEqual({
+          error: { code: error.code, message: error.message, details: error.details },
+        });
+      }
+    }
+  });
+
+  test("sigue devolviéndolo ante PORTAL_LOGIN_REJECTED y no ante un 502", async () => {
+    const rechazo = appImportacionCon(9220, new HttpError(409, "miUlima rechazó los datos.", "PORTAL_LOGIN_REJECTED"));
+    for (let k = 0; k < 7; k++) expect((await importarHttp(rechazo)).status).toBe(409);
+    const caido = appImportacionCon(9221, new HttpError(502, "No se pudo contactar a miUlima.", "PORTAL_UNAVAILABLE"));
+    for (let k = 0; k < 5; k++) expect((await importarHttp(caido)).status).toBe(502);
+    expect((await importarHttp(caido)).status).toBe(429);
+  });
+});
+
+// ── RS-BE-50 (recarga-portal) · guarda y tope compartidos ───────────────────
+
+describe("RS-BE-50 · la importación con credentials comparte la guarda y el tope con la recarga", () => {
+  const conCredenciales = { credentials: { password: "clave-sintetica", passcode: "123456" } };
+  const rechazo = () => new HttpError(409, "miUlima rechazó los datos.", "PORTAL_LOGIN_REJECTED");
+
+  test("tras tres rechazos, responde 429 rejected_logins sin llamar a login y suelta la guarda", async () => {
+    const guard = new PortalLoginGuard();
+    for (let i = 0; i < 3; i++) guard.recordRejectedLogin(7);
+    let logins = 0;
+    const svc = new PortalSyncService(
+      fakeRepo(), fakeClient({ login: async () => { logins++; return cookies; } }), undefined, guard,
+    );
+    const err = await svc.importFromPortal(3, 7, conCredenciales).catch((e) => e);
+    expect(err).toMatchObject({
+      statusCode: 429, code: "RATE_LIMITED", details: { retryAfterMinutes: 15, kind: "rejected_logins" },
+    });
+    expect(logins).toBe(0);
+    expect(guard.tryStart(7, "refresh")).toBe(true);
+  });
+
+  test("un PORTAL_LOGIN_REJECTED de la importación suma al tope compartido", async () => {
+    const guard = new PortalLoginGuard();
+    const svc = new PortalSyncService(fakeRepo(), fakeClient({ login: async () => { throw rechazo(); } }), undefined, guard);
+    for (let i = 0; i < 3; i++) await svc.importFromPortal(3, 7, conCredenciales).catch(() => null);
+    expect(guard.rejectedLoginsWait(7)).not.toBeNull();
+    expect(guard.tryStart(7, "refresh")).toBe(true);
+  });
+
+  test("la importación con cookies no revisa el tope", async () => {
+    const guard = new PortalLoginGuard();
+    for (let i = 0; i < 3; i++) guard.recordRejectedLogin(7);
+    const svc = new PortalSyncService(fakeRepo(), fakeClient(), undefined, guard);
+    const res = await svc.importFromPortal(3, 7, { cookies });
+    expect(res.period.code).toBe("2026-2");
+  });
+
+  test("con una recarga en curso responde 409 PORTAL_REFRESH_IN_PROGRESS sin llamar a login", async () => {
+    const guard = new PortalLoginGuard();
+    guard.tryStart(7, "refresh");
+    let logins = 0;
+    const svc = new PortalSyncService(
+      fakeRepo(), fakeClient({ login: async () => { logins++; return cookies; } }), undefined, guard,
+    );
+    await expect(svc.importFromPortal(3, 7, conCredenciales)).rejects.toMatchObject({
+      statusCode: 409, code: "PORTAL_REFRESH_IN_PROGRESS",
+    });
+    expect(logins).toBe(0);
+  });
+
+  test("mientras corre marca la guarda, y al terminar la suelta", async () => {
+    const guard = new PortalLoginGuard();
+    let durante: boolean | null = null;
+    const svc = new PortalSyncService(
+      fakeRepo(),
+      fakeClient({ login: async () => { durante = guard.tryStart(7, "refresh"); return cookies; } }),
+      undefined,
+      guard,
+    );
+    await svc.importFromPortal(3, 7, conCredenciales);
+    expect(durante).toBe(false);
+    expect(guard.tryStart(7, "refresh")).toBe(true);
+  });
+});

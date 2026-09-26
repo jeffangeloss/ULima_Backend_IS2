@@ -186,6 +186,7 @@ export class ScheduleService {
           total: Number(row.total_hours ?? 0),
           asistenciaDisponible: Number(row.total_hours ?? 0) > 0,
           horasTranscurridas: Number(row.attended_hours ?? 0) + Number(row.absent_hours ?? 0),
+          asistenciaLeidaEn: row.attendance_read_at ?? null,
           horarios: [],
         });
       }
@@ -313,6 +314,7 @@ export class ScheduleService {
           total: 0,
           asistenciaDisponible: false,
           horasTranscurridas: 0,
+          asistenciaLeidaEn: null,
           horarios: [],
         });
       }
@@ -354,6 +356,7 @@ export class ScheduleService {
         inasistencia: 0,
         total: 0,
         asistenciaDisponible: false,   // una asesoría no lleva control de asistencia
+        asistenciaLeidaEn: null,
         isAdvising: true,
         horarios: [
           {

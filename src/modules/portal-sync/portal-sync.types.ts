@@ -135,7 +135,16 @@ export type WarningCode =
   // RS-BE-23: la limpieza desmarcó electivos que el récord no respalda. Es el
   // único aviso nuevo del récord académico; los demás motivos (récord no
   // confiable, información académica incompleta) van solo al log del servidor.
-  | "PROGRESS_REMOVED";
+  | "PROGRESS_REMOVED"
+  // recarga-portal (RS-BE-56). La página de notas o el marco de un aula no se
+  // pudo DESCARGAR, un curso de miUlima no tiene matrícula en ULima++, el
+  // sílabo cargado no coincide con la ULima, el promedio de la ULima no cuadra
+  // con sus notas y el presupuesto se agotó con cursos sin leer.
+  | "NOTAS_UNAVAILABLE"
+  | "NOT_ENROLLED"
+  | "SYLLABUS_MISMATCH"
+  | "PORTAL_AVERAGE_MISMATCH"
+  | "REFRESH_BUDGET_EXCEEDED";
 export interface SyncWarning { code: WarningCode; block: string; message: string }
 
 export interface ImportSummary {
@@ -158,9 +167,10 @@ export interface ImportSummary {
   alertsDeleted: number;
   /** Matrículas cuyas horas de asistencia se escribieron (RS-BE-15). */
   attendanceUpdated: number;
-  /** Matrículas con asistencia disponible que NO se escribió: triple incoherente
-   *  o el UPDATE no tocó ninguna fila. Se cuenta para que "0 actualizadas" se
-   *  pueda distinguir de "el portal no reportó nada". */
+  /** Matrículas con asistencia disponible cuyos totales no cuadran, que no se
+   *  escriben (RS-BE-55). Una fila que salta la guarda de lectura más reciente
+   *  cuenta en `attendanceUpdated`, porque ya tiene horas más nuevas. Se cuenta
+   *  para que "0 actualizadas" se distinga de "el portal no reportó nada". */
   attendanceSkipped: number;
 }
 
@@ -210,3 +220,36 @@ export type AsistenciaCurso = {
  * autenticado. Viaja fuera de `AsistenciaCurso`, que conserva sus cinco campos.
  */
 export type AsistenciaIdentificada = { courseCode: string; sectionCode: string };
+
+/** RS-BE-52. Un agregado de la página de notas de un curso. `valor` es null
+ *  cuando el portal publica 0, que usa para decir «sin nota». Solo sirve al
+ *  chequeo del promedio de RS-BE-53, punto 7, y nunca se guarda. */
+export type AgregadoUlima = { clave: "EP" | "TA" | "EF" | "PROM"; etiqueta: string; valor: number | null };
+
+/** RS-BE-52. Lo que se lee de la página de notas de un curso. Tres campos y
+ *  ninguno con el nombre del alumno, del docente ni los datos de la clase. */
+export type NotaCurso = { courseCode: string; sectionCode: string; agregados: AgregadoUlima[] };
+
+/**
+ * RS-BE-53. Una evaluación de la tabla «Detalle Evaluaciones». SIETE CAMPOS Y
+ * NINGUNO MÁS. No hay campo para la mínima, la máxima, el promedio del grupo ni
+ * ningún texto del docente, y esa ausencia es la garantía de minimización.
+ */
+export type EvaluacionUlima = {
+  key: string;
+  group: string | null;
+  name: string;
+  week: number | null;
+  weight: number;
+  value: number | null;
+  mark: "graded" | "pending" | "np";
+};
+
+/** RS-BE-54. Una evaluación del sílabo cargado en ULima++, candidata a pareja. */
+export type EvaluacionSilabo = { assessmentId: number; name: string; typeName: string; week: number; weight: number };
+
+/** RS-BE-54. Regla con la que una evaluación de la ULima encontró pareja. */
+export type MatchRule = "exact" | "exact_other_name" | "week_shift" | "none";
+
+/** RS-BE-54. Evaluación de la ULima con su pareja del sílabo, o sin ella. */
+export type EvaluacionEmparejada = EvaluacionUlima & { assessmentId: number | null; match: MatchRule };

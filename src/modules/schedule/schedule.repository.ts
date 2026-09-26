@@ -16,6 +16,8 @@ export type RawSessionRow = {
   end_time: string | null;
   classroom: string | null;
   color_hex: string | null;
+  /** RS-BE-58. Hora de la última lectura de la asistencia, ISO 8601 UTC, o null. */
+  attendance_read_at: string | null;
 };
 
 export type RawAssessmentRow = {
@@ -108,6 +110,7 @@ export class ScheduleRepository {
         e.attended_hours,
         e.absent_hours,
         e.total_hours,
+        to_char(e.portal_attendance_read_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as attendance_read_at,
         ss.id as session_id,
         ss.day_of_week,
         ss.start_time,
@@ -195,6 +198,7 @@ export class ScheduleRepository {
         '0' as attended_hours,
         '0' as absent_hours,
         '0' as total_hours,
+        null as attendance_read_at,
         ss.id as session_id,
         ss.day_of_week,
         ss.start_time,

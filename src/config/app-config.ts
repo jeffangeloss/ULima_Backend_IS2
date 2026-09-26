@@ -1,4 +1,4 @@
-import { env } from "./env.js";
+import { effectiveRefreshBudgetMs, env } from "./env.js";
 
 export const config = {
   db: {
@@ -44,6 +44,8 @@ export const config = {
   portal: {
     baseUrl: env.PORTAL_BASE_URL,
     timeoutMs: env.PORTAL_TIMEOUT_MS,
+    /** RS-BE-50. Presupuesto efectivo de la recarga, ya acotado por el timeout. */
+    refreshBudgetMs: effectiveRefreshBudgetMs(env.PORTAL_REFRESH_BUDGET_MS, env.PORTAL_TIMEOUT_MS),
   },
   syllabus: {
     baseUrl: env.SYLLABUS_BASE_URL,

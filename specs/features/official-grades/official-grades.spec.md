@@ -36,6 +36,10 @@ La **nota final** se define como el **promedio ponderado** de las evaluaciones (
 
 Ver `docs/specs/api-contracts.md`, sección **Official Grades**.
 
+## Enmienda del 2026-09-25, aprobada por el dueño el 2026-09-26
+
+Por `specs/features/recarga-portal/recarga-portal.spec.md` (decisión abierta 10, aprobada por el dueño el 2026-09-26 y con la implementación en `feat/recarga-notas-asistencia`, sin mergear), la pantalla `/mis-notas` de la app lee `GET /grades/me/ulima`, con las notas parciales que publica la ULima, en lugar de este módulo. Este módulo no cambia, el docente sigue cargando notas en `student_score` y `GET /official-grades/me` sigue disponible. Las notas de la ULima nunca se escriben en `student_score`, porque `GET /course-detail/sections` promedia esa tabla para toda la sección.
+
 ## Fuera de alcance
 
 - No almacena la nota final (se calcula en el cliente por ponderación).

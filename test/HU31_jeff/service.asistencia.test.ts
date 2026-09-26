@@ -143,15 +143,77 @@ describe("degradación: un fallo de asistencia no rompe nada", () => {
     expect(res.warnings.some((w) => w.code === "ASISTENCIA_UNAVAILABLE")).toBe(true);
   });
 
-  test("si el UPDATE no toca ninguna fila, se cuenta como omitida", async () => {
+  test("si la guarda de lectura más reciente no deja tocar la fila, cuenta como actualizada (RS-BE-55)", async () => {
     const escrituras: { id: number; h: unknown }[] = [];
     const repo = fakeRepo(escrituras, {
       updateAttendanceHours: async () => false,
     } as Partial<PortalSyncRepository>);
     const res = await importar(repo, fakeClient());
 
+    expect(res.summary.attendanceUpdated).toBeGreaterThan(0);
+    expect(res.summary.attendanceSkipped).toBe(0);
+  });
+
+  test("unos totales que no cuadran cuentan como omitidos y no llegan al UPDATE", async () => {
+    const escrituras: { id: number; h: unknown }[] = [];
+    const base = fakeClient();
+    const leer = base.fetchPage as unknown as (p: string, c: unknown) => Promise<string>;
+    const cliente = {
+      ...base,
+      fetchPage: async (path: string, c: unknown) => {
+        const html = await leer(path, c);
+        // Sin horas programadas, resolveAttendanceHours rechaza el triple.
+        return path.startsWith(RUTA) ? html.replace('<strong class="textos">64</strong>', '<strong class="textos">0</strong>') : html;
+      },
+    } as unknown as PortalClient;
+    const res = await importar(fakeRepo(escrituras), cliente);
+
+    expect(escrituras).toHaveLength(0);
     expect(res.summary.attendanceUpdated).toBe(0);
     expect(res.summary.attendanceSkipped).toBeGreaterThan(0);
+    expect(res.warnings.some((w) => w.block === "asistencia" && w.message.includes("el portal no reporta horas programadas"))).toBe(true);
+  });
+
+  test("la hora de lectura es el instante en que llega la página y no el del UPDATE, como texto ISO 8601 (RS-BE-58)", async () => {
+    // La fase de delegados corre después de la de asistencia y antes de la
+    // transacción, así que un retraso en su primera petición separa la llegada
+    // de las páginas del UPDATE. Una hora tomada al escribir la fila cae
+    // entonces unos RETRASO_MS después de la última llegada y rompe la cota.
+    const RETRASO_MS = 50;
+    const TOLERANCIA_MS = 10;
+    const llegadas: number[] = [];
+    const base = fakeClient();
+    const leer = base.fetchPage as unknown as (p: string, c: unknown) => Promise<string>;
+    const cliente = {
+      ...base,
+      fetchPage: async (path: string, c: unknown) => {
+        const html = await leer(path, c);
+        if (path.startsWith(RUTA)) llegadas.push(Date.now());
+        if (path === PORTAL_PATHS.cursosDelegado) await new Promise((r) => setTimeout(r, RETRASO_MS));
+        return html;
+      },
+    } as unknown as PortalClient;
+    const escritas: { hora: string; recibida: number }[] = [];
+    const repo = fakeRepo([], {
+      updateAttendanceHours: async (_tx: unknown, _id: number, _h: unknown, leidaEn: string) => {
+        escritas.push({ hora: leidaEn, recibida: Date.now() });
+        return true;
+      },
+    } as unknown as Partial<PortalSyncRepository>);
+    await importar(repo, cliente);
+
+    expect(escritas.length).toBeGreaterThan(0);
+    const primera = Math.min(...llegadas);
+    const ultima = Math.max(...llegadas);
+    for (const { hora, recibida } of escritas) {
+      expect(hora).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      // El retraso ocurre de verdad entre las dos fases, porque sin él la
+      // prueba no distingue la llegada de la página del UPDATE.
+      expect(recibida - ultima).toBeGreaterThanOrEqual(RETRASO_MS - TOLERANCIA_MS);
+      expect(Date.parse(hora)).toBeGreaterThanOrEqual(primera);
+      expect(Date.parse(hora)).toBeLessThanOrEqual(ultima + TOLERANCIA_MS);
+      expect(Date.parse(hora)).toBeLessThan(recibida);
+    }
   });
 });
 
@@ -297,5 +359,35 @@ describe("RS-BE-48 · el contraste de sección rige también con arreglos", () =
       code: "PARSER_FAILED", block: "asistencia",
       message: "La sección del menú no coincide con la de la página de asistencia del aula 154516.",
     }]);
+  });
+});
+
+// ── RS-BE-51 (recarga-portal) · ciclo esperado en la importación ────────────
+
+describe("la importación pasa el ciclo de layout.jsp como ciclo esperado", () => {
+  test("una página de otro ciclo es un aviso de ese curso y la importación sigue", async () => {
+    const normal: { id: number; h: unknown }[] = [];
+    const referencia = await importar(fakeRepo(normal), fakeClient());
+
+    const escrituras: { id: number; h: unknown }[] = [];
+    const base = fakeClient();
+    const leer = base.fetchPage as unknown as (p: string, c: unknown) => Promise<string>;
+    const cliente = {
+      ...base,
+      fetchPage: async (path: string, c: unknown) => {
+        const html = await leer(path, c);
+        return path === `${RUTA}154508`
+          ? html.replace(/(name="prm_sNuCicl"[^>]*value=")[^"]*/i, (_t, pre: string) => `${pre}1`)
+          : html;
+      },
+    } as unknown as PortalClient;
+    const res = await importar(fakeRepo(escrituras), cliente);
+
+    expect(res.warnings).toContainEqual({
+      code: "PARSER_FAILED", block: "asistencia",
+      message: "No se entendió la asistencia de 650033/952: la página es de otro ciclo",
+    });
+    expect(res.summary.attendanceUpdated).toBe(referencia.summary.attendanceUpdated - 1);
+    expect(res.period.code).toBe("2026-2");
   });
 });

@@ -376,6 +376,12 @@ export const enrollment = pgTable("enrollment", {
   // portal (portal-sync). Nullable: los ciclos en curso no tienen nota todavía.
   // No sustituye a student_score (nota por evaluación) ni a simulated_grades.
   finalGrade: decimal("final_grade", { precision: 4, scale: 2 }),
+  // RS-BE-57 y RS-BE-58 (recarga-portal, migración 0015). Hora de la última
+  // lectura de cada panel de miUlima para esta matrícula. Nulables, porque una
+  // matrícula que nunca se leyó no tiene hora, y solo avanzan, por la guarda de
+  // lectura más reciente de RS-BE-55.
+  portalGradesReadAt: timestamp("portal_grades_read_at", { mode: "date", withTimezone: true }),
+  portalAttendanceReadAt: timestamp("portal_attendance_read_at", { mode: "date", withTimezone: true }),
 }, (t) => ({
   uqEnrollmentStudentSection: unique("uq_enrollment_student_section").on(t.studentId, t.sectionId),
   uqEnrollmentIdSection: unique("uq_enrollment_id_section").on(t.id, t.sectionId),
@@ -576,6 +582,60 @@ export const simulatedGrades = pgTable("simulated_grades", {
   uqSimulatedGrade: unique("uq_simulated_grade").on(t.enrollmentId, t.assessmentId),
   chkSimulatedGradeValue: check("chk_simulated_grade_value", sql`${t.value} BETWEEN 0 AND 20`),
   idxSimulatedGradeEnrollment: index("idx_simulated_grade_enrollment").on(t.enrollmentId),
+}));
+
+// RS-BE-55 (recarga-portal, migración 0015). Notas parciales por evaluación tal
+// como las publica la ULima en el panel Nota del Aula Virtual. Es una copia que
+// solo escribe POST /portal-sync/refresh y solo lee GET /grades/me/ulima, así
+// que no se mezcla con `student_score` (lo que carga el docente) ni con
+// `simulated_grades` (la proyección del alumno). Cuelga de la matrícula con
+// borrado en cascada, porque sin ella estas filas no significan nada.
+export const studentPortalScore = pgTable("student_portal_score", {
+  id: integer("id").generatedByDefaultAsIdentity().primaryKey(),
+  enrollmentId: integer("enrollment_id").notNull().references(() => enrollment.id, { onDelete: "cascade" }),
+  portalKey: varchar("portal_key", { length: 20 }).notNull(),
+  groupName: varchar("group_name", { length: 60 }),
+  name: varchar("name", { length: 150 }).notNull(),
+  weekNumber: smallint("week_number"),
+  weight: decimal("weight", { precision: 5, scale: 2 }).notNull(),
+  value: decimal("value", { precision: 4, scale: 2 }),
+  mark: varchar("mark", { length: 10 }).notNull(),
+  assessmentId: integer("assessment_id").references(() => assessment.id),
+  matchRule: varchar("match_rule", { length: 20 }).notNull(),
+}, (t) => ({
+  uqStudentPortalScoreKey: unique("uq_student_portal_score_key").on(t.enrollmentId, t.portalKey),
+  chkStudentPortalScoreWeight: check(
+    "chk_student_portal_score_weight",
+    sql`${t.weight} > 0 AND ${t.weight} <= 100`,
+  ),
+  chkStudentPortalScoreWeek: check(
+    "chk_student_portal_score_week",
+    sql`${t.weekNumber} IS NULL OR ${t.weekNumber} BETWEEN 1 AND 20`,
+  ),
+  chkStudentPortalScoreValue: check(
+    "chk_student_portal_score_value",
+    sql`${t.value} IS NULL OR ${t.value} BETWEEN 0 AND 20`,
+  ),
+  chkStudentPortalScoreMark: check(
+    "chk_student_portal_score_mark",
+    sql`${t.mark} IN ('graded', 'pending', 'np')`,
+  ),
+  chkStudentPortalScoreMarkValue: check(
+    "chk_student_portal_score_mark_value",
+    sql`(${t.mark} = 'graded') = (${t.value} IS NOT NULL)`,
+  ),
+  chkStudentPortalScoreMatch: check(
+    "chk_student_portal_score_match",
+    sql`${t.matchRule} IN ('exact', 'exact_other_name', 'week_shift', 'none')`,
+  ),
+  chkStudentPortalScoreMatchAssessment: check(
+    "chk_student_portal_score_match_assessment",
+    sql`(${t.matchRule} = 'none') = (${t.assessmentId} IS NULL)`,
+  ),
+  uqStudentPortalScoreAssessment: uniqueIndex("uq_student_portal_score_assessment")
+    .on(t.enrollmentId, t.assessmentId)
+    .where(sql`${t.assessmentId} IS NOT NULL`),
+  idxStudentPortalScoreEnrollment: index("idx_student_portal_score_enrollment").on(t.enrollmentId),
 }));
 
 export const announcement = pgTable("announcement", {

@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { db } from "../../db/index.js";
-import type { CourseRawRow, StudentScoreRow } from "./grades.types.js";
+import type { CourseRawRow, StudentScoreRow, UlimaGradeRow } from "./grades.types.js";
 
 // Sin catch de rescate: un fallo de BD se propaga (500 real) en vez de simular
 // cursos/notas vacíos con 200. Ver docs/AUDITORIA_TECNICA.md §6.1.
@@ -88,5 +88,40 @@ export class GradesRepository {
         and e.status = 'active'
       order by e.section_id, sg.assessment_id
     `)) as unknown as StudentScoreRow[];
+  }
+
+  /**
+   * RS-BE-57. Matrículas activas del alumno en el período activo, cada una con
+   * sus notas de la ULima si tiene. La hora sale como texto ISO 8601 UTC, así
+   * que nunca llega un `Date` a la respuesta. Sin período activo no hay filas.
+   */
+  async findUlimaGrades(studentId: number): Promise<UlimaGradeRow[]> {
+    return (await this.database.execute(sql`
+      select
+        e.id as enrollment_id,
+        sec.id as section_id,
+        c.code as course_code,
+        c.name as course_name,
+        sec.code as section_code,
+        to_char(e.portal_grades_read_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as last_read_at,
+        sps.portal_key,
+        sps.group_name,
+        sps.name,
+        sps.week_number,
+        sps.weight::text as weight,
+        sps.value::text as value,
+        sps.mark,
+        sps.assessment_id,
+        sps.match_rule
+      from enrollment e
+      join section sec on sec.id = e.section_id
+      join course_offering co on co.id = sec.course_offering_id
+      join academic_period ap on ap.id = co.academic_period_id and ap.is_active = true
+      join course c on c.id = co.course_id
+      left join student_portal_score sps on sps.enrollment_id = e.id
+      where e.student_id = ${studentId}
+        and e.status = 'active'
+      order by c.name, sec.code, e.id
+    `)) as unknown as UlimaGradeRow[];
   }
 }

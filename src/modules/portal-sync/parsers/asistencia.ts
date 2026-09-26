@@ -34,8 +34,16 @@ const aNumero = (s: string): number => Number(s.replace(",", "."));
  * que `AsistenciaCurso` siga con sus cinco campos. Sale también cuando la página
  * falla después de identificarse, porque de ese par dependen los delegados y el
  * nombre del curso en los avisos cuando el menú no trae el código.
+ *
+ * RS-BE-49 y RS-BE-51. `identityMismatch` marca solo un código de alumno
+ * presente, no vacío y distinto, para que la recarga aborte entera, y
+ * `otroCiclo` marca solo unos ocultos del ciclo bien formados que declaran otro.
  */
-export type AsistenciaResult = ParseResult<AsistenciaCurso> & { identificado?: AsistenciaIdentificada };
+export type AsistenciaResult = ParseResult<AsistenciaCurso> & {
+  identificado?: AsistenciaIdentificada;
+  identityMismatch?: true;
+  otroCiclo?: true;
+};
 
 const falla = (reason: string, identificado?: AsistenciaIdentificada): AsistenciaResult =>
   identificado ? { ok: false, reason, identificado } : { ok: false, reason };
@@ -44,6 +52,8 @@ export const parseAsistenciaCurso = (
   html: string,
   aulaEsperada: string,
   alumnoEsperado: string,
+  /** RS-BE-51. "AAAA-N". Sin él no se revisa el ciclo. */
+  cicloEsperado?: string,
 ): AsistenciaResult => {
   // ── Identificación. `inputValueByName` ancla el nombre COMPLETO: la página
   // trae `prm_sCoSecc` junto a `prm_sCoSeccAcd`, y un `includes` los confunde.
@@ -62,9 +72,25 @@ export const parseAsistenciaCurso = (
     return falla("la respuesta no corresponde al aula que se pidió");
   }
   const alumno = inputValueByName(html, "prm_sCoUserAlum");
-  if (!alumno || alumno !== alumnoEsperado) {
+  // RS-BE-49. Ausente o vacío es un fallo común de lectura de este curso.
+  if (!alumno) return falla("la página no trae el código de alumno");
+  if (alumno !== alumnoEsperado) {
     // Sin imprimir ninguno de los dos códigos: el recibido sería de un tercero.
-    return falla("la página declara un código de alumno distinto del autenticado");
+    return {
+      ok: false, reason: "la página declara un código de alumno distinto del autenticado", identityMismatch: true,
+    };
+  }
+  // RS-BE-51, punto 3. La página de notas no trae ciclo, así que el de la
+  // asistencia es la guarda contra leer notas de un ciclo que ULima++ no activó.
+  if (cicloEsperado !== undefined) {
+    const anio = inputValueByName(html, "prm_sAaCicl");
+    const numero = inputValueByName(html, "prm_sNuCicl");
+    if (!anio || !/^\d{4}$/.test(anio) || !numero || !/^[0-3]$/.test(numero)) {
+      return falla("la página es de otro ciclo");
+    }
+    if (`${anio}-${numero}` !== cicloEsperado) {
+      return { ok: false, reason: "la página es de otro ciclo", otroCiclo: true };
+    }
   }
   // Desde acá el par es la identificación verificada, y todo fallo lo lleva.
   const identificado: AsistenciaIdentificada = { courseCode, sectionCode };

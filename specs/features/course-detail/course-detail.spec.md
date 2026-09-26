@@ -32,6 +32,9 @@ Endpoints de solo lectura que exponen el detalle académico de cursos/secciones.
 ### BR-COURSE-DETAIL-05: JP en contactos (HU18)
 - `GET /course-detail/sections/:sectionId/contacts` agrega la clave top-level `jefePractica` (`{ code, lastName, firstName }` o `null`), derivada de `section.jp_id`.
 
+### BR-COURSE-DETAIL-06: Hora de la última lectura de asistencia (propuesta del 2026-09-25, aprobada por el dueño el 2026-09-26, con la implementación en `feat/recarga-notas-asistencia`, sin mergear)
+- Cada elemento de `secciones` en `GET /course-detail/sections`, y por lo tanto la `section` de `GET /course-detail/sections/:sectionId`, suma `asistenciaLeidaEn`, la hora de `enrollment.portal_attendance_read_at` del alumno autenticado en ISO 8601 UTC, o `null` si no hay ninguna lectura. Ver `specs/features/recarga-portal/recarga-portal.spec.md` (RS-BE-58).
+
 ## Endpoints
 
 Todos bajo `Authorization: Bearer <token>` (ver detalle de payloads en `docs/specs/api-contracts.md`):

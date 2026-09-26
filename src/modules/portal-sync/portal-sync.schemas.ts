@@ -9,6 +9,15 @@ const cookiesObject = z.object({
   LtpaToken: cookie.optional(),
 }).strip();
 
+/** Campos de las credenciales de miUlima, que comparten la importación y la recarga. */
+const credentialFields = {
+  password: z.string().min(1).max(200),
+  // RSA SecurID a través de Google Authenticator: 6 dígitos. Se aceptan 6 a 8
+  // por si alguna cuenta usa un largo distinto; cualquier cosa que no sean
+  // dígitos se rechaza antes de tocar el portal.
+  passcode: z.string().regex(/^\d{6,8}$/, "El código del authenticator son 6 dígitos"),
+};
+
 /**
  * Credenciales de miUlima. NO incluye el usuario: el usuario del portal es el
  * código del alumno, que el backend ya tiene en `app_user.code` a partir del
@@ -18,13 +27,7 @@ const cookiesObject = z.object({
  * Ni la contraseña ni el passcode se registran, se persisten ni aparecen en
  * ningún mensaje de error (ver §Login con credenciales en la spec).
  */
-const credentialsObject = z.object({
-  password: z.string().min(1).max(200),
-  // RSA SecurID a través de Google Authenticator: 6 dígitos. Se aceptan 6 a 8
-  // por si alguna cuenta usa un largo distinto; cualquier cosa que no sean
-  // dígitos se rechaza antes de tocar el portal.
-  passcode: z.string().regex(/^\d{6,8}$/, "El código del authenticator son 6 dígitos"),
-}).strip();
+const credentialsObject = z.object(credentialFields).strip();
 
 /**
  * El body trae `cookies` **o** `credentials`, exactamente uno.
@@ -57,3 +60,17 @@ export type ImportDto = z.infer<typeof importSchema>;
 /** Compatibilidad: el nombre viejo, cuando el body solo aceptaba cookies. */
 export const importCookiesSchema = importSchema;
 export type ImportCookiesDto = ImportDto;
+
+/**
+ * RS-BE-49. Cuerpo de POST /portal-sync/refresh, en modo ESTRICTO. Lleva la
+ * contraseña, así que no se acepta nada que no se use: una clave de más, o la
+ * variante con `cookies`, responde 400. `consent` es el literal true, porque
+ * el alumno acepta el aviso de la hoja en cada recarga (decisión abierta 4).
+ * El usuario del portal no viaja, sale de `app_user.code`.
+ */
+export const refreshSchema = z.object({
+  credentials: z.object(credentialFields).strict(),
+  consent: z.literal(true),
+}).strict();
+
+export type RefreshDto = z.infer<typeof refreshSchema>;

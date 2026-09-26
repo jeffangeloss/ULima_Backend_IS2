@@ -187,3 +187,160 @@ describe("PortalClient.login", () => {
     expect(cookies.LtpaToken2).toBe("xyz");
   });
 });
+
+// ── RS-BE-60 y RS-BE-50 (recarga-portal) ────────────────────────────────────
+// Códigos inventados: 20230001 es el alumno de ejemplo de la spec.
+
+const esCierre = (p: { url: string }) => p.url.endsWith("servlets/CustomLogoutServlet");
+
+/** Primer GET con la sesión que el portal probablemente abre ahí mismo. */
+const primerGetConSesion: Ruta = {
+  match: /layout\.jsp$/, method: "GET", when: sinSesion,
+  paso: { status: 200, body: "", setCookie: ["JSESSIONID=pre-sesion; Path=/; HttpOnly"] },
+};
+
+describe("RS-BE-60 · cierre de la sesión cuando el inicio de sesión falla a medias", () => {
+  test("contraseña rechazada en el paso 2: cierra con las cookies del frasco y lanza el mismo 409", async () => {
+    const { client, pedidas } = clientCon([
+      primerGetConSesion,
+      { match: /j_security_check/, paso: { status: 302, location: `${R}inicio.jsp?error=1` } },
+      { match: /inicio\.jsp/, paso: { status: 200, body: "<html>login</html>" } },
+    ]);
+    const err = await client.login("20230001", "mala", "123456").catch((e) => e);
+    expect(err).toMatchObject({ statusCode: 409, code: "PORTAL_LOGIN_REJECTED" });
+    const cierres = pedidas.filter(esCierre);
+    expect(cierres).toHaveLength(1);
+    expect(cierres[0]!.cookie).toContain("JSESSIONID=pre-sesion");
+    expect(pedidas.at(-1)).toBe(cierres[0]);
+  });
+
+  test("código rechazado en el segundo factor: cierra aunque falte LtpaToken2", async () => {
+    const { client, pedidas } = clientCon([
+      { match: /layout\.jsp$/, method: "GET", when: sinSesion, paso: { status: 200, body: "" } },
+      { match: /j_security_check/, paso: {
+        status: 302, location: `${R}solicitarValidarToken.jsp?bAv=0`, setCookie: ["JSESSIONID=abc123; Path=/"],
+      } },
+      { match: /solicitarValidarToken/, method: "POST", paso: { status: 200, body: "<html>Ingrese su passcode</html>" } },
+    ]);
+    const err = await client.login("20230001", "clave", "000000").catch((e) => e);
+    expect(err).toMatchObject({ statusCode: 409, code: "PORTAL_LOGIN_REJECTED" });
+    const cierres = pedidas.filter(esCierre);
+    expect(cierres).toHaveLength(1);
+    expect(cierres[0]!.cookie).toContain("JSESSIONID=abc123");
+    expect(cierres[0]!.cookie).not.toContain("LtpaToken2");
+  });
+
+  test("la verificación final fallida también cierra", async () => {
+    const { client, pedidas } = clientCon([
+      ...rutasFelices(),
+      { match: /layout\.jsp$/, method: "GET", when: conSesion, paso: { status: 200, body: "<html>otra cosa</html>" } },
+    ]);
+    await expect(client.login("20230001", "clave", "123456")).rejects.toMatchObject({ code: "PORTAL_LOGIN_REJECTED" });
+    expect(pedidas.filter(esCierre)).toHaveLength(1);
+  });
+
+  test("un error de red a mitad de camino cierra y lanza el mismo 502", async () => {
+    const { fetchImpl: base, pedidas } = fakePortal([primerGetConSesion]);
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.includes("j_security_check")) throw new TypeError("fetch failed");
+      return base(url, init);
+    }) as unknown as typeof fetch;
+    const client = new PortalClient(BASE, 5000, fetchImpl);
+    await expect(client.login("20230001", "clave", "123456")).rejects.toMatchObject({
+      statusCode: 502, code: "PORTAL_UNAVAILABLE",
+    });
+    expect(pedidas.filter(esCierre)).toHaveLength(1);
+  });
+
+  test("un fallo del cierre no cambia el error", async () => {
+    const { fetchImpl: base } = fakePortal([
+      primerGetConSesion,
+      { match: /j_security_check/, paso: { status: 302, location: `${R}inicio.jsp?error=1` } },
+      { match: /inicio\.jsp/, paso: { status: 200, body: "" } },
+    ]);
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith("servlets/CustomLogoutServlet")) throw new TypeError("fetch failed");
+      return base(url, init);
+    }) as unknown as typeof fetch;
+    const client = new PortalClient(BASE, 5000, fetchImpl);
+    await expect(client.login("20230001", "mala", "123456")).rejects.toMatchObject({
+      statusCode: 409, code: "PORTAL_LOGIN_REJECTED",
+    });
+  });
+
+  test("un fallo anterior a cualquier JSESSIONID no llama al cierre", async () => {
+    const { client, pedidas } = clientCon([
+      { match: /layout\.jsp$/, method: "GET", when: sinSesion, paso: { status: 200, body: "" } },
+      { match: /j_security_check/, paso: { status: 302, location: `${R}inicio.jsp?error=1` } },
+      { match: /inicio\.jsp/, paso: { status: 200, body: "" } },
+    ]);
+    await expect(client.login("20230001", "mala", "123456")).rejects.toMatchObject({ code: "PORTAL_LOGIN_REJECTED" });
+    expect(pedidas.filter(esCierre)).toHaveLength(0);
+  });
+
+  test("un inicio de sesión exitoso no cierra nada, porque la sesión es de quien la pidió", async () => {
+    const { client, pedidas } = clientCon([
+      ...rutasFelices(),
+      { match: /layout\.jsp$/, method: "GET", when: conSesion, paso: OK_LAYOUT },
+    ]);
+    await client.login("20230001", "clave", "123456");
+    expect(pedidas.filter(esCierre)).toHaveLength(0);
+  });
+});
+
+describe("RS-BE-50 · plazo del inicio de sesión", () => {
+  const CACTUS = "https://cactus.ulima.edu.pe";
+
+  /** Camino feliz con un reloj que avanza 400 ms en cada petición. */
+  const felizConReloj = () => {
+    let t = 0;
+    const vistos: Array<{ url: string; t: number }> = [];
+    const { fetchImpl } = fakePortal(rutasFelices());
+    const conReloj = (async (url: string, init?: RequestInit) => {
+      vistos.push({ url, t });
+      t += 400;
+      return fetchImpl(url, init);
+    }) as unknown as typeof fetch;
+    return { client: new PortalClient(BASE, 5000, conReloj, CACTUS, () => t), vistos };
+  };
+
+  /** Un fetch que nunca responde, salvo que lo aborten. */
+  const colgado = ((_url: string, init?: RequestInit) => new Promise((_ok, falla) => {
+    init?.signal?.addEventListener("abort", () => falla(Object.assign(new Error("abortado"), { name: "AbortError" })));
+  })) as unknown as typeof fetch;
+
+  test("ningún salto empieza después del plazo, y el vencido da 504 después del cierre", async () => {
+    const { client, vistos } = felizConReloj();
+    const err = await client.login("20230001", "clave", "123456", { deadline: 1000 }).catch((e) => e);
+    expect(err).toMatchObject({ statusCode: 504, code: "PORTAL_TIMEOUT" });
+    const saltos = vistos.filter((v) => !esCierre(v));
+    expect(saltos.length).toBe(3);
+    for (const s of saltos) expect(s.t).toBeLessThan(1000);
+    expect(esCierre(vistos.at(-1)!)).toBe(true);
+  });
+
+  test("un salto de redirección tampoco empieza después del plazo", async () => {
+    // Con plazo 700, el GET de solicitarValidarToken.jsp que sigue chase caería
+    // en t = 800, así que no llega a pedirse.
+    const { client, vistos } = felizConReloj();
+    const err = await client.login("20230001", "clave", "123456", { deadline: 700 }).catch((e) => e);
+    expect(err).toMatchObject({ statusCode: 504, code: "PORTAL_TIMEOUT" });
+    expect(vistos.filter((v) => !esCierre(v)).map((v) => v.t)).toEqual([0, 400]);
+  });
+
+  test("el temporizador de un salto no pasa del tiempo que queda", async () => {
+    const client = new PortalClient(BASE, 5000, colgado, CACTUS, () => 0);
+    const inicio = Date.now();
+    const err = await client.login("20230001", "clave", "123456", { deadline: 50 }).catch((e) => e);
+    expect(err).toMatchObject({ statusCode: 504, code: "PORTAL_TIMEOUT" });
+    expect(Date.now() - inicio).toBeLessThan(1000);
+  });
+
+  test("sin plazo, cada salto espera su PORTAL_TIMEOUT_MS completo, como hoy", async () => {
+    const client = new PortalClient(BASE, 80, colgado, CACTUS, () => 0);
+    const inicio = Date.now();
+    const err = await client.login("20230001", "clave", "123456").catch((e) => e);
+    expect(err).toMatchObject({ statusCode: 504, code: "PORTAL_TIMEOUT" });
+    expect(Date.now() - inicio).toBeGreaterThanOrEqual(70);
+  });
+});

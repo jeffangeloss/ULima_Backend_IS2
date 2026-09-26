@@ -28,6 +28,9 @@ import {
 // electivo, y que por eso no bloquean la limpieza (RS-BE-23).
 import { SIN_EQUIVALENCIA_CONOCIDA } from "../../db/seed/equivalencias.logic.js";
 import { PORTAL_PATHS } from "../../services/portal.client.js";
+import {
+  PortalLoginGuard, refreshInProgress, tooManyRejectedLogins,
+} from "./portal-login-guard.js";
 import type {
   AsistenciaCurso, AsistenciaIdentificada, AulaMenu, DelegadosNomina,
   ImportResult, ImportSummary, PortalCookies, RecordRow, SyllabusEntry, SyncStatus, SyncWarning,
@@ -121,6 +124,12 @@ export class PortalSyncService {
         role: "delegate" | "subdelegate" | "student",
       ): Promise<string | null>;
     },
+    /**
+     * RS-BE-50. Guarda de inicio de sesión en curso y tope de rechazos, que
+     * comparte con la recarga. `index.ts` pasa la instancia única, y sin ella
+     * (las pruebas) cada servicio lleva la suya.
+     */
+    private readonly guard: PortalLoginGuard = new PortalLoginGuard(),
   ) {}
 
   async getStatus(studentId: number): Promise<SyncStatus> {
@@ -157,21 +166,47 @@ export class PortalSyncService {
     validate?: ValidateFn,
   ): Promise<ImportResult> {
     let cookies = entrada.cookies;
-    if (!cookies) {
-      const creds = entrada.credentials!;
-      const userCode = await this.repository.findUserCode(userId);
-      if (!userCode) {
-        throw new HttpError(422, "No se pudo confirmar tu identidad.", "PORTAL_IDENTITY_UNVERIFIABLE");
-      }
-      // Si esto lanza, no hay sesión que cerrar: el `finally` de abajo no corre
-      // porque el try todavía no empezó.
-      cookies = await this.client.login(userCode, creds.password, creds.passcode);
-    }
+    // RS-BE-50. Solo la variante con credentials inicia sesión, así que solo
+    // ella marca la guarda y revisa el tope de rechazos.
+    const conGuarda = !cookies;
+    if (!cookies) cookies = await this.iniciarSesion(userId, studentId, entrada.credentials!);
     const sesion = cookies;
     try {
       return await this.runImport(userId, studentId, sesion, entrada.consent === true, provision, validate);
     } finally {
       await this.client.logout(sesion);   // best effort, siempre
+      if (conGuarda) this.guard.finish(studentId, "import");
+    }
+  }
+
+  /**
+   * Inicio de sesión de la variante con credentials. El usuario del portal NO
+   * viene del cliente: sale de `app_user.code`. La contraseña y el passcode se
+   * usan solo acá y se descartan.
+   *
+   * RS-BE-50. La guarda va antes del tope, y con una recarga del mismo alumno
+   * en curso responde 409 sin llamar al portal. Entre dos importaciones rige lo
+   * de hoy. La guarda la suelta `importFromPortal` después del cierre de
+   * sesión, y este método la suelta solo si no llega a haber sesión.
+   */
+  private async iniciarSesion(
+    userId: number, studentId: number, creds: { password: string; passcode: string },
+  ): Promise<PortalCookies> {
+    const userCode = await this.repository.findUserCode(userId);
+    if (!userCode) {
+      throw new HttpError(422, "No se pudo confirmar tu identidad.", "PORTAL_IDENTITY_UNVERIFIABLE");
+    }
+    if (!this.guard.tryStart(studentId, "import")) throw refreshInProgress();
+    try {
+      const espera = this.guard.rejectedLoginsWait(studentId);
+      if (espera !== null) throw tooManyRejectedLogins(espera);
+      // Si esto lanza, no hay sesión que cerrar: el cliente ya cerró la que el
+      // portal haya abierto a medias (RS-BE-60).
+      return await this.client.login(userCode, creds.password, creds.passcode);
+    } catch (e) {
+      if (e instanceof HttpError && e.code === "PORTAL_LOGIN_REJECTED") this.guard.recordRejectedLogin(studentId);
+      this.guard.finish(studentId, "import");
+      throw e;
     }
   }
 
@@ -325,7 +360,7 @@ export class PortalSyncService {
     // Degrada igual que delegados: cada petición y cada parseo en su propio
     // try, y un fallo acá NUNCA aborta la importación. La asistencia es
     // secundaria y no puede borrar notas, horario ni matrícula.
-    const asistenciaByCourse = new Map<string, AsistenciaCurso>();
+    const asistenciaByCourse = new Map<string, { datos: AsistenciaCurso; leidaEn: Date }>();
     // Aula -> (curso, sección) según la identificación verificada de su página
     // de asistencia, que sale también cuando la página falla en los totales.
     const cursoPorAula = new Map<string, AsistenciaIdentificada>();
@@ -348,9 +383,14 @@ export class PortalSyncService {
             aviso("ASISTENCIA_UNAVAILABLE", (de) => `No se pudo traer la asistencia ${de}.`);
             return;
           }
+          // RS-BE-58. El instante en que llega la respuesta, no el del UPDATE,
+          // que ocurre recién dentro de la transacción.
+          const leidaEn = new Date();
           // `userCode` ya se verificó contra `app_user`: si la página declara
           // otro alumno, el parser la rechaza sin imprimir ningún código.
-          const parsed = parseAsistenciaCurso(html, a.aula, userCode);
+          // RS-BE-51, punto 3. El ciclo de layout.jsp. Una página de otro ciclo
+          // es un aviso de ese curso y no aborta la importación.
+          const parsed = parseAsistenciaCurso(html, a.aula, userCode, ciclo.data.periodCode);
           const id = parsed.identificado;
           // RS-BE-48. Si el menú trae una sección y la página declara otra, no
           // hay forma segura de saber cuál vale. El curso no se escribe y el
@@ -365,7 +405,7 @@ export class PortalSyncService {
             aviso("PARSER_FAILED", (de) => `No se entendió la asistencia ${de}: ${parsed.reason}`);
             return;
           }
-          asistenciaByCourse.set(`${parsed.data.courseCode}|${parsed.data.sectionCode}`, parsed.data);
+          asistenciaByCourse.set(`${parsed.data.courseCode}|${parsed.data.sectionCode}`, { datos: parsed.data, leidaEn });
         }));
       }
     } catch {
@@ -650,17 +690,20 @@ export class PortalSyncService {
         // impedido legítimo.
         const asis = asistenciaByCourse.get(`${row.courseCode}|${row.sectionCode}`);
         if (asis) {
-          const horas = resolveAttendanceHours(asis);
+          const horas = resolveAttendanceHours(asis.datos);
           if (!horas.ok) {
             summary.attendanceSkipped++;
             warnings.push({
               code: "PARSER_FAILED", block: "asistencia",
               message: `No se escribió la asistencia de ${row.courseCode}/${row.sectionCode}: ${horas.reason}.`,
             });
-          } else if (await this.repository.updateAttendanceHours(tx, enr.id, horas.hours)) {
-            summary.attendanceUpdated++;
           } else {
-            summary.attendanceSkipped++;
+            // RS-BE-55 y RS-BE-58. `resolveAttendanceHours` ya cubre el CHECK
+            // replicado en el WHERE, así que un UPDATE que no toca la fila solo
+            // se debe a la guarda de lectura más reciente. Esa fila ya tiene
+            // horas más nuevas y cuenta como actualizada (decisión 5).
+            await this.repository.updateAttendanceHours(tx, enr.id, horas.hours, asis.leidaEn.toISOString());
+            summary.attendanceUpdated++;
           }
         }
       }
