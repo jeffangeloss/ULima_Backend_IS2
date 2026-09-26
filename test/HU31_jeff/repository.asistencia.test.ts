@@ -6,6 +6,9 @@ import {
   resolveAttendanceHours,
 } from "../../src/modules/portal-sync/portal-sync.repository.js";
 
+/** RS-BE-58. Instante de ejemplo de la llegada de la página. */
+const LEIDA = "2026-09-25T15:42:10.000Z";
+
 /**
  * RS-BE-15 · la escritura de las tres horas.
  *
@@ -61,7 +64,7 @@ describe("updateAttendanceHours: el UPDATE", () => {
     const tx = { execute: async (q: SQL) => { consultas.push(q); return filas; } } as never;
     const ok = await repo.updateAttendanceHours(tx, 42, {
       total: "64.00", attended: "8.00", absent: "0.00",
-    });
+    }, LEIDA);
     return { ok, sql: consultas.length ? new PgDialect().sqlToQuery(consultas[0]).sql.toLowerCase() : "", consultas };
   };
 
@@ -101,5 +104,18 @@ describe("updateAttendanceHours: el UPDATE", () => {
     const { sql } = await capturar();
     expect(sql).not.toContain("64.00");
     expect(sql).not.toContain("42");
+  });
+
+  test("fija portal_attendance_read_at en la misma sentencia, como texto con ::timestamptz (RS-BE-58)", async () => {
+    const { sql, consultas } = await capturar();
+    expect(sql).toMatch(/portal_attendance_read_at\s*=\s*\$\d+::timestamptz/);
+    const { params } = new PgDialect().sqlToQuery(consultas[0]!);
+    expect(params).toContain(LEIDA);
+    expect(params.some((p) => p instanceof Date)).toBe(false);
+  });
+
+  test("la guarda de lectura más reciente va en el WHERE (RS-BE-55)", async () => {
+    const { sql } = await capturar();
+    expect(sql).toMatch(/\(portal_attendance_read_at is null or portal_attendance_read_at < \$\d+::timestamptz\)/);
   });
 });

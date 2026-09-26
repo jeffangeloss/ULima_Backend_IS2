@@ -158,9 +158,10 @@ export interface ImportSummary {
   alertsDeleted: number;
   /** Matrículas cuyas horas de asistencia se escribieron (RS-BE-15). */
   attendanceUpdated: number;
-  /** Matrículas con asistencia disponible que NO se escribió: triple incoherente
-   *  o el UPDATE no tocó ninguna fila. Se cuenta para que "0 actualizadas" se
-   *  pueda distinguir de "el portal no reportó nada". */
+  /** Matrículas con asistencia disponible cuyos totales no cuadran, que no se
+   *  escriben (RS-BE-55). Una fila que salta la guarda de lectura más reciente
+   *  cuenta en `attendanceUpdated`, porque ya tiene horas más nuevas. Se cuenta
+   *  para que "0 actualizadas" se distinga de "el portal no reportó nada". */
   attendanceSkipped: number;
 }
 

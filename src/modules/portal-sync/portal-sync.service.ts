@@ -325,7 +325,7 @@ export class PortalSyncService {
     // Degrada igual que delegados: cada petición y cada parseo en su propio
     // try, y un fallo acá NUNCA aborta la importación. La asistencia es
     // secundaria y no puede borrar notas, horario ni matrícula.
-    const asistenciaByCourse = new Map<string, AsistenciaCurso>();
+    const asistenciaByCourse = new Map<string, { datos: AsistenciaCurso; leidaEn: Date }>();
     // Aula -> (curso, sección) según la identificación verificada de su página
     // de asistencia, que sale también cuando la página falla en los totales.
     const cursoPorAula = new Map<string, AsistenciaIdentificada>();
@@ -348,6 +348,9 @@ export class PortalSyncService {
             aviso("ASISTENCIA_UNAVAILABLE", (de) => `No se pudo traer la asistencia ${de}.`);
             return;
           }
+          // RS-BE-58. El instante en que llega la respuesta, no el del UPDATE,
+          // que ocurre recién dentro de la transacción.
+          const leidaEn = new Date();
           // `userCode` ya se verificó contra `app_user`: si la página declara
           // otro alumno, el parser la rechaza sin imprimir ningún código.
           const parsed = parseAsistenciaCurso(html, a.aula, userCode);
@@ -365,7 +368,7 @@ export class PortalSyncService {
             aviso("PARSER_FAILED", (de) => `No se entendió la asistencia ${de}: ${parsed.reason}`);
             return;
           }
-          asistenciaByCourse.set(`${parsed.data.courseCode}|${parsed.data.sectionCode}`, parsed.data);
+          asistenciaByCourse.set(`${parsed.data.courseCode}|${parsed.data.sectionCode}`, { datos: parsed.data, leidaEn });
         }));
       }
     } catch {
@@ -650,17 +653,20 @@ export class PortalSyncService {
         // impedido legítimo.
         const asis = asistenciaByCourse.get(`${row.courseCode}|${row.sectionCode}`);
         if (asis) {
-          const horas = resolveAttendanceHours(asis);
+          const horas = resolveAttendanceHours(asis.datos);
           if (!horas.ok) {
             summary.attendanceSkipped++;
             warnings.push({
               code: "PARSER_FAILED", block: "asistencia",
               message: `No se escribió la asistencia de ${row.courseCode}/${row.sectionCode}: ${horas.reason}.`,
             });
-          } else if (await this.repository.updateAttendanceHours(tx, enr.id, horas.hours)) {
-            summary.attendanceUpdated++;
           } else {
-            summary.attendanceSkipped++;
+            // RS-BE-55 y RS-BE-58. `resolveAttendanceHours` ya cubre el CHECK
+            // replicado en el WHERE, así que un UPDATE que no toca la fila solo
+            // se debe a la guarda de lectura más reciente. Esa fila ya tiene
+            // horas más nuevas y cuenta como actualizada (decisión 5).
+            await this.repository.updateAttendanceHours(tx, enr.id, horas.hours, asis.leidaEn.toISOString());
+            summary.attendanceUpdated++;
           }
         }
       }

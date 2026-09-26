@@ -143,15 +143,66 @@ describe("degradación: un fallo de asistencia no rompe nada", () => {
     expect(res.warnings.some((w) => w.code === "ASISTENCIA_UNAVAILABLE")).toBe(true);
   });
 
-  test("si el UPDATE no toca ninguna fila, se cuenta como omitida", async () => {
+  test("si la guarda de lectura más reciente no deja tocar la fila, cuenta como actualizada (RS-BE-55)", async () => {
     const escrituras: { id: number; h: unknown }[] = [];
     const repo = fakeRepo(escrituras, {
       updateAttendanceHours: async () => false,
     } as Partial<PortalSyncRepository>);
     const res = await importar(repo, fakeClient());
 
+    expect(res.summary.attendanceUpdated).toBeGreaterThan(0);
+    expect(res.summary.attendanceSkipped).toBe(0);
+  });
+
+  test("unos totales que no cuadran cuentan como omitidos y no llegan al UPDATE", async () => {
+    const escrituras: { id: number; h: unknown }[] = [];
+    const base = fakeClient();
+    const leer = base.fetchPage as unknown as (p: string, c: unknown) => Promise<string>;
+    const cliente = {
+      ...base,
+      fetchPage: async (path: string, c: unknown) => {
+        const html = await leer(path, c);
+        // Sin horas programadas, resolveAttendanceHours rechaza el triple.
+        return path.startsWith(RUTA) ? html.replace('<strong class="textos">64</strong>', '<strong class="textos">0</strong>') : html;
+      },
+    } as unknown as PortalClient;
+    const res = await importar(fakeRepo(escrituras), cliente);
+
+    expect(escrituras).toHaveLength(0);
     expect(res.summary.attendanceUpdated).toBe(0);
     expect(res.summary.attendanceSkipped).toBeGreaterThan(0);
+    expect(res.warnings.some((w) => w.block === "asistencia" && w.message.includes("el portal no reporta horas programadas"))).toBe(true);
+  });
+
+  test("la hora de lectura es el instante en que llega la página, como texto ISO 8601 (RS-BE-58)", async () => {
+    const llegadas: number[] = [];
+    const base = fakeClient();
+    const leer = base.fetchPage as unknown as (p: string, c: unknown) => Promise<string>;
+    const cliente = {
+      ...base,
+      fetchPage: async (path: string, c: unknown) => {
+        const html = await leer(path, c);
+        if (path.startsWith(RUTA)) llegadas.push(Date.now());
+        return html;
+      },
+    } as unknown as PortalClient;
+    const horas: string[] = [];
+    const escrituras: { id: number; h: unknown }[] = [];
+    const repo = fakeRepo(escrituras, {
+      updateAttendanceHours: async (_tx: unknown, _id: number, _h: unknown, leidaEn: string) => {
+        horas.push(leidaEn);
+        return true;
+      },
+    } as unknown as Partial<PortalSyncRepository>);
+    await importar(repo, cliente);
+    const despues = Date.now();
+
+    expect(horas.length).toBeGreaterThan(0);
+    for (const h of horas) {
+      expect(h).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      expect(Date.parse(h)).toBeGreaterThanOrEqual(Math.min(...llegadas));
+      expect(Date.parse(h)).toBeLessThanOrEqual(despues);
+    }
   });
 });
 
