@@ -135,7 +135,16 @@ export type WarningCode =
   // RS-BE-23: la limpieza desmarcó electivos que el récord no respalda. Es el
   // único aviso nuevo del récord académico; los demás motivos (récord no
   // confiable, información académica incompleta) van solo al log del servidor.
-  | "PROGRESS_REMOVED";
+  | "PROGRESS_REMOVED"
+  // recarga-portal (RS-BE-56). La página de notas o el marco de un aula no se
+  // pudo DESCARGAR, un curso de miUlima no tiene matrícula en ULima++, el
+  // sílabo cargado no coincide con la ULima, el promedio de la ULima no cuadra
+  // con sus notas y el presupuesto se agotó con cursos sin leer.
+  | "NOTAS_UNAVAILABLE"
+  | "NOT_ENROLLED"
+  | "SYLLABUS_MISMATCH"
+  | "PORTAL_AVERAGE_MISMATCH"
+  | "REFRESH_BUDGET_EXCEEDED";
 export interface SyncWarning { code: WarningCode; block: string; message: string }
 
 export interface ImportSummary {

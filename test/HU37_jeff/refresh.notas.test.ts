@@ -5,7 +5,8 @@ import type { AgregadoUlima, EvaluacionUlima } from "../../src/modules/portal-sy
 import type { Pedir } from "../../src/modules/portal-sync/refresh/refresh.types.js";
 import { PORTAL_PATHS } from "../../src/services/portal.client.js";
 import { HttpError } from "../../src/shared/errors/http-error.js";
-import { CURSOS, MENU_NOTA, aulaDe, marco, menuLista, notaDe, pedirFalso } from "./recarga.dobles.js";
+import { CURSOS, MENU_NOTA, asistenciaDe, aulaDe, marco, menuLista, notaDe, pedirFalso } from "./recarga.dobles.js";
+import { armar } from "./recarga.servicio.js";
 
 /**
  * RS-BE-52 y RS-BE-53 · fase de notas de la recarga, con un `pedir` falso. El
@@ -155,5 +156,50 @@ describe("RS-BE-53, punto 7 · chequeo con el promedio de la ULima", () => {
     expect(promedioNoCuadra([ev(10, 40), ev(null, 60, "np")], prom(18))).toBe(false);
     expect(promedioNoCuadra([ev(10, 40), ev(16, 60)], prom(null))).toBe(false);
     expect(promedioNoCuadra([ev(10, 40), ev(16, 60)], [])).toBe(false);
+  });
+});
+
+describe("RS-BE-52, punto 6 · el servicio ante un contraste entre los paneles", () => {
+  /**
+   * Con el servicio entero y sus dobles (recarga.servicio.ts). En los tres
+   * casos el aula no pide su marco, su matrícula no escribe notas, las otras
+   * cuatro sí, y el único aviso del bloque nota es el del contraste, que nombra
+   * el aula y no lleva ninguna nota.
+   */
+  const aviso = (aula: string) => ({
+    code: "PARSER_FAILED", block: "nota", message: `El curso del aula ${aula} no coincide entre los paneles de miUlima.`,
+  });
+
+  const comprobar = async (a: ReturnType<typeof armar>, aula: string) => {
+    const res = await a.servicio.refresh(a.entrada());
+    const otras = CURSOS.filter((c) => c.aula !== aula).map((c) => c.enrollmentId);
+    expect(a.pedidos.some((p) => p.path === PORTAL_PATHS.tareaAcademica(aula))).toBe(false);
+    expect(a.de("markGradesRead").map(([id]) => id)).toEqual(otras);
+    expect(a.de("replacePortalScores").map(([id]) => id)).toEqual(otras);
+    expect(res.grades).toEqual({ read: 4, failed: 1, unavailable: 0, withValue: 0 });
+    expect(res.warnings.filter((w) => w.block === "nota")).toEqual([aviso(aula)]);
+    return res;
+  };
+
+  test("la sección del menú de Nota distinta de la de la página no escribe notas y avisa", async () => {
+    const menu = menuLista("OpenNotaAlumnoPrePost", CURSOS.map((c) => ({ aula: c.aula, seccion: c.aula === "900101" ? "999" : c.seccion })));
+    const res = await comprobar(armar({ paginas: { [PORTAL_PATHS.cursosNota]: menu } }), "900101");
+    expect(res.courses[0]).toMatchObject({ courseCode: "690417", attendance: "updated", grades: "failed" });
+  });
+
+  test("el mapa de la asistencia con otro curso para esa aula no escribe notas y avisa", async () => {
+    await comprobar(armar({ paginas: {
+      [PORTAL_PATHS.asistenciaAlumno("900102")]: asistenciaDe("900102", { prm_sCoCurs: "690499" }),
+    } }), "900102");
+  });
+
+  test("el mapa de la asistencia con otra sección para esa aula no escribe notas y avisa", async () => {
+    // El menú de Asistencia trae la misma sección que la página, para que la
+    // fase de asistencia no caiga en su propio contraste y el aula entre al mapa.
+    const menuAsistencia = menuLista("OpenAsistenciaAlumno", CURSOS.map((c) => ({ aula: c.aula, seccion: c.aula === "900102" ? "813" : c.seccion })));
+    await comprobar(armar({ paginas: {
+      [PORTAL_PATHS.cursosAsistencia]: menuAsistencia,
+      [PORTAL_PATHS.asistenciaAlumno("900102")]: asistenciaDe("900102", { prm_sCoSecc: "813" }),
+    } }), "900102");
   });
 });

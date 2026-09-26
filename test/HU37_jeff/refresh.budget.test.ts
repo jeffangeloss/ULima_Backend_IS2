@@ -3,9 +3,11 @@ import { leerAsistencia } from "../../src/modules/portal-sync/refresh/fase-asist
 import { leerNotas } from "../../src/modules/portal-sync/refresh/fase-notas.js";
 import type { Pedir } from "../../src/modules/portal-sync/refresh/refresh.types.js";
 import { PORTAL_PATHS } from "../../src/services/portal.client.js";
+import { HttpError } from "../../src/shared/errors/http-error.js";
 import {
-  ALUMNO, CICLO, MENU_ASISTENCIA, MENU_NOTA, asistenciaDe, aulaDe, marco, menuLista, notaDe, pedirFalso,
+  ALUMNO, CICLO, CURSOS, MENU_ASISTENCIA, MENU_NOTA, asistenciaDe, aulaDe, marco, menuLista, notaDe, pedirFalso,
 } from "./recarga.dobles.js";
+import { STUDENT_ID, armar } from "./recarga.servicio.js";
 
 /**
  * RS-BE-50 · presupuesto de tiempo y tope de concurrencia, con un reloj falso
@@ -54,5 +56,44 @@ describe("RS-BE-50 · presupuesto en la fase de notas", () => {
     expect(f.pedidos.map((p) => p.path)).toEqual([PORTAL_PATHS.notaCurso("900101")]);
     expect(fase.aulas.map((a) => a.estado)).toEqual(["not_reached", "not_reached", "not_reached", "not_reached", "not_reached"]);
     expect(fase.identificadas.get("900101")).toEqual({ courseCode: "690417", sectionCode: "812" });
+  });
+});
+
+describe("RS-BE-50 · presupuesto de la recarga entera", () => {
+  test("si el presupuesto se agota antes de la apertura, responde 504, cierra la sesión y suelta la guarda", async () => {
+    const a = armar({ reloj: { t: 60_000, paso: 0 } });
+    await expect(a.servicio.refresh(a.entrada({ recibidaEn: 0 }))).rejects.toMatchObject({
+      statusCode: 504, code: "PORTAL_TIMEOUT",
+    });
+    expect(a.pedidos).toHaveLength(0);
+    expect(a.cierres()).toBe(1);
+    expect(a.guard.tryStart(STUDENT_ID, "refresh")).toBe(true);
+  });
+
+  test("los cursos que no alcanzan quedan not_reached y el aviso sale una sola vez", async () => {
+    const a = armar({ reloj: { t: 0, paso: 10_000 } });
+    const res = await a.servicio.refresh(a.entrada({ recibidaEn: 0 }));
+    expect(a.pedidos.every((p) => p.t < 60_000)).toBe(true);
+    expect(res.courses.map((c) => [c.attendance, c.grades])).toEqual([
+      ["updated", "not_reached"], ["updated", "not_reached"], ["updated", "not_reached"],
+      ["not_reached", "not_reached"], ["not_reached", "not_reached"],
+    ]);
+    expect(res.warnings.filter((w) => w.code === "REFRESH_BUDGET_EXCEEDED")).toEqual([{
+      code: "REFRESH_BUDGET_EXCEEDED", block: "asistencia",
+      message: "La lectura de miUlima tardó demasiado y algunos cursos quedaron sin leer.",
+    }]);
+    expect(a.cierres()).toBe(1);
+  });
+
+  test("el presupuesto agotado sin ningún curso leído responde 504", async () => {
+    const a = armar({
+      reloj: { t: 0, paso: 10_000 },
+      paginas: Object.fromEntries(CURSOS.map((c) => [
+        PORTAL_PATHS.asistenciaAlumno(c.aula), new HttpError(502, "No se pudo contactar a miUlima.", "PORTAL_UNAVAILABLE"),
+      ])),
+    });
+    await expect(a.servicio.refresh(a.entrada({ recibidaEn: 0 }))).rejects.toMatchObject({
+      statusCode: 504, code: "PORTAL_TIMEOUT",
+    });
   });
 });
