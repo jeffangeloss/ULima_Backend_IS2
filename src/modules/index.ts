@@ -17,6 +17,7 @@ import { networkingRoutes } from "./networking/index.js";
 import { portalSyncRoutes } from "./portal-sync/index.js";
 import { academicRecordRoutes } from "./academic-record/index.js";
 import { timeBlocksRoutes } from "./time-blocks/index.js";
+import { specialtyTestRoutes } from "./specialty-test/index.js";
 
 export const registerModules = (app: Hono) => {
   app.route("/auth", authRoutes);
@@ -37,4 +38,5 @@ export const registerModules = (app: Hono) => {
   app.route("/portal-sync", portalSyncRoutes);
   app.route("/academic-record", academicRecordRoutes);
   app.route("/time-blocks", timeBlocksRoutes);
+  app.route("/specialty-test", specialtyTestRoutes);
 };

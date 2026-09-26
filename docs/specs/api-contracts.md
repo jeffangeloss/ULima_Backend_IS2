@@ -173,6 +173,7 @@ Especialidades filtradas por carrera. Si `careerId` se omite, usa la carrera del
     ]
   }
   ```
+- **Solo lo oficial** *(aprobada por el dueño el 2026-09-25, BR-AP-07 de `academic-profile.spec.md`, implementada en la rama `feat/test-especialidad`, pendiente de despliegue)*. Con `careerId` y sin él, la lista trae solo las especialidades con `is_active = true`, que en Ingeniería de Sistemas son los cuatro diplomas oficiales. `is_active` sigue en cada elemento, ahora siempre `true`, y `display_order` se numera después del filtro. Los datos de `specialty` no cambian.
 
 ### PUT /academic-profile/me/specialties
 
@@ -198,6 +199,7 @@ Reemplaza las especialidades activas del estudiante autenticado. Escribe en `stu
   }
   ```
 - **Errors**: `400` `INVALID_BODY`, `404` `SPECIALTY_NOT_FOUND`, `409` `DUPLICATE_PRIMARY`
+- **Solo lo oficial y reemplazo atómico** *(aprobada por el dueño el 2026-09-25, BR-AP-07 y BR-AP-08, implementadas en la rama `feat/test-especialidad`, pendiente de despliegue)*. `404 SPECIALTY_NOT_FOUND` también para una especialidad que existe pero tiene `is_active = false`, con el mismo mensaje que una de otra carrera. El desactivado, los `upsert` y la marca de `specialty_setup_completed` corren en una sola transacción. La forma de la ruta no cambia.
 
 Notas:
 
@@ -946,3 +948,166 @@ Los bloques ya concretos de una ventana de fechas: el servidor expande cada regl
 - **`weeks`**: una entrada por cada semana de **lunes a domingo** que toca la ventana, de la de `from` a la de `to`, ordenadas por `weekStart`, que es el lunes de esa semana y puede ser anterior a `from`. `hours` es el total de la semana **entera**, aunque la ventana la corte: una ventana que empieza un miércoles suma también el lunes de esa semana, que no sale en `occurrences`. Un día cancelado no suma, un día movido suma su duración nueva, y el total va en horas decimales sin redondear (`8.5` = ocho horas y media). Una semana sin ocurrencias sale con `hours: 0`: es un total conocido, no un dato que falta. Solo cuentan los bloques propios, nunca las clases.
 - Sin ocurrencias en la ventana: `occurrences` sale vacío y cada semana que toca la ventana sale con `hours: 0`.
 - **Errors**: `400` `INVALID_QUERY_PARAMS` (falta `from` o `to`, alguna no es una fecha válida, o `to` es anterior a `from`), `400` `TIME_BLOCK_WINDOW_TOO_WIDE` (más de 120 días).
+
+## Specialty Test (test de especialidad), APROBADO el 2026-09-25 e implementado en la rama `feat/test-especialidad`, pendiente de despliegue
+
+Test que conduce Ulises y que recomienda uno de los cuatro diplomas oficiales. El backend sirve el contenido versionado, calcula el puntaje con la fórmula del contenido, decide los desempates, pide a Cohere el motivo con respaldo de plantillas y guarda solo el último resultado del alumno. Detalle en `specs/features/specialty-test/specialty-test.spec.md` (RS-BE-37 a RS-BE-47). El resultado vive en `student_specialty_test_result` (migración `drizzle/0014_specialty_test_result.sql`, cambio de BD aprobado por el dueño el 2026-09-25, que se aplica en producción en el despliegue con el respaldo y su permiso explícito). El contenido vigente es la versión `2026-09-25.4`, con un ícono de Lucide por tarea.
+
+Las tres rutas comparten estas reglas.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate` (`authMiddleware` + `requireRole(...STUDENT_ROLES)` sobre todo el módulo). Un token docente recibe `403 FORBIDDEN`. El alumno sale solo del token.
+- **Disponibilidad**: el servidor traduce las claves `sw`, `ti`, `si` y `vj` a los `specialtyId` de las especialidades con `is_active = true` de la carrera del alumno, por nombre, sin distinguir mayúsculas ni tildes. Si alguna no aparece, el test no está disponible para ese alumno (`404 SPECIALTY_TEST_NOT_AVAILABLE`) y la app muestra la elección manual. Las tres rutas lo comprueban, `GET /specialty-test/me/result` también cuando hay un resultado guardado.
+- **Tipos**: `affinity` es un entero de 0 a 100, redondeado con el medio hacia arriba; el servidor decide el orden, los desempates y el empate con la afinidad exacta. Las fechas van en ISO-8601 UTC con milisegundos.
+- **Mensajes** (`error.message` de cada código nuevo): `SPECIALTY_TEST_NOT_AVAILABLE` "El test de especialidad no está disponible para tu carrera.", `SPECIALTY_TEST_VERSION_OUTDATED` "El test se actualizó. Vuelve a empezarlo.", `SPECIALTY_TEST_INVALID_ANSWERS` "Las respuestas no corresponden a esta versión del test.", `SPECIALTY_TEST_TIEBREAK_MISMATCH` "Los desempates enviados no son los que corresponden a estas respuestas.", `PAYLOAD_TOO_LARGE` "La petición es demasiado grande." y `RATE_LIMITED` "Hiciste demasiados intentos del test. Intenta de nuevo en N minuto(s).".
+- **Errors comunes**: `401` `MISSING_TOKEN`, `401` `INVALID_TOKEN`, `403` `FORBIDDEN`, `404` `USER_NOT_FOUND` (el token no tiene fila en `student`), `404` `SPECIALTY_TEST_NOT_AVAILABLE`.
+- Todos los valores de los ejemplos son inventados, y los `specialtyId` son ilustrativos.
+
+### GET /specialty-test/content
+
+Contenido de la versión vigente, con lo necesario para conducir el test sin red entre pregunta y pregunta.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK` (recortado):
+  ```json
+  {
+    "version": "2026-09-25.4",
+    "specialties": [
+      {
+        "key": "sw", "specialtyId": 1, "name": "Ingeniería de Software",
+        "tagline": "Diseña y programa aplicaciones que funcionan bien y se pueden seguir mejorando.",
+        "color": { "light": "#1E3A8A", "dark": "#A5C0F7" }, "icon": "code-xml", "totalCredits": 21,
+        "electives": [
+          { "code": "650070", "name": "Paradigmas de Programación", "shortName": "Paradigmas de Programación",
+            "credits": 3, "prerequisite": "Haber culminado el V ciclo" }
+        ]
+      }
+    ],
+    "ulises": {
+      "welcome": ["¡Hola! Soy Ulises. …"], "startButton": "Vamos",
+      "duelHelp": "Toca la tarea que harías con más ganas.",
+      "scaleHelp": "Elige cuánto te gustaría hacer esta tarea.",
+      "reactions": { "pick": ["Anotado."], "both": ["…"], "none": ["…"], "scale": ["…"] },
+      "loading": "Dame un toque que junto tus respuestas."
+    },
+    "duelOptions": [
+      { "id": "top", "label": "(tarea de arriba)" }, { "id": "bottom", "label": "(tarea de abajo)" },
+      { "id": "both", "label": "Me gustan las dos" }, { "id": "none", "label": "Ninguna me llama" }
+    ],
+    "scaleOptions": [
+      { "id": "nada", "label": "Nada" }, { "id": "un_poco", "label": "Un poco" },
+      { "id": "bastante", "label": "Bastante" }, { "id": "me_encantaria", "label": "Me encantaría" }
+    ],
+    "questions": [
+      { "id": "q01", "n": 1, "type": "duel", "prompt": "¿Cuál harías con más ganas?",
+        "top": { "id": "q01.top", "specialty": "sw",
+                 "text": "Programar la app con la que una bodega recibe pedidos del barrio",
+                 "illustration": "Celular con la app de una bodega abierta, …",
+                 "icon": "shopping-cart" },
+        "bottom": { "id": "q01.bottom", "specialty": "si", "text": "…", "illustration": "…",
+                    "icon": "shelving-unit" },
+        "reaction": "Arrancamos por el barrio. …" },
+      { "id": "q04", "n": 4, "type": "scale", "prompt": "¿Cuánto te gustaría hacer esto?",
+        "task": { "id": "q04.task", "specialty": "ti", "text": "…", "illustration": "…",
+                  "icon": "drumstick" },
+        "blockClose": "Primer tramo listo. Van 4 de 14." }
+    ]
+  }
+  ```
+- **Qué no viaja**: el nombre del ícono en Flutter (`icon.flutter`) de las especialidades y de las tareas, resúmenes y electivos de cada tarea, pesos, umbral, plantillas del motivo, líneas de Ulises del resultado salvo la de espera (`ulises.loading`), líneas del desempate, desempates, ejemplos, balance y fuentes. Son del cálculo y del motivo, que hace el servidor.
+- **`icon`**: en cada especialidad y en cada tarea, el nombre del ícono en Lucide, en kebab-case (`icon.lucide` del contenido, por ejemplo `code-xml` para Software y `shopping-cart` para `q01.top`). La app lo traduce con un mapa cerrado de nombres y pinta un ícono neutro si no lo conoce. Ninguna tarea usa el ícono de una especialidad y ningún nombre se repite entre las tareas. `totalCredits` son los créditos del diploma.
+- **`illustration`**: la descripción de la ilustración de cada tarea sigue en la respuesta, aunque la app pinta el ícono y no la muestra.
+- **`specialty` de cada tarea**: viaja porque la app enciende la tarjeta tocada con el color de su especialidad. La app no la muestra antes del toque y Ulises no nombra especialidades durante el test.
+- **Errors**: los comunes.
+
+### POST /specialty-test/me/evaluate
+
+Evaluación sin estado. Recibe todas las respuestas dadas hasta ese momento y devuelve el siguiente desempate o el resultado final. Solo el resultado final se guarda.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Body** (hasta 4 KiB):
+  ```json
+  {
+    "version": "2026-09-25.4",
+    "answers": {
+      "q01": "bottom", "q02": "bottom", "q03": "both", "q04": "nada", "q05": "top",
+      "q06": "top", "q07": "top", "q08": "bastante", "q09": "top", "q10": "top",
+      "q11": "bottom", "q12": "me_encantaria", "q13": "bottom", "q14": "un_poco"
+    },
+    "tiebreakAnswers": [ { "id": "tb-si-vj-1", "answer": "bottom" } ]
+  }
+  ```
+  - `answers`: exactamente los 14 ids de pregunta de esa versión. Un duelo admite `top`, `bottom`, `both` o `none`; una escala, `nada`, `un_poco`, `bastante` o `me_encantaria`.
+  - `tiebreakAnswers`: de 0 a 2, en orden, cada uno con el id del desempate que el servidor pide y una respuesta de duelo. Opcional, vacío por defecto.
+- **Response** `200 OK` cuando toca un desempate (no guarda nada):
+  ```json
+  {
+    "status": "tiebreak",
+    "tiebreak": {
+      "id": "tb-si-vj-2", "order": 2, "prompt": "¿Cuál harías con más ganas?",
+      "top": { "id": "tb-si-vj-2.top", "specialty": "vj", "text": "…", "illustration": "…",
+               "icon": "split" },
+      "bottom": { "id": "tb-si-vj-2.bottom", "specialty": "si", "text": "…", "illustration": "…",
+                  "icon": "pill-bottle" }
+    },
+    "ulisesLine": "Sigue reñido. Una última y listo."
+  }
+  ```
+- **Response** `200 OK` con el resultado final (guarda o reemplaza el último resultado del alumno):
+  ```json
+  {
+    "status": "result",
+    "result": {
+      "version": "2026-09-25.4",
+      "completedAt": "2026-09-25T20:15:00.000Z",
+      "tie": false,
+      "ranking": [
+        { "key": "vj", "specialtyId": 7, "name": "Desarrollo de Videojuegos", "affinity": 75 },
+        { "key": "si", "specialtyId": 6, "name": "Sistemas de Información", "affinity": 65 },
+        { "key": "ti", "specialtyId": 5, "name": "Tecnologías de la Información", "affinity": 28 },
+        { "key": "sw", "specialtyId": 1, "name": "Ingeniería de Software", "affinity": 24 }
+      ],
+      "reason": "Desarrollo de Videojuegos sumó 5,5 de 7 puntos en los duelos, …",
+      "reasonSource": "templates",
+      "ulises": {
+        "intro": "Ya tengo tu resultado.",
+        "headline": "Lo tuyo apunta a Desarrollo de Videojuegos, con 75 % de afinidad.",
+        "tiebreakOutcome": "Ahí está, ya se inclinó la balanza.",
+        "closing": "Tómalo como una brújula, no como una sentencia. …",
+        "retake": "Si más adelante cambias de idea, puedes volver a hacer el test."
+      }
+    }
+  }
+  ```
+- **`reasonSource`**: `"ai"` si el motivo lo redacta Cohere y pasa la validación, `"templates"` si sale de las plantillas del contenido. Un fallo o una demora de Cohere (más de 5 s) nunca es un error para la app.
+- **Empate**: `tie: true`, las dos primeras del ranking son las ganadoras, `headline` es la línea de empate y `tiebreakOutcome` la de «Ni así se separan».
+- **Idempotente en el ranking**: el mismo cuerpo da siempre el mismo paso y el mismo ranking; el motivo de Cohere puede variar.
+- **`Cache-Control: no-store`** en la respuesta.
+- **Límite**: 30 evaluaciones por alumno por hora.
+- **Errors**: `400` `INVALID_JSON_BODY`, `400` `INVALID_REQUEST_BODY`, `400` `SPECIALTY_TEST_INVALID_ANSWERS` (`details.missing`, `details.unexpected`, `details.invalid`), `400` `SPECIALTY_TEST_TIEBREAK_MISMATCH` (`details.expected`, el id que tocaba o `null`), `409` `SPECIALTY_TEST_VERSION_OUTDATED` (`details.currentVersion`), `413` `PAYLOAD_TOO_LARGE`, `429` `RATE_LIMITED` (`details.retryAfterMinutes`), `500` `INTERNAL_SERVER_ERROR` si falla el guardado del resultado, que va antes de la llamada a Cohere, y los comunes.
+
+### GET /specialty-test/me/result
+
+Último resultado guardado del alumno, para el Perfil.
+
+- **Auth**: Bearer token, roles `student`, `delegate`, `subdelegate`
+- **Response** `200 OK`:
+  ```json
+  {
+    "result": {
+      "version": "2026-09-25.4",
+      "isCurrentVersion": true,
+      "completedAt": "2026-09-25T20:15:00.000Z",
+      "tie": false,
+      "ranking": [
+        { "key": "vj", "specialtyId": 7, "name": "Desarrollo de Videojuegos", "affinity": 75 },
+        { "key": "si", "specialtyId": 6, "name": "Sistemas de Información", "affinity": 65 },
+        { "key": "ti", "specialtyId": 5, "name": "Tecnologías de la Información", "affinity": 28 },
+        { "key": "sw", "specialtyId": 1, "name": "Ingeniería de Software", "affinity": 24 }
+      ]
+    }
+  }
+  ```
+- **Estado vacío**: `{ "result": null }` con `200` si el alumno no tiene ningún test terminado.
+- No trae el motivo, que no se guarda. `name` sale de la versión vigente del contenido por la clave.
+- **`Cache-Control: no-store`** en la respuesta.
+- **Errors**: los comunes, y `500` `INTERNAL_SERVER_ERROR` si la fila guardada no tiene la forma esperada. El `404` `SPECIALTY_TEST_NOT_AVAILABLE` sale aunque el alumno tenga un resultado guardado, y la app oculta la tarjeta del Perfil.

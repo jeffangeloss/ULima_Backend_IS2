@@ -144,6 +144,7 @@ export class AcademicProfileRepository {
       select id, career_id, name, description, is_active
       from specialty
       where career_id = ${careerId}
+        and is_active = true
       order by name
     `) as unknown as SpecialtyRow[];
 
@@ -194,6 +195,33 @@ export class AcademicProfileRepository {
     `);
   }
 
+  /**
+   * BR-AP-08: el reemplazo entero en una sola transacción. Desactiva las
+   * especialidades del alumno, inserta o reactiva la principal y las de
+   * interés, y marca `specialty_setup_completed`. Si algo falla, la base
+   * conserva el estado previo y el error sube tal cual, para que el service
+   * siga traduciendo el 23505 a `409 DUPLICATE_PRIMARY`. Abre la transacción
+   * como `academic-record.repository.ts:110`, porque el service no puede
+   * importar `db` (AGENTS.md), y reusa los métodos de abajo sobre `tx`.
+   */
+  async replaceStudentSpecialties(
+    studentId: number,
+    primarySpecialtyId: number | null,
+    interestSpecialtyIds: readonly number[],
+  ): Promise<void> {
+    await this.database.transaction(async (tx) => {
+      const enLaTransaccion = new AcademicProfileRepository(tx as unknown as typeof db);
+      await enLaTransaccion.deactivateAllStudentSpecialties(studentId);
+      if (primarySpecialtyId != null) {
+        await enLaTransaccion.upsertStudentSpecialty(studentId, primarySpecialtyId, "primary");
+      }
+      for (const specialtyId of interestSpecialtyIds) {
+        await enLaTransaccion.upsertStudentSpecialty(studentId, specialtyId, "interest");
+      }
+      await enLaTransaccion.markSpecialtySetupCompleted(studentId);
+    });
+  }
+
   async markSpecialtySetupCompleted(studentId: number): Promise<void> {
     await this.database.execute(sql`
       update student
@@ -219,6 +247,7 @@ export class AcademicProfileRepository {
       from specialty
       where id = ${specialtyId}
         and career_id = ${careerId}
+        and is_active = true
       limit 1
     `) as unknown as Array<{ "?column?": number }>;
 

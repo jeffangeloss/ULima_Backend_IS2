@@ -76,6 +76,15 @@ function makeRepo(over: RepoOverrides = {}) {
       calls.markedComplete.push(studentId); // captura el cierre del setup
     },
     currentSpecialtySelection: async () => [], // lectura final para el response; irrelevante para los caminos, devuelve []
+    // BR-AP-08: el service ya no llama a los tres métodos de escritura uno por uno, sino a este,
+    // que en el repositorio real los corre en una transacción. El doble repite ese orden sobre los
+    // espías de arriba, así que cada camino y cada override siguen midiendo lo mismo.
+    replaceStudentSpecialties: async (studentId: number, primary: number | null, interests: readonly number[]) => {
+      await repo.deactivateAllStudentSpecialties(studentId);
+      if (primary != null) await repo.upsertStudentSpecialty(studentId, primary, "primary");
+      for (const specialtyId of interests) await repo.upsertStudentSpecialty(studentId, specialtyId, "interest");
+      await repo.markSpecialtySetupCompleted(studentId);
+    },
     ...over, // el override del test pisa cualquiera de los métodos anteriores (p. ej. forzar null o lanzar error)
   } as unknown as AcademicProfileRepository; // forzamos el tipo del repositorio real
   return { repo, calls }; // devolvemos el doble y el registro de llamadas
