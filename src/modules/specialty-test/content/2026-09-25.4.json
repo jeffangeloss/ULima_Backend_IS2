@@ -1,0 +1,2382 @@
+{
+  "version": "2026-09-25.4",
+  "meta": {
+    "title": "Test de especialidad",
+    "language": "es-PE",
+    "audience": "Alumnos de primeros ciclos de Ingeniería de Sistemas (plan 2026-1).",
+    "host": "Ulises, el cuervo del chatbot.",
+    "flow": [
+      "bienvenida",
+      "preguntas 1 a 14",
+      "desempate 1 (si la diferencia es de 10 o menos)",
+      "desempate 2 (si sigue en 10 o menos)",
+      "resultado con motivo"
+    ],
+    "duelOptions": [
+      {
+        "id": "top",
+        "label": "(tarea de arriba)"
+      },
+      {
+        "id": "bottom",
+        "label": "(tarea de abajo)"
+      },
+      {
+        "id": "both",
+        "label": "Me gustan las dos"
+      },
+      {
+        "id": "none",
+        "label": "Ninguna me llama"
+      }
+    ],
+    "sources": [
+      {
+        "file": "Sumillas_2025-1.pdf",
+        "title": "Sumillas de Ingeniería de Sistemas",
+        "used": "Sumilla de cada electivo de Ingeniería de Sistemas; no trae los cursos de Comunicación."
+      },
+      {
+        "file": "sílabos 2026-2 de cactus",
+        "title": "Sílabos de Storytelling, Narrativa Gráfica, Diseño de Videojuegos, Proyecto de Videojuegos, Programación Móvil, Proyecto de Desarrollo de Software e Interacción Humano Computadora",
+        "used": "Contenido semana a semana para cotejar las tareas de Desarrollo de Videojuegos."
+      },
+      {
+        "file": "diplomas_de_especialidad_2025-1_v3.pdf",
+        "title": "Plan de estudios de los diplomas de especialidad",
+        "pages": 4,
+        "used": "Nombres de los cuatro diplomas, los 7 electivos de cada uno con código, créditos y requisito, y los requisitos del diploma."
+      },
+      {
+        "file": "2_plan_de_estudios_formato_web_v4.1_100725_1 (2).pdf",
+        "title": "Plan de estudios (lista de asignaturas electivas)",
+        "used": "Su lista de asignaturas electivas trae 22 cursos. Los 21 electivos de Ingeniería de Sistemas que usan los diplomas coinciden en código, nombre, créditos y requisito; Seguridad, Salud Ocupacional y Bienestar Organizacional (520074) no está en ningún diploma, y los tres cursos de Comunicaciones del diploma de Videojuegos no salen en esa lista."
+      }
+    ],
+    "sourceLimits": "Las tareas de los 21 electivos de Ingeniería de Sistemas se cotejaron con «Sumillas 2025-1» y las de Desarrollo de Videojuegos con sus sílabos 2026-2 de cactus. La sumilla de Arquitectura de Tecnologías de la Información (650083) es idéntica a la de Arquitectura Empresarial en ese PDF, así que su tarea no se pudo cotejar.",
+    "diplomaRules": [
+      "Tener el grado de bachiller.",
+      "Haber aprobado todas las asignaturas del diploma, como máximo por segunda vez.",
+      "Tener un promedio ponderado de 14,00 o más en las notas aprobatorias de las asignaturas del diploma."
+    ],
+    "diplomaNotes": [
+      "Desarrollo de Videojuegos suma 23 créditos porque Diseño de Videojuegos vale 5; los otros tres diplomas suman 21.",
+      "Storytelling, Diseño de Videojuegos y Narrativa Gráfica son de la carrera de Comunicaciones.",
+      "El PDF de diplomas lista Diseño de Videojuegos como 550043, pero sus sílabos de 2025-1 a 2026-2 traen el código 550090 y en cactus el 550043 es Taller de Prototipado de Videojuegos. El dueño decidió usar 550090 el 2026-09-25. El requisito del diploma es Storytelling y el del sílabo es Gamificación; el test conserva el del diploma.",
+      "Programación Móvil, Proyecto de Desarrollo de Software e Interacción Humano Computadora están en Software y en Videojuegos. Arquitectura de Tecnologías de la Información está en TI y en Sistemas de Información. Por eso ningún duelo usa un electivo compartido contra la especialidad con la que lo comparte."
+    ],
+    "illustrationGuidelines": "Ilustración plana, sin texto legible, sin logos ni marcas reales y sin personas reconocibles. El color de acento es el de la especialidad solo después de revelar el resultado; durante el test las dos tarjetas usan el mismo estilo neutro para no delatar a qué especialidad pertenecen.",
+    "writingRules": [
+      "Tareas de 6 a 14 palabras, en infinitivo, con un escenario que se pueda imaginar.",
+      "Sin jerga difícil, sin dos puntos ni guiones largos.",
+      "Trato de tú y lenguaje neutro en género.",
+      "Ulises no nombra especialidades ni felicita elecciones durante el test."
+    ]
+  },
+  "specialties": [
+    {
+      "key": "sw",
+      "name": "Ingeniería de Software",
+      "diplomaName": "Diploma de Especialidad en Ingeniería de Software",
+      "color": {
+        "light": "#1E3A8A",
+        "dark": "#A5C0F7"
+      },
+      "icon": {
+        "lucide": "code-xml",
+        "flutter": "LucideIcons.codeXml"
+      },
+      "tagline": "Diseña y programa aplicaciones que funcionan bien y se pueden seguir mejorando.",
+      "totalCredits": 21,
+      "electives": [
+        {
+          "code": "650070",
+          "name": "Paradigmas de Programación",
+          "shortName": "Paradigmas de Programación",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650072",
+          "name": "Análisis y Diseño de Algoritmos",
+          "shortName": "Análisis y Diseño de Algoritmos",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Estructuras de Datos II",
+          "sharedWith": []
+        },
+        {
+          "code": "650075",
+          "name": "Deep Learning",
+          "shortName": "Deep Learning",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Aprendizaje de Máquina / Machine Learning",
+          "sharedWith": []
+        },
+        {
+          "code": "650030",
+          "name": "Programación Móvil",
+          "shortName": "Programación Móvil",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Programación Web",
+          "sharedWith": [
+            "vj"
+          ]
+        },
+        {
+          "code": "650079",
+          "name": "Proyecto de Desarrollo de Software",
+          "shortName": "Proyecto de Desarrollo de Software",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Ingeniería de Software II",
+          "sharedWith": [
+            "vj"
+          ]
+        },
+        {
+          "code": "650085",
+          "name": "Arquitectura de Software",
+          "shortName": "Arquitectura de Software",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650011",
+          "name": "Interacción Humano Computadora / Human Computer Interaction",
+          "shortName": "Interacción Humano Computadora",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": [
+            "vj"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "ti",
+      "name": "Tecnologías de la Información",
+      "diplomaName": "Diploma de Especialidad en Tecnologías de la Información",
+      "color": {
+        "light": "#0F7A45",
+        "dark": "#7EE8BE"
+      },
+      "icon": {
+        "lucide": "server-cog",
+        "flutter": "LucideIcons.serverCog"
+      },
+      "tagline": "Mantiene funcionando y protegidas las redes, los servidores y la nube de una organización.",
+      "totalCredits": 21,
+      "electives": [
+        {
+          "code": "650012",
+          "name": "Internet de las Cosas / Internet of Things",
+          "shortName": "Internet de las Cosas",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650073",
+          "name": "Redes Avanzadas",
+          "shortName": "Redes Avanzadas",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Redes de Computadoras",
+          "sharedWith": []
+        },
+        {
+          "code": "650077",
+          "name": "Sistemas Distribuidos",
+          "shortName": "Sistemas Distribuidos",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650076",
+          "name": "Tópicos Avanzados en Ciberseguridad",
+          "shortName": "Tópicos Avanzados en Ciberseguridad",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Ciberseguridad / Cybersecurity",
+          "sharedWith": []
+        },
+        {
+          "code": "650025",
+          "name": "Computación en la Nube",
+          "shortName": "Computación en la Nube",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650083",
+          "name": "Arquitectura de Tecnologías de la Información",
+          "shortName": "Arquitectura de TI",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": [
+            "si"
+          ]
+        },
+        {
+          "code": "650084",
+          "name": "DevOps",
+          "shortName": "DevOps",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        }
+      ]
+    },
+    {
+      "key": "si",
+      "name": "Sistemas de Información",
+      "diplomaName": "Diploma de Especialidad en Sistemas de Información",
+      "color": {
+        "light": "#9333EA",
+        "dark": "#B98AF8"
+      },
+      "icon": {
+        "lucide": "chart-column-big",
+        "flutter": "LucideIcons.chartColumnBig"
+      },
+      "tagline": "Usa los datos de una organización para decidir mejor y cambiar la forma en que trabaja.",
+      "totalCredits": 21,
+      "electives": [
+        {
+          "code": "650071",
+          "name": "Gestión de Base de Datos",
+          "shortName": "Gestión de Base de Datos",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650074",
+          "name": "Ingeniería del Conocimiento",
+          "shortName": "Ingeniería del Conocimiento",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650044",
+          "name": "Analítica con Big Data",
+          "shortName": "Analítica con Big Data",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Sistemas de Inteligencia Empresarial",
+          "sharedWith": []
+        },
+        {
+          "code": "650078",
+          "name": "Analítica de Negocios",
+          "shortName": "Analítica de Negocios",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650080",
+          "name": "Innovación Digital",
+          "shortName": "Innovación Digital",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650083",
+          "name": "Arquitectura de Tecnologías de la Información",
+          "shortName": "Arquitectura de TI",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": [
+            "ti"
+          ]
+        },
+        {
+          "code": "650082",
+          "name": "Arquitectura Empresarial",
+          "shortName": "Arquitectura Empresarial",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Planeamiento Estratégico",
+          "sharedWith": []
+        }
+      ]
+    },
+    {
+      "key": "vj",
+      "name": "Desarrollo de Videojuegos",
+      "diplomaName": "Diploma de Especialidad en Desarrollo de Videojuegos",
+      "color": {
+        "light": "#76164A",
+        "dark": "#EC7FB3"
+      },
+      "icon": {
+        "lucide": "gamepad-2",
+        "flutter": "LucideIcons.gamepad2"
+      },
+      "tagline": "Crea videojuegos, desde la historia y las reglas hasta la programación y las pruebas con jugadores.",
+      "totalCredits": 23,
+      "electives": [
+        {
+          "code": "550001",
+          "name": "Storytelling",
+          "shortName": "Storytelling",
+          "credits": 3,
+          "prerequisite": "Sin requisito",
+          "sharedWith": []
+        },
+        {
+          "code": "550090",
+          "name": "Diseño de Videojuegos",
+          "shortName": "Diseño de Videojuegos",
+          "credits": 5,
+          "prerequisite": "Aprobado Storytelling",
+          "sharedWith": []
+        },
+        {
+          "code": "550029",
+          "name": "Narrativa Gráfica",
+          "shortName": "Narrativa Gráfica",
+          "credits": 3,
+          "prerequisite": "Aprobado Storytelling",
+          "sharedWith": []
+        },
+        {
+          "code": "650030",
+          "name": "Programación Móvil",
+          "shortName": "Programación Móvil",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Programación Web",
+          "sharedWith": [
+            "sw"
+          ]
+        },
+        {
+          "code": "650079",
+          "name": "Proyecto de Desarrollo de Software",
+          "shortName": "Proyecto de Desarrollo de Software",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo y aprobado Ingeniería de Software II",
+          "sharedWith": [
+            "sw"
+          ]
+        },
+        {
+          "code": "650081",
+          "name": "Proyecto de Videojuegos",
+          "shortName": "Proyecto de Videojuegos",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": []
+        },
+        {
+          "code": "650011",
+          "name": "Interacción Humano Computadora / Human Computer Interaction",
+          "shortName": "Interacción Humano Computadora",
+          "credits": 3,
+          "prerequisite": "Haber culminado el V ciclo",
+          "sharedWith": [
+            "sw"
+          ]
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "n": 1,
+      "id": "q01",
+      "type": "duel",
+      "block": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "sw",
+        "si"
+      ],
+      "top": {
+        "specialty": "sw",
+        "text": "Programar la app con la que una bodega recibe pedidos del barrio",
+        "summary": "programar la app de pedidos de una bodega",
+        "illustration": "Celular con la app de una bodega abierta, un carrito con arroz y gaseosa, y la bodega de esquina al fondo.",
+        "icon": {
+          "lucide": "shopping-cart",
+          "flutter": "LucideIcons.shoppingCart"
+        },
+        "electives": [
+          "650030"
+        ],
+        "wordCount": 12
+      },
+      "bottom": {
+        "specialty": "si",
+        "text": "Revisar las ventas de una bodega para decidir qué productos conviene reponer",
+        "summary": "decidir con las ventas qué reponer en una bodega",
+        "illustration": "Estante de bodega con un gráfico de barras encima y una flecha que marca el producto que más sale.",
+        "icon": {
+          "lucide": "shelving-unit",
+          "flutter": "LucideIcons.shelvingUnit"
+        },
+        "electives": [
+          "650078"
+        ],
+        "wordCount": 12
+      },
+      "reaction": "Arrancamos por el barrio. Sigue eligiendo lo que harías con ganas, no lo que suena más serio."
+    },
+    {
+      "n": 2,
+      "id": "q02",
+      "type": "duel",
+      "block": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "ti",
+        "vj"
+      ],
+      "top": {
+        "specialty": "ti",
+        "text": "Conectar sensores que avisen al celular si la refrigeradora de una botica se calienta",
+        "summary": "vigilar con sensores la refrigeradora de una botica",
+        "illustration": "Refrigeradora de botica con un sensor pequeño pegado a la puerta y un celular que muestra una alerta de temperatura.",
+        "icon": {
+          "lucide": "refrigerator",
+          "flutter": "LucideIcons.refrigerator"
+        },
+        "electives": [
+          "650012"
+        ],
+        "wordCount": 14
+      },
+      "bottom": {
+        "specialty": "vj",
+        "text": "Diseñar los niveles de un juego para que se pongan difíciles poco a poco",
+        "summary": "diseñar niveles que se ponen difíciles poco a poco",
+        "illustration": "Cinco niveles de un juego dibujados como escalones, con obstáculos que crecen en cada uno.",
+        "icon": {
+          "lucide": "mountain",
+          "flutter": "LucideIcons.mountain"
+        },
+        "electives": [
+          "650081",
+          "550090"
+        ],
+        "wordCount": 14
+      },
+      "reaction": "Anotado. Yo me quedo mirando cualquier cosa que brille, cosas de cuervo."
+    },
+    {
+      "n": 3,
+      "id": "q03",
+      "type": "duel",
+      "block": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "si",
+        "vj"
+      ],
+      "top": {
+        "specialty": "vj",
+        "text": "Observar a jugadores probando un juego y anotar dónde se traban o aburren",
+        "summary": "observar a jugadores probando un juego",
+        "illustration": "Dos jóvenes jugando con un mando mientras una persona detrás toma notas.",
+        "icon": {
+          "lucide": "eye",
+          "flutter": "LucideIcons.eye"
+        },
+        "electives": [
+          "550090",
+          "650011"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "si",
+        "text": "Planear cómo un mercado de abastos vende por internet sin perder a sus caseros",
+        "summary": "planear la venta por internet de un mercado",
+        "illustration": "Puesto de mercado con su casera atendiendo y, al lado, un celular con la tienda del mercado.",
+        "icon": {
+          "lucide": "store",
+          "flutter": "LucideIcons.store"
+        },
+        "electives": [
+          "650080"
+        ],
+        "wordCount": 14
+      },
+      "reaction": "Ya. Aquí no hay respuestas buenas ni malas, solo las tuyas."
+    },
+    {
+      "n": 4,
+      "id": "q04",
+      "type": "scale",
+      "block": 1,
+      "prompt": "¿Cuánto te gustaría hacer esto?",
+      "specialty": "ti",
+      "task": {
+        "specialty": "ti",
+        "text": "Pasar a la nube los sistemas de diez pollerías sin cortar la atención",
+        "summary": "pasar a la nube los sistemas de diez pollerías",
+        "illustration": "Local de pollería atendiendo normal mientras sus datos suben a una nube dibujada sobre el techo.",
+        "icon": {
+          "lucide": "drumstick",
+          "flutter": "LucideIcons.drumstick"
+        },
+        "electives": [
+          "650025"
+        ],
+        "wordCount": 13
+      },
+      "blockClose": "Primer tramo listo. Van 4 de 14."
+    },
+    {
+      "n": 5,
+      "id": "q05",
+      "type": "duel",
+      "block": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "sw",
+        "vj"
+      ],
+      "top": {
+        "specialty": "vj",
+        "text": "Programar cómo salta y choca un personaje en un juego de plataformas",
+        "summary": "programar cómo salta un personaje de juego",
+        "illustration": "Personaje de juego en pleno salto entre dos plataformas, con la curva del salto marcada.",
+        "icon": {
+          "lucide": "rabbit",
+          "flutter": "LucideIcons.rabbit"
+        },
+        "electives": [
+          "650081"
+        ],
+        "wordCount": 12
+      },
+      "bottom": {
+        "specialty": "sw",
+        "text": "Entrenar un programa que reconozca en fotos si una palta está madura",
+        "summary": "entrenar un programa que reconoce paltas maduras",
+        "illustration": "Celular que fotografía tres paltas y marca con un check la que está lista.",
+        "icon": {
+          "lucide": "camera",
+          "flutter": "LucideIcons.camera"
+        },
+        "electives": [
+          "650075"
+        ],
+        "wordCount": 12
+      },
+      "reaction": "Esa estaba reñida. Sigamos."
+    },
+    {
+      "n": 6,
+      "id": "q06",
+      "type": "duel",
+      "block": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "ti",
+        "si"
+      ],
+      "top": {
+        "specialty": "si",
+        "text": "Organizar los datos de una clínica para encontrar cualquier historia clínica en segundos",
+        "summary": "ordenar los datos de una clínica",
+        "illustration": "Recepción de clínica con una pantalla que encuentra una ficha entre miles de carpetas ordenadas.",
+        "icon": {
+          "lucide": "folder-search",
+          "flutter": "LucideIcons.folderSearch"
+        },
+        "electives": [
+          "650071"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "ti",
+        "text": "Diseñar el wifi de un colegio para que todas las aulas tengan buena señal",
+        "summary": "diseñar el wifi de un colegio",
+        "illustration": "Plano de un colegio con antenas de wifi y ondas que cubren todas las aulas.",
+        "icon": {
+          "lucide": "school",
+          "flutter": "LucideIcons.school"
+        },
+        "electives": [
+          "650073"
+        ],
+        "wordCount": 14
+      },
+      "reaction": "¡Cra! Ya voy entendiendo por dónde vuelas."
+    },
+    {
+      "n": 7,
+      "id": "q07",
+      "type": "duel",
+      "block": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "sw",
+        "ti"
+      ],
+      "top": {
+        "specialty": "sw",
+        "text": "Hacer el plano de una app grande antes de que el equipo la programe",
+        "summary": "hacer el plano de una app grande",
+        "illustration": "Plano azul de arquitecto con las piezas de una app unidas por flechas.",
+        "icon": {
+          "lucide": "drafting-compass",
+          "flutter": "LucideIcons.draftingCompass"
+        },
+        "electives": [
+          "650085"
+        ],
+        "wordCount": 14
+      },
+      "bottom": {
+        "specialty": "ti",
+        "text": "Automatizar que cada versión nueva de una app se pruebe y se publique sola",
+        "summary": "automatizar las pruebas y la publicación de una app",
+        "illustration": "Cinta transportadora por la que pasan versiones de una app, cada una con un check de prueba antes de salir.",
+        "icon": {
+          "lucide": "rocket",
+          "flutter": "LucideIcons.rocket"
+        },
+        "electives": [
+          "650084"
+        ],
+        "wordCount": 14
+      },
+      "reaction": "Lo apunto en mi libreta."
+    },
+    {
+      "n": 8,
+      "id": "q08",
+      "type": "scale",
+      "block": 2,
+      "prompt": "¿Cuánto te gustaría hacer esto?",
+      "specialty": "vj",
+      "task": {
+        "specialty": "vj",
+        "text": "Programar un juego sencillo para celular que se juegue con una mano",
+        "summary": "programar un juego sencillo para celular",
+        "illustration": "Mano que sostiene un celular y juega con el pulgar un juego de colores simples.",
+        "icon": {
+          "lucide": "smartphone",
+          "flutter": "LucideIcons.smartphone"
+        },
+        "electives": [
+          "650081",
+          "650030"
+        ],
+        "wordCount": 12
+      },
+      "blockClose": "Ya pasaste la mitad. Recuerda que mido tus ganas, no tus notas."
+    },
+    {
+      "n": 9,
+      "id": "q09",
+      "type": "duel",
+      "block": 3,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "sw",
+        "si"
+      ],
+      "top": {
+        "specialty": "si",
+        "text": "Convertir lo que sabe un asesor de créditos en reglas para evaluar préstamos",
+        "summary": "convertir lo que sabe un asesor de créditos en reglas",
+        "illustration": "Asesor de créditos que conversa mientras sus ideas pasan a una lista de reglas con flechas de sí y no.",
+        "icon": {
+          "lucide": "hand-coins",
+          "flutter": "LucideIcons.handCoins"
+        },
+        "electives": [
+          "650074"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "sw",
+        "text": "Probar con usuarios si la app de un banco se entiende a la primera",
+        "summary": "probar con usuarios si una app se entiende",
+        "illustration": "Persona que usa la app de un banco mientras alguien a su lado anota en un portapapeles.",
+        "icon": {
+          "lucide": "clipboard-pen-line",
+          "flutter": "LucideIcons.clipboardPenLine"
+        },
+        "electives": [
+          "650011"
+        ],
+        "wordCount": 14
+      },
+      "reaction": "Tranqui, nada de esto te amarra a una especialidad."
+    },
+    {
+      "n": 10,
+      "id": "q10",
+      "type": "duel",
+      "block": 3,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "ti",
+        "si"
+      ],
+      "top": {
+        "specialty": "ti",
+        "text": "Evitar que la web de entradas de un concierto se caiga cuando todos compran",
+        "summary": "evitar que la web de un concierto se caiga",
+        "illustration": "Fila enorme de personas frente a una web de entradas, sostenida por varios servidores que se reparten la carga.",
+        "icon": {
+          "lucide": "ticket",
+          "flutter": "LucideIcons.ticket"
+        },
+        "electives": [
+          "650077"
+        ],
+        "wordCount": 14
+      },
+      "bottom": {
+        "specialty": "si",
+        "text": "Analizar millones de viajes del Metropolitano para saber a qué hora se llena",
+        "summary": "analizar millones de viajes en bus",
+        "illustration": "Bus articulado sin logos junto a un gráfico de horas con un pico marcado en la hora punta.",
+        "icon": {
+          "lucide": "clock-arrow-up",
+          "flutter": "LucideIcons.clockArrowUp"
+        },
+        "electives": [
+          "650044"
+        ],
+        "wordCount": 13
+      },
+      "reaction": "Vas volando. Quedan pocas."
+    },
+    {
+      "n": 11,
+      "id": "q11",
+      "type": "duel",
+      "block": 3,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "sw",
+        "vj"
+      ],
+      "top": {
+        "specialty": "sw",
+        "text": "Programar el cálculo de la ruta más corta para un repartidor de delivery",
+        "summary": "calcular la ruta más corta de un repartidor",
+        "illustration": "Mapa de un distrito con cinco puntos de entrega unidos por una sola línea y una moto de delivery.",
+        "icon": {
+          "lucide": "route",
+          "flutter": "LucideIcons.route"
+        },
+        "electives": [
+          "650072"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "vj",
+        "text": "Escribir la historia y los diálogos de los personajes de un juego",
+        "summary": "escribir la historia y los diálogos de un juego",
+        "illustration": "Cuaderno abierto con globos de diálogo y dos personajes de juego que conversan.",
+        "icon": {
+          "lucide": "messages-square",
+          "flutter": "LucideIcons.messagesSquare"
+        },
+        "electives": [
+          "550001"
+        ],
+        "wordCount": 12
+      },
+      "reaction": "Una más al bolsillo."
+    },
+    {
+      "n": 12,
+      "id": "q12",
+      "type": "scale",
+      "block": 3,
+      "prompt": "¿Cuánto te gustaría hacer esto?",
+      "specialty": "si",
+      "task": {
+        "specialty": "si",
+        "text": "Descubrir con datos qué clientes de una tienda están por dejar de comprar",
+        "summary": "descubrir qué clientes están por dejar de comprar",
+        "illustration": "Tarjetas de clientes en una pantalla, algunas marcadas en amarillo, y un gráfico que baja.",
+        "icon": {
+          "lucide": "user-minus",
+          "flutter": "LucideIcons.userMinus"
+        },
+        "electives": [
+          "650078"
+        ],
+        "wordCount": 13
+      },
+      "blockClose": "Te quedan dos. Ya casi te cuento lo que vi."
+    },
+    {
+      "n": 13,
+      "id": "q13",
+      "type": "duel",
+      "block": 4,
+      "prompt": "¿Cuál harías con más ganas?",
+      "pair": [
+        "ti",
+        "vj"
+      ],
+      "top": {
+        "specialty": "vj",
+        "text": "Dibujar en viñetas cómo avanza la historia de un juego antes de programarlo",
+        "summary": "dibujar en viñetas la historia de un juego",
+        "illustration": "Hoja con seis viñetas dibujadas a lápiz que cuentan una escena de juego.",
+        "icon": {
+          "lucide": "pencil",
+          "flutter": "LucideIcons.pencil"
+        },
+        "electives": [
+          "550029"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "ti",
+        "text": "Averiguar por dónde se coló un atacante en el sistema de una municipalidad",
+        "summary": "averiguar por dónde se coló un atacante",
+        "illustration": "Muro digital de ladrillos con una grieta ya abierta y una lupa que sigue las huellas que entran por ella.",
+        "icon": {
+          "lucide": "footprints",
+          "flutter": "LucideIcons.footprints"
+        },
+        "electives": [
+          "650076"
+        ],
+        "wordCount": 13
+      },
+      "reaction": "Ahora sí viene la recta final."
+    },
+    {
+      "n": 14,
+      "id": "q14",
+      "type": "scale",
+      "block": 4,
+      "prompt": "¿Cuánto te gustaría hacer esto?",
+      "specialty": "sw",
+      "task": {
+        "specialty": "sw",
+        "text": "Programar una app que avise cuándo pasa el bus por tu paradero",
+        "summary": "programar una app que avisa cuándo pasa el bus",
+        "illustration": "Paradero con una persona que mira su celular, donde una app muestra el bus a dos cuadras.",
+        "icon": {
+          "lucide": "bus",
+          "flutter": "LucideIcons.bus"
+        },
+        "electives": [
+          "650030"
+        ],
+        "wordCount": 12
+      },
+      "blockClose": "¡Listo, terminaste las 14!"
+    }
+  ],
+  "tiebreakers": [
+    {
+      "id": "tb-sw-ti-1",
+      "pair": [
+        "sw",
+        "ti"
+      ],
+      "order": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "sw",
+        "text": "Programar el sistema de citas de una clínica para que no se crucen horarios",
+        "summary": "programar el sistema de citas de una clínica",
+        "illustration": "Agenda en pantalla con citas de colores que encajan sin chocar.",
+        "icon": {
+          "lucide": "calendar-clock",
+          "flutter": "LucideIcons.calendarClock"
+        },
+        "electives": [
+          "650079"
+        ],
+        "wordCount": 14
+      },
+      "bottom": {
+        "specialty": "ti",
+        "text": "Elegir los servidores y la red que necesita una clínica nueva",
+        "summary": "elegir los servidores y la red de una clínica",
+        "illustration": "Cuarto pequeño con un rack de servidores y cables que salen hacia los consultorios.",
+        "icon": {
+          "lucide": "hospital",
+          "flutter": "LucideIcons.hospital"
+        },
+        "electives": [
+          "650083"
+        ],
+        "wordCount": 11
+      }
+    },
+    {
+      "id": "tb-sw-ti-2",
+      "pair": [
+        "sw",
+        "ti"
+      ],
+      "order": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "ti",
+        "text": "Cuidar que nadie entre a las cuentas de un banco con claves robadas",
+        "summary": "proteger las cuentas de un banco contra claves robadas",
+        "illustration": "Candado grande sobre una tarjeta bancaria genérica y una clave tachada.",
+        "icon": {
+          "lucide": "key-round",
+          "flutter": "LucideIcons.keyRound"
+        },
+        "electives": [
+          "650076"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "sw",
+        "text": "Entrenar un programa que lea boletas escritas a mano y sume los montos",
+        "summary": "entrenar un programa que lee boletas escritas a mano",
+        "illustration": "Boleta escrita a mano junto a un celular que muestra el total ya sumado.",
+        "icon": {
+          "lucide": "receipt",
+          "flutter": "LucideIcons.receipt"
+        },
+        "electives": [
+          "650075"
+        ],
+        "wordCount": 13
+      }
+    },
+    {
+      "id": "tb-sw-si-1",
+      "pair": [
+        "sw",
+        "si"
+      ],
+      "order": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "sw",
+        "text": "Ordenar el código de una app vieja para que sea fácil de cambiar",
+        "summary": "ordenar el código de una app vieja",
+        "illustration": "Pantalla con líneas de código enredadas al lado de la misma pantalla con el código separado en bloques ordenados.",
+        "icon": {
+          "lucide": "blocks",
+          "flutter": "LucideIcons.blocks"
+        },
+        "electives": [
+          "650085",
+          "650070"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "si",
+        "text": "Revisar qué programas necesita cada área de una empresa para cumplir sus metas",
+        "summary": "revisar qué programas necesita cada área de una empresa",
+        "illustration": "Organigrama simple con un ícono de programa junto a cada área y una bandera de meta arriba.",
+        "icon": {
+          "lucide": "goal",
+          "flutter": "LucideIcons.goal"
+        },
+        "electives": [
+          "650082"
+        ],
+        "wordCount": 13
+      }
+    },
+    {
+      "id": "tb-sw-si-2",
+      "pair": [
+        "sw",
+        "si"
+      ],
+      "order": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "si",
+        "text": "Unir en una sola base de datos las ventas de todas las sedes",
+        "summary": "unir en una base de datos las ventas de todas las sedes",
+        "illustration": "Varias tiendas pequeñas con flechas que llegan a un solo cilindro de base de datos.",
+        "icon": {
+          "lucide": "database",
+          "flutter": "LucideIcons.database"
+        },
+        "electives": [
+          "650071"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "sw",
+        "text": "Diseñar una app que un adulto mayor pueda usar sin pedir ayuda",
+        "summary": "diseñar una app que un adulto mayor usa sin ayuda",
+        "illustration": "Señora mayor que usa sola un celular con botones grandes y claros.",
+        "icon": {
+          "lucide": "rocking-chair",
+          "flutter": "LucideIcons.rockingChair"
+        },
+        "electives": [
+          "650011"
+        ],
+        "wordCount": 12
+      }
+    },
+    {
+      "id": "tb-sw-vj-1",
+      "pair": [
+        "sw",
+        "vj"
+      ],
+      "order": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "sw",
+        "text": "Programar cómo se reparten las canchas de fulbito para que no se crucen reservas",
+        "summary": "programar el reparto de reservas de canchas de fulbito",
+        "illustration": "Cancha de fulbito vista desde arriba junto a un calendario con turnos que no se cruzan.",
+        "icon": {
+          "lucide": "land-plot",
+          "flutter": "LucideIcons.landPlot"
+        },
+        "electives": [
+          "650072"
+        ],
+        "wordCount": 14
+      },
+      "bottom": {
+        "specialty": "vj",
+        "text": "Crear las reglas de un juego de mesa y probarlas con amigos",
+        "summary": "crear las reglas de un juego de mesa",
+        "illustration": "Tablero de cartón con fichas, cartas y dados hechos a mano, y un grupo de amigos que juega alrededor.",
+        "icon": {
+          "lucide": "dices",
+          "flutter": "LucideIcons.dices"
+        },
+        "electives": [
+          "550090"
+        ],
+        "wordCount": 12
+      }
+    },
+    {
+      "id": "tb-sw-vj-2",
+      "pair": [
+        "sw",
+        "vj"
+      ],
+      "order": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "vj",
+        "text": "Programar la inteligencia de los enemigos para que persigan al jugador",
+        "summary": "programar cómo los enemigos persiguen al jugador",
+        "illustration": "Laberinto de juego con tres enemigos que siguen flechas hacia el personaje.",
+        "icon": {
+          "lucide": "ghost",
+          "flutter": "LucideIcons.ghost"
+        },
+        "electives": [
+          "650081"
+        ],
+        "wordCount": 11
+      },
+      "bottom": {
+        "specialty": "sw",
+        "text": "Entrenar un programa que recomiende canciones según lo que ya escuchaste",
+        "summary": "entrenar un programa que recomienda canciones",
+        "illustration": "Audífonos junto a una lista de canciones con una recomendación resaltada.",
+        "icon": {
+          "lucide": "headphones",
+          "flutter": "LucideIcons.headphones"
+        },
+        "electives": [
+          "650075"
+        ],
+        "wordCount": 11
+      }
+    },
+    {
+      "id": "tb-ti-si-1",
+      "pair": [
+        "ti",
+        "si"
+      ],
+      "order": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "ti",
+        "text": "Detectar a un intruso en la red de una cadena de boticas y echarlo",
+        "summary": "detectar a un intruso en la red de una cadena de boticas",
+        "illustration": "Botica con su red dibujada encima, una alerta sobre una silueta sin rostro y una puerta que se le cierra.",
+        "icon": {
+          "lucide": "siren",
+          "flutter": "LucideIcons.siren"
+        },
+        "electives": [
+          "650076"
+        ],
+        "wordCount": 14
+      },
+      "bottom": {
+        "specialty": "si",
+        "text": "Medir con datos si la promoción de una botica de verdad vendió más",
+        "summary": "medir si una promoción de verdad vendió más",
+        "illustration": "Cartel de oferta en una botica junto a dos barras, antes y después de la promoción.",
+        "icon": {
+          "lucide": "badge-percent",
+          "flutter": "LucideIcons.badgePercent"
+        },
+        "electives": [
+          "650078"
+        ],
+        "wordCount": 13
+      }
+    },
+    {
+      "id": "tb-ti-si-2",
+      "pair": [
+        "ti",
+        "si"
+      ],
+      "order": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "si",
+        "text": "Rediseñar los trámites de una municipalidad para que se hagan por internet sin colas",
+        "summary": "rediseñar los trámites de una municipalidad",
+        "illustration": "Ventanilla municipal con una fila que se acorta porque la gente hace el trámite desde su celular.",
+        "icon": {
+          "lucide": "stamp",
+          "flutter": "LucideIcons.stamp"
+        },
+        "electives": [
+          "650080"
+        ],
+        "wordCount": 14
+      },
+      "bottom": {
+        "specialty": "ti",
+        "text": "Hacer que los servidores de una universidad aguanten la matrícula sin caerse",
+        "summary": "hacer que los servidores aguanten la matrícula",
+        "illustration": "Reloj que marca la hora de la matrícula y varios servidores que resisten una ola de usuarios.",
+        "icon": {
+          "lucide": "graduation-cap",
+          "flutter": "LucideIcons.graduationCap"
+        },
+        "electives": [
+          "650077",
+          "650025"
+        ],
+        "wordCount": 12
+      }
+    },
+    {
+      "id": "tb-ti-vj-1",
+      "pair": [
+        "ti",
+        "vj"
+      ],
+      "order": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "ti",
+        "text": "Conectar las luces y cámaras de una casa para manejarlas desde el celular",
+        "summary": "conectar las luces y cámaras de una casa al celular",
+        "illustration": "Casa en corte con focos y una cámara unidos por líneas punteadas a un celular.",
+        "icon": {
+          "lucide": "house-wifi",
+          "flutter": "LucideIcons.houseWifi"
+        },
+        "electives": [
+          "650012"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "vj",
+        "text": "Inventar un personaje de juego con su historia, sus miedos y sus metas",
+        "summary": "inventar un personaje con su historia",
+        "illustration": "Ficha de personaje con su silueta, tres notas pegadas y una línea de tiempo corta.",
+        "icon": {
+          "lucide": "drama",
+          "flutter": "LucideIcons.drama"
+        },
+        "electives": [
+          "550001"
+        ],
+        "wordCount": 13
+      }
+    },
+    {
+      "id": "tb-ti-vj-2",
+      "pair": [
+        "ti",
+        "vj"
+      ],
+      "order": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "vj",
+        "text": "Diseñar un juego que enseñe a los niños a cuidar el agua",
+        "summary": "diseñar un juego que enseña a cuidar el agua",
+        "illustration": "Niña que juega en una tablet a cerrar caños que gotean dentro del juego.",
+        "icon": {
+          "lucide": "droplet",
+          "flutter": "LucideIcons.droplet"
+        },
+        "electives": [
+          "550090"
+        ],
+        "wordCount": 12
+      },
+      "bottom": {
+        "specialty": "ti",
+        "text": "Montar la red y el wifi de un evento para cinco mil personas",
+        "summary": "montar la red de un evento para cinco mil personas",
+        "illustration": "Explanada llena de gente con antenas de wifi en postes y ondas que la cubren.",
+        "icon": {
+          "lucide": "radio-tower",
+          "flutter": "LucideIcons.radioTower"
+        },
+        "electives": [
+          "650073"
+        ],
+        "wordCount": 13
+      }
+    },
+    {
+      "id": "tb-si-vj-1",
+      "pair": [
+        "si",
+        "vj"
+      ],
+      "order": 1,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "si",
+        "text": "Descubrir con datos qué platos se piden más en cada distrito de Lima",
+        "summary": "descubrir qué platos se piden más por distrito",
+        "illustration": "Mapa de Lima por distritos con un plato distinto dibujado sobre cada uno.",
+        "icon": {
+          "lucide": "soup",
+          "flutter": "LucideIcons.soup"
+        },
+        "electives": [
+          "650044"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "vj",
+        "text": "Diseñar las misiones de un juego ambientado en el Centro de Lima",
+        "summary": "diseñar misiones de un juego en el Centro de Lima",
+        "illustration": "Plaza con balcones de estilo colonial convertida en mapa de juego con marcadores de misión.",
+        "icon": {
+          "lucide": "map-pinned",
+          "flutter": "LucideIcons.mapPinned"
+        },
+        "electives": [
+          "550090"
+        ],
+        "wordCount": 12
+      }
+    },
+    {
+      "id": "tb-si-vj-2",
+      "pair": [
+        "si",
+        "vj"
+      ],
+      "order": 2,
+      "prompt": "¿Cuál harías con más ganas?",
+      "top": {
+        "specialty": "vj",
+        "text": "Escribir los finales distintos de un juego según lo que decida el jugador",
+        "summary": "escribir finales distintos según lo que decide el jugador",
+        "illustration": "Camino que se abre en tres ramas, cada una con un final dibujado distinto.",
+        "icon": {
+          "lucide": "split",
+          "flutter": "LucideIcons.split"
+        },
+        "electives": [
+          "550001"
+        ],
+        "wordCount": 13
+      },
+      "bottom": {
+        "specialty": "si",
+        "text": "Recopilar los trucos de los boticarios veteranos en un buscador para todo el equipo",
+        "summary": "recopilar los trucos de los boticarios veteranos",
+        "illustration": "Mostrador de botica donde un boticario mayor comparte consejos en burbujas que pasan a un buscador abierto en la tablet de dos colegas.",
+        "icon": {
+          "lucide": "pill-bottle",
+          "flutter": "LucideIcons.pillBottle"
+        },
+        "electives": [
+          "650074"
+        ],
+        "wordCount": 14
+      }
+    }
+  ],
+  "weights": {
+    "duel": {
+      "pick": 1,
+      "both": 0.5,
+      "none": 0,
+      "duelsPerSpecialty": 5,
+      "rule": "En cada duelo, la tarea elegida da 1 punto a su especialidad. «Me gustan las dos» da 0,5 a cada una. «Ninguna me llama» no suma a ninguna, pero el duelo cuenta como mostrado."
+    },
+    "scale": {
+      "options": [
+        {
+          "id": "nada",
+          "label": "Nada",
+          "value": 0
+        },
+        {
+          "id": "un_poco",
+          "label": "Un poco",
+          "value": 1
+        },
+        {
+          "id": "bastante",
+          "label": "Bastante",
+          "value": 2
+        },
+        {
+          "id": "me_encantaria",
+          "label": "Me encantaría",
+          "value": 3
+        }
+      ],
+      "max": 3,
+      "rule": "Cada especialidad tiene una sola escala. Nada = 0, Un poco = 1, Bastante = 2, Me encantaría = 3."
+    },
+    "affinity": {
+      "duelsWeight": 0.7,
+      "scaleWeight": 0.3,
+      "formula": "A = 0,7 · D + 0,3 · E",
+      "D": "D = 100 · puntos / duelos, donde duelos son los duelos mostrados de esa especialidad (5, o 6 o 7 con desempates).",
+      "E": "E = 100 · valor / 3",
+      "closedForm": "A = 35 · h / n + 10 · e, con h = medios puntos (2 por elección, 1 por «las dos»), n = duelos mostrados y e = valor de la escala. Con n = 5 queda A = 7 · h + 10 · e, siempre entero.",
+      "range": [
+        0,
+        100
+      ]
+    },
+    "tiebreak": {
+      "threshold": 10,
+      "maxDuels": 2,
+      "trigger": "Tras la pregunta 14 se ordenan las cuatro por afinidad. Si A(1.ª) − A(2.ª) ≤ 10, se muestra el desempate 1 del par formado por esas dos.",
+      "scoring": "Un duelo de desempate cuenta como cualquier duelo. Suma a los puntos y a los duelos mostrados de las dos especialidades del par, y no toca a las otras dos. Se recalcula A con la misma fórmula.",
+      "second": "Si después del desempate 1 la diferencia entre las dos del par sigue en 10 o menos, se muestra el desempate 2 del mismo par. No hay tercero.",
+      "bankOrder": "El par se nombra en el orden sw, ti, si, vj. El desempate 1 es el de order = 1 y el 2 el de order = 2; entre los dos alternan arriba y abajo.",
+      "finalTie": "Si al final las dos primeras tienen exactamente la misma afinidad, el resultado es empate y se muestran las dos.",
+      "edgeCase": "Si en el desempate eligen «Ninguna me llama», las dos del par bajan y una tercera podría pasarlas. El resultado se ordena igual por afinidad y no se abren más desempates."
+    },
+    "ranking": {
+      "sortKey": [
+        "A descendente",
+        "D descendente",
+        "valor de escala descendente",
+        "orden fijo sw, ti, si, vj"
+      ],
+      "sortKeyNote": "Los criterios 2 a 4 solo ordenan especialidades con la misma A, por ejemplo para elegir cuál entra al desempate o cuál se muestra segunda. El criterio 3 nunca llega a decidir, porque con la misma A y la misma D la escala también es igual. El orden fijo nunca decide al ganador, porque la igualdad exacta al final es empate.",
+      "display": "La afinidad se muestra redondeada a entero, con .5 hacia arriba. Todas las comparaciones usan el valor sin redondear.",
+      "precision": "Con un desempate, A puede dejar de ser entera (35 · h / 6); con dos vuelve a serlo (35 · h / 7 = 5 · h). Conviene comparar con fracciones o con una tolerancia de 1e-9."
+    },
+    "examples": [
+      {
+        "id": "ejemplo-1",
+        "title": "Ganadora clara, sin desempate",
+        "answers": {
+          "q01": "top",
+          "q02": "both",
+          "q03": "bottom",
+          "q04": "un_poco",
+          "q05": "bottom",
+          "q06": "top",
+          "q07": "top",
+          "q08": "un_poco",
+          "q09": "both",
+          "q10": "none",
+          "q11": "top",
+          "q12": "bastante",
+          "q13": "top",
+          "q14": "me_encantaria"
+        },
+        "tiebreakAnswers": [],
+        "trace": [
+          {
+            "stage": "tras la pregunta 14",
+            "affinity": {
+              "sw": "93",
+              "ti": "17",
+              "si": "55",
+              "vj": "31"
+            },
+            "duelPoints": {
+              "sw": "4,5/5",
+              "ti": "0,5/5",
+              "si": "2,5/5",
+              "vj": "1,5/5"
+            },
+            "scale": {
+              "sw": 3,
+              "ti": 1,
+              "si": 2,
+              "vj": 1
+            },
+            "ranking": [
+              "sw",
+              "si",
+              "vj",
+              "ti"
+            ]
+          }
+        ],
+        "result": {
+          "ranking": [
+            "sw",
+            "si",
+            "vj",
+            "ti"
+          ],
+          "affinity": {
+            "sw": "93",
+            "ti": "17",
+            "si": "55",
+            "vj": "31"
+          },
+          "display": {
+            "sw": 93,
+            "ti": 17,
+            "si": 55,
+            "vj": 31
+          },
+          "tie": false
+        },
+        "reasonTemplatesUsed": [
+          "strong",
+          "second",
+          "electives"
+        ],
+        "reasonText": "En los duelos, Ingeniería de Software sumó 4,5 de 5 puntos, con tareas como programar la app de pedidos de una bodega y entrenar un programa que reconoce paltas maduras. Y a la idea de programar una app que avisa cuándo pasa el bus le dijiste «Me encantaría». Todo apunta para el mismo lado. Tu segunda opción es Sistemas de Información, con 55 %. Si te interesa, mira electivos como «Programación Móvil» y «Deep Learning»."
+      },
+      {
+        "id": "ejemplo-2",
+        "title": "Diferencia de 10 puntos exactos, dos desempates",
+        "answers": {
+          "q01": "bottom",
+          "q02": "bottom",
+          "q03": "both",
+          "q04": "nada",
+          "q05": "top",
+          "q06": "top",
+          "q07": "top",
+          "q08": "bastante",
+          "q09": "top",
+          "q10": "top",
+          "q11": "bottom",
+          "q12": "me_encantaria",
+          "q13": "bottom",
+          "q14": "un_poco"
+        },
+        "tiebreakAnswers": [
+          "bottom",
+          "top"
+        ],
+        "trace": [
+          {
+            "stage": "tras la pregunta 14",
+            "affinity": {
+              "sw": "24",
+              "ti": "28",
+              "si": "79",
+              "vj": "69"
+            },
+            "duelPoints": {
+              "sw": "1/5",
+              "ti": "2/5",
+              "si": "3,5/5",
+              "vj": "3,5/5"
+            },
+            "scale": {
+              "sw": 1,
+              "ti": 0,
+              "si": 3,
+              "vj": 2
+            },
+            "ranking": [
+              "si",
+              "vj",
+              "ti",
+              "sw"
+            ]
+          },
+          {
+            "stage": "desempate 1 (tb-si-vj-1), respuesta bottom",
+            "affinity": {
+              "si": "70,83",
+              "vj": "72,5"
+            },
+            "duelPoints": {
+              "si": "3,5/6",
+              "vj": "4,5/6"
+            },
+            "gap": "1,67"
+          },
+          {
+            "stage": "desempate 2 (tb-si-vj-2), respuesta top",
+            "affinity": {
+              "si": "65",
+              "vj": "75"
+            },
+            "duelPoints": {
+              "si": "3,5/7",
+              "vj": "5,5/7"
+            },
+            "gap": "10"
+          }
+        ],
+        "result": {
+          "ranking": [
+            "vj",
+            "si",
+            "ti",
+            "sw"
+          ],
+          "affinity": {
+            "sw": "24",
+            "ti": "28",
+            "si": "65",
+            "vj": "75"
+          },
+          "display": {
+            "sw": 24,
+            "ti": 28,
+            "si": 65,
+            "vj": 75
+          },
+          "tie": false
+        },
+        "reasonTemplatesUsed": [
+          "general",
+          "tiebreakPicked",
+          "second",
+          "electives"
+        ],
+        "reasonText": "Desarrollo de Videojuegos sumó 5,5 de 7 puntos en los duelos, con tareas como diseñar niveles que se ponen difíciles poco a poco y programar cómo salta un personaje de juego. A la idea de programar un juego sencillo para celular le dijiste «Bastante». Con Sistemas de Información el resultado estaba muy parejo, y en el desempate te quedaste con escribir finales distintos según lo que decide el jugador. Tu segunda opción es Sistemas de Información, con 65 %. Si te interesa, mira electivos como «Proyecto de Videojuegos»."
+      },
+      {
+        "id": "ejemplo-3",
+        "title": "Un desempate basta",
+        "answers": {
+          "q01": "top",
+          "q02": "top",
+          "q03": "none",
+          "q04": "me_encantaria",
+          "q05": "bottom",
+          "q06": "top",
+          "q07": "bottom",
+          "q08": "un_poco",
+          "q09": "both",
+          "q10": "top",
+          "q11": "top",
+          "q12": "nada",
+          "q13": "top",
+          "q14": "bastante"
+        },
+        "tiebreakAnswers": [
+          "bottom"
+        ],
+        "trace": [
+          {
+            "stage": "tras la pregunta 14",
+            "affinity": {
+              "sw": "69",
+              "ti": "72",
+              "si": "21",
+              "vj": "24"
+            },
+            "duelPoints": {
+              "sw": "3,5/5",
+              "ti": "3/5",
+              "si": "1,5/5",
+              "vj": "1/5"
+            },
+            "scale": {
+              "sw": 2,
+              "ti": 3,
+              "si": 0,
+              "vj": 1
+            },
+            "ranking": [
+              "ti",
+              "sw",
+              "vj",
+              "si"
+            ]
+          },
+          {
+            "stage": "desempate 1 (tb-sw-ti-1), respuesta bottom",
+            "affinity": {
+              "sw": "60,83",
+              "ti": "76,67"
+            },
+            "duelPoints": {
+              "sw": "3,5/6",
+              "ti": "4/6"
+            },
+            "gap": "15,83"
+          }
+        ],
+        "result": {
+          "ranking": [
+            "ti",
+            "sw",
+            "vj",
+            "si"
+          ],
+          "affinity": {
+            "sw": "60,83",
+            "ti": "76,67",
+            "si": "21",
+            "vj": "24"
+          },
+          "display": {
+            "sw": 61,
+            "ti": 77,
+            "si": 21,
+            "vj": 24
+          },
+          "tie": false
+        },
+        "reasonTemplatesUsed": [
+          "general",
+          "tiebreakPicked",
+          "second",
+          "electives"
+        ],
+        "reasonText": "Tecnologías de la Información sumó 4 de 6 puntos en los duelos, con tareas como vigilar con sensores la refrigeradora de una botica y automatizar las pruebas y la publicación de una app. A la idea de pasar a la nube los sistemas de diez pollerías le dijiste «Me encantaría». Con Ingeniería de Software el resultado estaba muy parejo, y en el desempate te quedaste con elegir los servidores y la red de una clínica. Tu segunda opción es Ingeniería de Software, con 61 %. Si te interesa, mira electivos como «Internet de las Cosas» y «DevOps»."
+      },
+      {
+        "id": "ejemplo-4",
+        "title": "Casi todo «Ninguna me llama», con dos desempates",
+        "answers": {
+          "q01": "none",
+          "q02": "none",
+          "q03": "none",
+          "q04": "un_poco",
+          "q05": "none",
+          "q06": "none",
+          "q07": "bottom",
+          "q08": "nada",
+          "q09": "none",
+          "q10": "none",
+          "q11": "both",
+          "q12": "nada",
+          "q13": "none",
+          "q14": "un_poco"
+        },
+        "tiebreakAnswers": [
+          "none",
+          "none"
+        ],
+        "trace": [
+          {
+            "stage": "tras la pregunta 14",
+            "affinity": {
+              "sw": "17",
+              "ti": "24",
+              "si": "0",
+              "vj": "7"
+            },
+            "duelPoints": {
+              "sw": "0,5/5",
+              "ti": "1/5",
+              "si": "0/5",
+              "vj": "0,5/5"
+            },
+            "scale": {
+              "sw": 1,
+              "ti": 1,
+              "si": 0,
+              "vj": 0
+            },
+            "ranking": [
+              "ti",
+              "sw",
+              "vj",
+              "si"
+            ]
+          },
+          {
+            "stage": "desempate 1 (tb-sw-ti-1), respuesta none",
+            "affinity": {
+              "sw": "15,83",
+              "ti": "21,67"
+            },
+            "duelPoints": {
+              "sw": "0,5/6",
+              "ti": "1/6"
+            },
+            "gap": "5,83"
+          },
+          {
+            "stage": "desempate 2 (tb-sw-ti-2), respuesta none",
+            "affinity": {
+              "sw": "15",
+              "ti": "20"
+            },
+            "duelPoints": {
+              "sw": "0,5/7",
+              "ti": "1/7"
+            },
+            "gap": "5"
+          }
+        ],
+        "result": {
+          "ranking": [
+            "ti",
+            "sw",
+            "vj",
+            "si"
+          ],
+          "affinity": {
+            "sw": "15",
+            "ti": "20",
+            "si": "0",
+            "vj": "7"
+          },
+          "display": {
+            "sw": 15,
+            "ti": 20,
+            "si": 0,
+            "vj": 7
+          },
+          "tie": false
+        },
+        "reasonTemplatesUsed": [
+          "low",
+          "tiebreakNoPick",
+          "electives"
+        ],
+        "reasonText": "Ninguna especialidad te llamó con fuerza, y eso también es información. Tecnologías de la Información quedó arriba con 20 %, así que es un buen punto de partida para mirar cursos sin apuro. Con Ingeniería de Software el resultado estaba muy parejo, por eso vale la pena mirar las dos. Si te interesa, mira electivos como «DevOps»."
+      },
+      {
+        "id": "ejemplo-5",
+        "title": "Duelos mejor que la escala",
+        "answers": {
+          "q01": "top",
+          "q02": "bottom",
+          "q03": "top",
+          "q04": "nada",
+          "q05": "top",
+          "q06": "top",
+          "q07": "none",
+          "q08": "un_poco",
+          "q09": "none",
+          "q10": "none",
+          "q11": "top",
+          "q12": "bastante",
+          "q13": "top",
+          "q14": "bastante"
+        },
+        "tiebreakAnswers": [],
+        "trace": [
+          {
+            "stage": "tras la pregunta 14",
+            "affinity": {
+              "sw": "48",
+              "ti": "0",
+              "si": "34",
+              "vj": "66"
+            },
+            "duelPoints": {
+              "sw": "2/5",
+              "ti": "0/5",
+              "si": "1/5",
+              "vj": "4/5"
+            },
+            "scale": {
+              "sw": 2,
+              "ti": 0,
+              "si": 2,
+              "vj": 1
+            },
+            "ranking": [
+              "vj",
+              "sw",
+              "si",
+              "ti"
+            ]
+          }
+        ],
+        "result": {
+          "ranking": [
+            "vj",
+            "sw",
+            "si",
+            "ti"
+          ],
+          "affinity": {
+            "sw": "48",
+            "ti": "0",
+            "si": "34",
+            "vj": "66"
+          },
+          "display": {
+            "sw": 48,
+            "ti": 0,
+            "si": 34,
+            "vj": 66
+          },
+          "tie": false
+        },
+        "reasonTemplatesUsed": [
+          "duelsOverScale",
+          "electives"
+        ],
+        "reasonText": "En los duelos, Desarrollo de Videojuegos sumó 4 de 5 puntos, con tareas como diseñar niveles que se ponen difíciles poco a poco y observar a jugadores probando un juego, pero a la idea de programar un juego sencillo para celular le dijiste «Un poco». Antes de decidir, vale la pena revisar sus cursos. Si te interesa, mira electivos como «Proyecto de Videojuegos» y «Diseño de Videojuegos»."
+      },
+      {
+        "id": "ejemplo-6",
+        "title": "La escala pesa más que los duelos",
+        "answers": {
+          "q01": "top",
+          "q02": "top",
+          "q03": "none",
+          "q04": "me_encantaria",
+          "q05": "none",
+          "q06": "top",
+          "q07": "top",
+          "q08": "nada",
+          "q09": "none",
+          "q10": "top",
+          "q11": "none",
+          "q12": "un_poco",
+          "q13": "none",
+          "q14": "un_poco"
+        },
+        "tiebreakAnswers": [],
+        "trace": [
+          {
+            "stage": "tras la pregunta 14",
+            "affinity": {
+              "sw": "38",
+              "ti": "58",
+              "si": "24",
+              "vj": "0"
+            },
+            "duelPoints": {
+              "sw": "2/5",
+              "ti": "2/5",
+              "si": "1/5",
+              "vj": "0/5"
+            },
+            "scale": {
+              "sw": 1,
+              "ti": 3,
+              "si": 1,
+              "vj": 0
+            },
+            "ranking": [
+              "ti",
+              "sw",
+              "si",
+              "vj"
+            ]
+          }
+        ],
+        "result": {
+          "ranking": [
+            "ti",
+            "sw",
+            "si",
+            "vj"
+          ],
+          "affinity": {
+            "sw": "38",
+            "ti": "58",
+            "si": "24",
+            "vj": "0"
+          },
+          "display": {
+            "sw": 38,
+            "ti": 58,
+            "si": 24,
+            "vj": 0
+          },
+          "tie": false
+        },
+        "reasonTemplatesUsed": [
+          "scaleOverDuels",
+          "electives"
+        ],
+        "reasonText": "Tu «Me encantaría» a la idea de pasar a la nube los sistemas de diez pollerías pesó mucho en el resultado. En los duelos, Tecnologías de la Información sumó 2 de 5 puntos, con tareas como vigilar con sensores la refrigeradora de una botica y evitar que la web de un concierto se caiga. Si te interesa, mira electivos como «Internet de las Cosas» y «Sistemas Distribuidos»."
+      },
+      {
+        "id": "ejemplo-7",
+        "title": "Gana sin puntos en los duelos de las 14 preguntas",
+        "answers": {
+          "q01": "top",
+          "q02": "none",
+          "q03": "none",
+          "q04": "nada",
+          "q05": "none",
+          "q06": "none",
+          "q07": "none",
+          "q08": "nada",
+          "q09": "bottom",
+          "q10": "none",
+          "q11": "none",
+          "q12": "me_encantaria",
+          "q13": "none",
+          "q14": "un_poco"
+        },
+        "tiebreakAnswers": [
+          "bottom",
+          "top"
+        ],
+        "trace": [
+          {
+            "stage": "tras la pregunta 14",
+            "affinity": {
+              "sw": "38",
+              "ti": "0",
+              "si": "30",
+              "vj": "0"
+            },
+            "duelPoints": {
+              "sw": "2/5",
+              "ti": "0/5",
+              "si": "0/5",
+              "vj": "0/5"
+            },
+            "scale": {
+              "sw": 1,
+              "ti": 0,
+              "si": 3,
+              "vj": 0
+            },
+            "ranking": [
+              "sw",
+              "si",
+              "ti",
+              "vj"
+            ]
+          },
+          {
+            "stage": "desempate 1 (tb-sw-si-1), respuesta bottom",
+            "affinity": {
+              "sw": "33,33",
+              "si": "41,67"
+            },
+            "duelPoints": {
+              "sw": "2/6",
+              "si": "1/6"
+            },
+            "gap": "8,33"
+          },
+          {
+            "stage": "desempate 2 (tb-sw-si-2), respuesta top",
+            "affinity": {
+              "sw": "30",
+              "si": "50"
+            },
+            "duelPoints": {
+              "sw": "2/7",
+              "si": "2/7"
+            },
+            "gap": "20"
+          }
+        ],
+        "result": {
+          "ranking": [
+            "si",
+            "sw",
+            "ti",
+            "vj"
+          ],
+          "affinity": {
+            "sw": "30",
+            "ti": "0",
+            "si": "50",
+            "vj": "0"
+          },
+          "display": {
+            "sw": 30,
+            "ti": 0,
+            "si": 50,
+            "vj": 0
+          },
+          "tie": false
+        },
+        "reasonTemplatesUsed": [
+          "noMainPoints",
+          "tiebreakPicked"
+        ],
+        "reasonText": "En las 14 preguntas, Sistemas de Información no sumó puntos en los duelos. La pusieron arriba tu «Me encantaría» a la idea de descubrir qué clientes están por dejar de comprar y lo que elegiste en los desempates. Con Ingeniería de Software el resultado estaba muy parejo, y en el desempate te quedaste con unir en una base de datos las ventas de todas las sedes."
+      },
+      {
+        "id": "ejemplo-8",
+        "title": "Empate exacto tras dos desempates",
+        "answers": {
+          "q01": "top",
+          "q02": "top",
+          "q03": "none",
+          "q04": "bastante",
+          "q05": "none",
+          "q06": "bottom",
+          "q07": "none",
+          "q08": "un_poco",
+          "q09": "bottom",
+          "q10": "top",
+          "q11": "top",
+          "q12": "un_poco",
+          "q13": "none",
+          "q14": "bastante"
+        },
+        "tiebreakAnswers": [
+          "both",
+          "both"
+        ],
+        "trace": [
+          {
+            "stage": "tras la pregunta 14",
+            "affinity": {
+              "sw": "62",
+              "ti": "62",
+              "si": "10",
+              "vj": "10"
+            },
+            "duelPoints": {
+              "sw": "3/5",
+              "ti": "3/5",
+              "si": "0/5",
+              "vj": "0/5"
+            },
+            "scale": {
+              "sw": 2,
+              "ti": 2,
+              "si": 1,
+              "vj": 1
+            },
+            "ranking": [
+              "sw",
+              "ti",
+              "si",
+              "vj"
+            ]
+          },
+          {
+            "stage": "desempate 1 (tb-sw-ti-1), respuesta both",
+            "affinity": {
+              "sw": "60,83",
+              "ti": "60,83"
+            },
+            "duelPoints": {
+              "sw": "3,5/6",
+              "ti": "3,5/6"
+            },
+            "gap": "0"
+          },
+          {
+            "stage": "desempate 2 (tb-sw-ti-2), respuesta both",
+            "affinity": {
+              "sw": "60",
+              "ti": "60"
+            },
+            "duelPoints": {
+              "sw": "4/7",
+              "ti": "4/7"
+            },
+            "gap": "0"
+          }
+        ],
+        "result": {
+          "ranking": [
+            "sw",
+            "ti",
+            "si",
+            "vj"
+          ],
+          "affinity": {
+            "sw": "60",
+            "ti": "60",
+            "si": "10",
+            "vj": "10"
+          },
+          "display": {
+            "sw": 60,
+            "ti": 60,
+            "si": 10,
+            "vj": 10
+          },
+          "tie": true
+        },
+        "reasonTemplatesUsed": [
+          "tie"
+        ],
+        "reasonText": "En los duelos, Ingeniería de Software sumó 4 de 7 puntos y Tecnologías de la Información, 4 de 7. Quedaron empatadas, así que mira los cursos de las dos y quédate con la que más te provoque."
+      }
+    ]
+  },
+  "reasonTemplates": {
+    "variables": {
+      "{nombre}": "Nombre oficial de la especialidad ganadora.",
+      "{afinidad}": "Afinidad de la ganadora redondeada a entero (sin el signo %; la plantilla lo agrega).",
+      "{puntos}": "Puntos de duelo de la ganadora con coma decimal, como «4» o «3,5».",
+      "{duelos}": "Duelos en los que apareció la ganadora, contando desempates (5, 6 o 7).",
+      "{tareas}": "Hasta dos resúmenes de tareas de la ganadora que el alumno eligió en duelos principales. Primero las que ganó sola, en orden de pregunta; después las de «Me gustan las dos». Se unen con « y ».",
+      "{escalaTarea}": "Resumen de la tarea de la escala de la ganadora.",
+      "{escalaRespuesta}": "Etiqueta que eligió en esa escala (Nada, Un poco, Bastante o Me encantaría).",
+      "{rival}": "La otra especialidad del desempate.",
+      "{tareaDesempate}": "Resumen de la última tarea de desempate que eligió sola y que era de la ganadora; vacío si no la hay.",
+      "{segunda}": "Nombre de la segunda especialidad.",
+      "{afinidadSegunda}": "Afinidad de la segunda redondeada a entero.",
+      "{electivos}": "Nombres cortos, entre comillas latinas, del primer electivo de cada tarea de {tareas}, sin repetir, unidos con « y ».",
+      "{a}, {b}, {puntosA}, {duelosA}, {puntosB}, {duelosB}": "Solo para el empate final. Son las dos especialidades y sus puntos y duelos."
+    },
+    "derived": {
+      "A": "Afinidad de la ganadora, sin redondear.",
+      "D": "Porcentaje de duelos de la ganadora (100 · puntos / duelos).",
+      "e": "Valor de la escala de la ganadora (0 a 3).",
+      "A2": "Afinidad de la segunda, sin redondear.",
+      "tareas": "Valor de {tareas}; queda vacío solo si la ganadora no sumó nada en los 10 duelos de las 14 preguntas.",
+      "huboDesempate": "Se mostró al menos un desempate.",
+      "ganadoraEnElPar": "La ganadora es una de las dos especialidades del desempate.",
+      "empate": "Las dos primeras terminaron con la misma afinidad exacta."
+    },
+    "compose": [
+      "main",
+      "tiebreak",
+      "second",
+      "electives"
+    ],
+    "composeRule": "Se toma la primera plantilla de «main» cuya condición se cumpla. Luego se agregan, en este orden y solo si su condición se cumple, una de «tiebreak», la de «second» y la de «electives». Las oraciones se unen con un espacio. Si el resultado es empate, se usa solo «tie».",
+    "main": [
+      {
+        "id": "low",
+        "when": "A < 50",
+        "text": "Ninguna especialidad te llamó con fuerza, y eso también es información. {nombre} quedó arriba con {afinidad} %, así que es un buen punto de partida para mirar cursos sin apuro."
+      },
+      {
+        "id": "noMainPoints",
+        "when": "tareas == ''",
+        "text": "En las 14 preguntas, {nombre} no sumó puntos en los duelos. La pusieron arriba tu «{escalaRespuesta}» a la idea de {escalaTarea} y lo que elegiste en los desempates."
+      },
+      {
+        "id": "strong",
+        "when": "D >= 80 && e >= 2",
+        "text": "En los duelos, {nombre} sumó {puntos} de {duelos} puntos, con tareas como {tareas}. Y a la idea de {escalaTarea} le dijiste «{escalaRespuesta}». Todo apunta para el mismo lado."
+      },
+      {
+        "id": "duelsOverScale",
+        "when": "D >= 60 && e <= 1",
+        "text": "En los duelos, {nombre} sumó {puntos} de {duelos} puntos, con tareas como {tareas}, pero a la idea de {escalaTarea} le dijiste «{escalaRespuesta}». Antes de decidir, vale la pena revisar sus cursos."
+      },
+      {
+        "id": "scaleOverDuels",
+        "when": "e == 3 && D < 60",
+        "text": "Tu «Me encantaría» a la idea de {escalaTarea} pesó mucho en el resultado. En los duelos, {nombre} sumó {puntos} de {duelos} puntos, con tareas como {tareas}."
+      },
+      {
+        "id": "general",
+        "when": "true",
+        "text": "{nombre} sumó {puntos} de {duelos} puntos en los duelos, con tareas como {tareas}. A la idea de {escalaTarea} le dijiste «{escalaRespuesta}»."
+      }
+    ],
+    "tiebreak": [
+      {
+        "id": "tiebreakPicked",
+        "when": "huboDesempate && ganadoraEnElPar && tareaDesempate != ''",
+        "text": "Con {rival} el resultado estaba muy parejo, y en el desempate te quedaste con {tareaDesempate}."
+      },
+      {
+        "id": "tiebreakNoPick",
+        "when": "huboDesempate && ganadoraEnElPar",
+        "text": "Con {rival} el resultado estaba muy parejo, por eso vale la pena mirar las dos."
+      }
+    ],
+    "second": [
+      {
+        "id": "second",
+        "when": "A2 >= 50",
+        "text": "Tu segunda opción es {segunda}, con {afinidadSegunda} %."
+      }
+    ],
+    "electives": [
+      {
+        "id": "electives",
+        "when": "electivos != ''",
+        "text": "Si te interesa, mira electivos como {electivos}."
+      }
+    ],
+    "tie": [
+      {
+        "id": "tie",
+        "when": "empate",
+        "text": "En los duelos, {a} sumó {puntosA} de {duelosA} puntos y {b}, {puntosB} de {duelosB}. Quedaron empatadas, así que mira los cursos de las dos y quédate con la que más te provoque."
+      }
+    ],
+    "notes": [
+      "{tareas} solo sale de los 10 duelos de las 14 preguntas, y queda vacío si la ganadora no sumó nada en ellos. Con A < 50 lo cubre «low»; con A ≥ 50 pasa en un solo caso, el de escala 3 y los dos desempates elegidos a su favor (A = 20 + 30 = 50), y para ese caso está «noMainPoints».",
+      "«duelsOverScale» usa «pero» porque su condición exige Nada o Un poco en la escala. «scaleOverDuels» dice que la escala pesó mucho porque con e = 3 y D < 60 la escala aporta 30 puntos y los duelos menos de 42.",
+      "Las condiciones usan valores sin redondear. Solo {afinidad} y {afinidadSegunda} se redondean.",
+      "Los resúmenes ya vienen en minúscula y en infinitivo, listos para ir después de «como» o de «la idea de»."
+    ]
+  },
+  "ulisesLines": {
+    "welcome": [
+      "¡Hola! Soy Ulises. Te voy a mostrar tareas de verdad, de las que se hacen en cada especialidad, y tú eliges cuál harías con más ganas.",
+      "Son 14 preguntas, a veces una o dos más para desempatar, y te toma unos tres minutos. No hay respuestas buenas ni malas.",
+      "Piensa en lo que harías con gusto un día cualquiera, no en lo que suena más importante.",
+      "Si te gustan las dos, dilo. Si ninguna te llama, también vale."
+    ],
+    "startButton": "Vamos",
+    "duelHelp": "Toca la tarea que harías con más ganas.",
+    "scaleHelp": "Elige cuánto te gustaría hacer esta tarea.",
+    "reactions": {
+      "pick": [
+        "Anotado.",
+        "¡Cra!",
+        "Listo.",
+        "Ya, siguiente.",
+        "Lo apunto.",
+        "Sigamos.",
+        "Tomo nota."
+      ],
+      "both": [
+        "Las dos, ¿no? Eso también cuenta.",
+        "Ya, medio punto para cada una."
+      ],
+      "none": [
+        "Ninguna, ya. También me sirve saberlo.",
+        "Ok, ninguna de las dos era lo tuyo."
+      ],
+      "scale": [
+        "Anotado.",
+        "Lo tengo.",
+        "¡Cra!"
+      ],
+      "usage": "Si la pregunta trae su propia reacción, esa va primero. Estas son para variar o para cuando no hay línea propia. Ninguna felicita una elección ni nombra especialidades durante el test, y el anuncio del desempate tampoco las nombra, para no delatar de quién es cada tarea."
+    },
+    "result": {
+      "loading": "Dame un toque que junto tus respuestas.",
+      "intro": "Ya tengo tu resultado.",
+      "winner": "Lo tuyo apunta a {nombre}, con {afinidad} % de afinidad.",
+      "second": "En segundo lugar quedó {segunda}, con {afinidadSegunda} %.",
+      "tie": "Empate. {a} y {b} quedaron igualitas, con {afinidad} %.",
+      "low": "Esta vez ninguna despegó del todo. Por ahora, {nombre} va adelante, con {afinidad} %.",
+      "closing": "Tómalo como una brújula, no como una sentencia. La mayoría de electivos se abren al terminar el quinto ciclo, así que tienes tiempo para explorar.",
+      "retake": "Si más adelante cambias de idea, puedes volver a hacer el test.",
+      "retakeNote": "Usar solo si la app deja repetir el test."
+    },
+    "tiebreak": {
+      "first": "Tienes dos especialidades muy parejas. Te hago una pregunta más para desempatar.",
+      "second": "Sigue reñido. Una última y listo.",
+      "resolved": "Ahí está, ya se inclinó la balanza.",
+      "stillTied": "Ni así se separan. Te muestro las dos.",
+      "usage": "La línea first va antes del desempate 1 y second antes del desempate 2. Al terminar los desempates, stillTied va solo si hay empate exacto (las dos primeras con la misma afinidad sin redondear); en cualquier otro caso va resolved."
+    }
+  },
+  "balance": {
+    "appearances": {
+      "sw": 5,
+      "ti": 5,
+      "si": 5,
+      "vj": 5
+    },
+    "topCount": {
+      "sw": 3,
+      "ti": 2,
+      "si": 2,
+      "vj": 3
+    },
+    "bottomCount": {
+      "sw": 2,
+      "ti": 3,
+      "si": 3,
+      "vj": 2
+    },
+    "pairCounts": {
+      "sw-ti": 1,
+      "sw-si": 2,
+      "sw-vj": 2,
+      "ti-si": 2,
+      "ti-vj": 2,
+      "si-vj": 1
+    },
+    "pairsOnce": [
+      "si-vj",
+      "sw-ti"
+    ],
+    "scalePositions": {
+      "ti": 4,
+      "vj": 8,
+      "si": 12,
+      "sw": 14
+    },
+    "electivesUsed": {
+      "sw": [
+        "650011",
+        "650030",
+        "650070",
+        "650072",
+        "650075",
+        "650079",
+        "650085"
+      ],
+      "ti": [
+        "650012",
+        "650025",
+        "650073",
+        "650076",
+        "650077",
+        "650083",
+        "650084"
+      ],
+      "si": [
+        "650044",
+        "650071",
+        "650074",
+        "650078",
+        "650080",
+        "650082"
+      ],
+      "vj": [
+        "550001",
+        "550029",
+        "550090",
+        "650011",
+        "650030",
+        "650081"
+      ]
+    },
+    "wordCount": {
+      "min": 11,
+      "max": 14
+    },
+    "sideSequence": {
+      "sw": "ABABA",
+      "ti": "ABBAB",
+      "si": "BBAAB",
+      "vj": "BAABA"
+    },
+    "adjacentShared": 3,
+    "rationale": "Con 10 duelos y 5 apariciones por especialidad, cuatro pares salen dos veces y dos salen una, y esos dos no pueden compartir especialidad. Salen una vez sw-ti y si-vj, para que salgan dos veces los pares que más se confunden, que son sw-vj (comparten tres electivos), ti-si (comparten Arquitectura de TI) y sw-si (a un alumno nuevo le suenan parecido). ti-vj sale dos veces porque la cuenta lo exige.",
+    "sequenceRule": "Ninguna especialidad sale en tres ítems seguidos, ninguna escala queda junto a un duelo de su misma especialidad y ninguna especialidad sale más de dos veces seguidas en el mismo lado. Dos ítems vecinos comparten especialidad solo 3 veces."
+  }
+}
