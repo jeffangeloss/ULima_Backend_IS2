@@ -85,10 +85,21 @@ export interface Impedimentos { hasImpediment: boolean; hasDebt: boolean; text: 
  *  Domino; `url` ya lleva el filename percent-encoded. */
 export interface SyllabusEntry { unid: string; fileName: string; url: string }
 
-/** Una fila del sidebar del panel Delegado: el `aula` es la llave del portal;
- *  `courseCode` + `sectionCode` es la llave con la que empata contra las
- *  secciones que la matrícula está creando. */
-export interface DelegadoAula { aula: string; courseCode: string; sectionCode: string }
+/** Un aula del menú lateral del Aula Virtual (paneles Asistencia, Nota y
+ *  Delegado). El `aula` es la llave del portal, y `courseCode` con
+ *  `sectionCode` es la llave con la que empata contra las secciones que la
+ *  matrícula está creando.
+ *
+ *  RS-BE-48. En el formato de arreglos los dos códigos nunca son `null`. En el
+ *  formato de lista `courseCode` siempre es `null`, porque el `<li>` no trae el
+ *  código, y `sectionCode` es `null` cuando el `<li>` no trae una sección
+ *  numérica. Quien consume el resultado identifica el curso por otra página. */
+export interface AulaMenu {
+  aula: string;
+  courseCode: string | null;
+  sectionCode: string | null;
+  origen: "arreglos" | "lista";
+}
 
 /** El representante tal como el portal lo publica: sin cuenta, sin correo. */
 export interface DelegadoPersona { code: string; fullName: string }
