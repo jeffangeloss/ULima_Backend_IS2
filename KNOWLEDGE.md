@@ -35,7 +35,7 @@ Tablas principales:
 - Ciclo y matrícula: `academic_period`, `course_offering`, `section`, `enrollment`
 - Horario: `academic_week`, `schedule_session`
 - Asesorías: `course_advising_session`
-- Evaluaciones: `syllabus`, `assessment_type`, `assessment`, `student_score`
+- Evaluaciones: `syllabus`, `assessment_type`, `assessment`, `student_score`, `student_portal_score`
 - Comunicación: `section_representative`, `announcement`, `alert`
 
 Tablas que no pertenecen al esquema definitivo:
@@ -53,7 +53,8 @@ Tablas que no pertenecen al esquema definitivo:
 - `enrollment.status = 'active'` alimenta cursos actuales, horario, calculadora, asesorías y alertas.
 - `enrollment.status = 'completed'` no equivale a curso aprobado.
 - La aprobación real viene de `student_course_progress.status = 'approved'`.
-- `student_score` son notas personales no oficiales.
+- `student_score` contiene las notas oficiales que el profesor o JP carga por evaluación (módulo `official-grades`).
+- Las notas que el alumno registra en la calculadora son personales y no oficiales (`simulated_grades`). La calculadora muestra además, fijas y con la marca “ULima”, las notas parciales que publica la ULima, que guarda la tabla `student_portal_score`, escribe solo `POST /portal-sync/refresh` y lee `GET /grades/me/ulima`.
 - Las notas personales no se usan para promedios oficiales de sección salvo que una spec defina una métrica agregada explícita.
 - Riesgo académico: avance evaluado > 55% y promedio personal < 10.5.
 - Alta carga: 3 o más evaluaciones en la misma semana académica.

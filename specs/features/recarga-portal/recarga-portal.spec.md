@@ -33,13 +33,14 @@ targets:
 > tabla `student_portal_score` y las dos columnas de `enrollment` de la migración `0015`, con
 > borrado en cascada. Aplicar la `0015` en producción pide además, en el momento del
 > despliegue, el respaldo y el permiso explícito del dueño, como con la `0012` y la `0013`.
-> Pendiente de implementar, empezando por RS-BE-48 en un PR propio (decisión abierta 1).
+> RS-BE-48 está en `main` desde su PR propio (decisión abierta 1). RS-BE-49 a RS-BE-60 y la
+> `0015` están implementados en la rama `feat/recarga-notas-asistencia`, sin mergear, según
+> `docs/superpowers/plans/2026-09-26-recarga-portal-backend.md`. La `0015` sigue sin aplicar.
 > Enmienda `asistencia-portal.spec.md`, `portal-sync.spec.md`,
 > `delegados-portal.spec.md`, `grades.spec.md`, `official-grades.spec.md`, `schedule.spec.md`
 > y `course-detail.spec.md` (ver «Cambios en otras specs»), enmiendas que el dueño aprueba con
 > esta spec. La rama `feat/recarga-notas-asistencia` parte de `origin/main` en `f10eb3f`, y
-> todas las referencias de línea citan ese estado. Los `[@test]` con la marca *(pendiente)*
-> apuntan a pruebas que se crean con la implementación y hoy no existen. Los que llevan
+> todas las referencias de línea citan ese estado. Los `[@test]` que llevan
 > *(existe, casos nuevos)* o *(existe, se actualiza)* apuntan a pruebas de `test/HU31_jeff/`
 > que ya existen (`service.asistencia.test.ts`, `service.delegados.test.ts`,
 > `service.import.test.ts`, `parser.asistencia.test.ts`, `parser.asistencia-sidebar.test.ts`,
@@ -242,7 +243,7 @@ regla es la misma en la importación y en la recarga.
 
 Los mensajes llevan solo literales fijos y valores ya validados con una regex de dígitos.
 
-`[@test] ../../../test/HU31_jeff/parser.aulas-lista.test.ts` *(pendiente)*
+`[@test] ../../../test/HU31_jeff/parser.aulas-lista.test.ts`
 `[@test] ../../../test/HU31_jeff/parser.asistencia-sidebar.test.ts` *(existe, se actualiza)*
 `[@test] ../../../test/HU31_jeff/parsers.delegado.test.ts` *(existe, se actualiza)*
 `[@test] ../../../test/HU31_jeff/service.asistencia.test.ts` *(existe, casos nuevos)*
@@ -317,8 +318,8 @@ abierta 2.
   `section_representative`, `student_score` y `simulated_grades`. En `enrollment` escribe
   solo las tres horas de asistencia y las dos horas de lectura de la migración `0015`.
 
-`[@test] ../../../test/HU37_jeff/refresh.schemas.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/refresh.service.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.schemas.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.service.test.ts`
 
 ### RS-BE-50 · Cupo, intentos rechazados, concurrencia y presupuesto de tiempo
 
@@ -395,9 +396,9 @@ Es la opción que el dueño aprueba en la decisión abierta 3, con el plazo de l
 - **Registro.** Por fase, la duración en milisegundos, el número de peticiones y sus estados
   HTTP. Nunca cuerpos, cookies, contraseña, código, notas, nombres ni códigos de alumno.
 
-`[@test] ../../../test/HU37_jeff/refresh.rate-limit.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/refresh.budget.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/env.refresh-budget.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.rate-limit.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.budget.test.ts`
+`[@test] ../../../test/HU37_jeff/env.refresh-budget.test.ts`
 `[@test] ../../../test/HU31_jeff/service.import.test.ts` *(existe, casos nuevos)*
 `[@test] ../../../test/HU31_jeff/portal.client.login.test.ts` *(existe, casos nuevos)*
 
@@ -441,7 +442,7 @@ Es la opción que el dueño aprueba en la decisión abierta 3, con el plazo de l
    lectura, que son las más nuevas (decisión 5).
 7. Un fallo de descarga o de lectura no toca la fila. Nunca se escribe 0 por un fallo.
 
-`[@test] ../../../test/HU37_jeff/refresh.asistencia.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.asistencia.test.ts`
 `[@test] ../../../test/HU31_jeff/parser.asistencia.test.ts` *(existe, casos nuevos de ciclo, identidad e identificación)*
 `[@test] ../../../test/HU31_jeff/service.asistencia.test.ts` *(existe, casos nuevos de `cicloEsperado` en la importación)*
 
@@ -495,8 +496,9 @@ valor: number | null }`.
 7. **Uso de los agregados.** No se guardan, no se devuelven a la app (decisión abierta 18) y no
    se registran. Solo sirven al chequeo del punto 7 de RS-BE-53.
 
-`[@test] ../../../test/HU37_jeff/parser.nota-curso.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(pendiente, punto 6)*
+`[@test] ../../../test/HU37_jeff/parser.nota-curso.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(punto 6)*
+`[@test] ../../../test/HU37_jeff/portal.client.nota.test.ts` *(rutas del panel Nota y charset del marco)*
 
 ### RS-BE-53 · Tabla «Detalle Evaluaciones»
 
@@ -557,8 +559,8 @@ ningún texto del docente.
    fuerza ISO-8859-1 para esta ruta, como pide `delegados-portal.spec.md` para la nómina.
 9. Los mensajes llevan solo literales fijos. Nunca un fragmento del HTML.
 
-`[@test] ../../../test/HU37_jeff/parser.detalle-evaluaciones.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(pendiente, orden de las peticiones)*
+`[@test] ../../../test/HU37_jeff/parser.detalle-evaluaciones.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(orden de las peticiones)*
 
 ### RS-BE-54 · Emparejamiento con el sílabo
 
@@ -597,9 +599,9 @@ null; match: "exact" | "exact_other_name" | "week_shift" | "none" }`.
   con el mensaje fijo «El sílabo cargado en ULima++ no coincide con las evaluaciones de la ULima
   en <curso>/<sección>.», y el curso se guarda igual.
 
-`[@test] ../../../test/HU37_jeff/emparejar.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/refresh.repository.test.ts` *(pendiente, candidatas por matrícula)*
-`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(pendiente, dos cursos)*
+`[@test] ../../../test/HU37_jeff/emparejar.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.repository.test.ts` *(candidatas por matrícula)*
+`[@test] ../../../test/HU37_jeff/refresh.notas.test.ts` *(dos cursos)*
 
 ### RS-BE-55 · Guardado
 
@@ -635,8 +637,9 @@ null; match: "exact" | "exact_other_name" | "week_shift" | "none" }`.
   acepta no puede hacer fallar la transacción. Si aun así la base rechaza algo, la transacción
   entera se revierte y la respuesta es `500`, sin nada a medias.
 
-`[@test] ../../../test/HU37_jeff/refresh.repository.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/migration-0015.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.repository.test.ts`
+`[@test] ../../../test/HU37_jeff/migration-0015.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.postgres.test.ts` *(solo con TEST_DATABASE_URL)*
 
 ### RS-BE-56 · Respuesta de la recarga y errores
 
@@ -707,8 +710,8 @@ Cuando no hay ningún curso leído, el código sale de los fallos vistos y la pr
 `PORTAL_SESSION_INVALID`, luego `PORTAL_TIMEOUT`, luego `PORTAL_UNAVAILABLE` y por último
 `PORTAL_UNREADABLE`. En todos los errores no se escribe nada.
 
-`[@test] ../../../test/HU37_jeff/refresh.service.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/refresh.routes.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/refresh.service.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.routes.test.ts`
 
 ### RS-BE-57 · Lectura de las notas de la ULima
 
@@ -756,7 +759,7 @@ del JWT y no hay parámetro, ruta para docentes ni lectura para delegados. Respo
   `GET /official-grades/me`.
 - Las claves van en inglés para calzar con `GET /official-grades/me`, que ya lee `/mis-notas`.
 
-`[@test] ../../../test/HU37_jeff/grades-ulima.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/grades-ulima.test.ts`
 
 ### RS-BE-58 · Hora de la última lectura de la asistencia
 
@@ -772,7 +775,8 @@ del JWT y no hay parámetro, ruta para docentes ni lectura para delegados. Respo
 - Orden obligatorio. La migración `0015` va antes del despliegue de este código, porque la
   importación escribe la columna nueva y contra una base sin ella fallaría entera.
 
-`[@test] ../../../test/HU37_jeff/asistencia-leida-en.test.ts` *(pendiente)*
+`[@test] ../../../test/HU37_jeff/asistencia-leida-en.test.ts`
+`[@test] ../../../test/HU31_jeff/service.asistencia.test.ts` *(existe, casos nuevos de la hora de lectura en la importación)*
 
 ### RS-BE-59 · Privacidad y minimización
 
@@ -788,9 +792,9 @@ del JWT y no hay parámetro, ruta para docentes ni lectura para delegados. Respo
   parciales por evaluación y la hora de cada lectura.
 - **Fixtures anonimizados.** Se construyen a mano con la estructura real y datos inventados.
   Ningún código de alumno, nombre, aula, sección ni curso sale de las páginas del sondeo. Los
-  archivos nuevos son `test/HU31_jeff/fixtures/sidebar-lista-asistencia.html`,
-  `sidebar-lista-nota.html` y `sidebar-lista-delegado.html`, y
-  `test/HU37_jeff/fixtures/nota-curso-900101.html`, `detalle-evaluaciones-vacias.html`,
+  archivos nuevos son `test/HU31_jeff/fixtures/menu-lista-asistencia.html`, que llega con
+  RS-BE-48, y `menu-lista-nota.html`, mientras que el menú de Delegado se arma dentro de su
+  prueba, y `test/HU37_jeff/fixtures/nota-curso-900101.html`, `detalle-evaluaciones-vacias.html`,
   `detalle-evaluaciones-con-notas.html`, `detalle-evaluaciones-np.html`,
   `detalle-evaluaciones-dos-grupos.html` y `asistencia-curso-900101.html`. El de notas lleva
   notas inventadas con coma y con punto decimal, y el de asistencia lleva faltas inventadas.
@@ -799,8 +803,8 @@ del JWT y no hay parámetro, ruta para docentes ni lectura para delegados. Respo
   se lee, y valores de `min*` y `max*` distintos de cero, para probar que no cambian el
   resultado.
 
-`[@test] ../../../test/HU37_jeff/parser.nota-curso.test.ts` *(pendiente)*
-`[@test] ../../../test/HU37_jeff/refresh.privacidad.test.ts` *(pendiente, registrador espía y fixtures)*
+`[@test] ../../../test/HU37_jeff/parser.nota-curso.test.ts`
+`[@test] ../../../test/HU37_jeff/refresh.privacidad.test.ts` *(registrador espía y fixtures)*
 
 ### RS-BE-60 · Cierre de sesión cuando el inicio de sesión falla a medias
 
@@ -1119,7 +1123,9 @@ porque la citan los requisitos y la spec de la app.
 - **V1, antes de implementar RS-BE-52.** Se lee sin sesión `/portalUL/av/scripts/aVirtualBB.js`
   y se fija la ruta y el único parámetro de `OpenNotaAlumnoPrePost`. Con sesión, se registra
   el `Content-Type` de la página del curso y del marco, y si el portal exige `Referer` en esas
-  rutas.
+  rutas. Hecha la parte sin sesión el 2026-09-26. `OpenNotaAlumnoPrePost` pide
+  `/portalUL/gada/servlets/ComandoListarNotasAcadAlum` con `prm_sNuAula` como único parámetro.
+  La parte con sesión la corre el dueño.
 - **V2, cuando la ULima publique la primera nota.** Sondeo del marco de evaluaciones para ver
   una nota con valor (punto o coma, decimales), si existe «NP» u otra marca y si el grupo
   `EVC` muestra su promedio. El lector y sus fixtures se ajustan con esa muestra antes de
@@ -1142,4 +1148,4 @@ porque la citan los requisitos y la spec de la app.
   65 000 de RS-BE-50 y V5 hecha, como pide la «Verificación» de la spec de la app (decisión
   B1).
 - `bun run build` y `bun test` en verde, con las pruebas de «Pruebas por requisito» enlazadas
-  y sin la marca *(pendiente)*.
+  y sin ninguna marca de pendiente.
