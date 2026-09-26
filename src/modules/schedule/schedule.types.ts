@@ -35,6 +35,13 @@ export type SectionResponse = {
    * calcula sobre este número.
    */
   horasTranscurridas: number;
+  /**
+   * RS-BE-58 (recarga-portal). Hora de la última lectura de la asistencia de
+   * esta matrícula en miUlima, por la importación o por la recarga, en ISO 8601
+   * UTC, o null si no hay ninguna. Las filas del docente y de asesoría lo
+   * emiten siempre null.
+   */
+  asistenciaLeidaEn: string | null;
   horarios: SessionDetail[];
 };
 
