@@ -175,7 +175,7 @@ export class SpecialtyTestService {
   ): Record<string, Answer> {
     const ids = new Set(content.questions.map((q) => q.id));
     const missing = content.questions.filter((q) => !Object.hasOwn(recibidas, q.id)).map((q) => q.id);
-    const unexpected = Object.keys(recibidas).filter((id) => !ids.has(id)).sort();
+    const unexpected = Object.keys(recibidas).filter((id) => !ids.has(id)).sort((a, b) => a.localeCompare(b));
     const invalid = content.questions
       .filter((q) => Object.hasOwn(recibidas, q.id))
       .filter((q) => !(q.type === "duel" ? DUELO : ESCALA).has(recibidas[q.id]!))
