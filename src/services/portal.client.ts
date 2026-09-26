@@ -33,6 +33,15 @@ const assertAula = (aula: string): string => {
   return aula;
 };
 
+/**
+ * RS-BE-52. Servlet de la página de notas de un curso, tal como lo arma
+ * `OpenNotaAlumnoPrePost` en `aVirtualBB.js` (verificación V1). Su único
+ * parámetro es el aula. Si algún día pide un código de alumno, la recarga se
+ * detiene y se escala, con el mismo criterio de la ruta prohibida de
+ * asistencia-portal.spec.md.
+ */
+const NOTA_CURSO_SERVLET = "gada/servlets/ComandoListarNotasAcadAlum";
+
 /** Rutas fijas. Lo único interpolado son el COCICLO (`^\d{5}$`, validado en
  *  `fetchAll`) y el aula del panel de delegados (`^\d{4,8}$`, validada acá
  *  mismo por `assertAula`). */
@@ -79,6 +88,20 @@ export const PORTAL_PATHS = {
    */
   asistenciaAlumno: (aula: string) =>
     `av/servlets/ComandoListarAsistenciaAulaVirtualAlumno?prm_sNuAula=${assertAula(aula)}`,
+
+  // ── Panel Nota (RS-BE-52 y RS-BE-53) ─────────────────────────────────────
+
+  /** Menú del panel. Un `OpenNotaAlumnoPrePost('<aula>')` por curso, en el
+   *  mismo formato de lista que el de Asistencia, así que lo lee `parseAulas`. */
+  cursosNota: "av/servlets/ComandoListarCursosXOpcionAulaVirtualNota",
+
+  /** Página de notas de un curso. El aula pasa por `assertAula`. */
+  notaCurso: (aula: string) => `${NOTA_CURSO_SERVLET}?prm_sNuAula=${assertAula(aula)}`,
+
+  /** Marco «Detalle Evaluaciones». El cliente arma esta ruta con el aula del
+   *  menú y nunca sigue el `src` del marco que trae el HTML. */
+  tareaAcademica: (aula: string) =>
+    `gada/servlets/ComandoConsultarTareaAcademica?prm_sNuAula=${assertAula(aula)}`,
 } as const;
 
 /** Vista Domino de sílabos. Vive en un host DISTINTO de `webaloe` (ver
@@ -118,6 +141,15 @@ const portalFailure = (e: unknown): HttpError =>
   (e as Error)?.name === "AbortError"
     ? portalTimeout()
     : new HttpError(502, "No se pudo contactar a miUlima.", "PORTAL_UNAVAILABLE");
+
+/** RS-BE-52 y RS-BE-53. Opciones de una página del Aula Virtual. */
+export type OpcionesPagina = {
+  /** Fuerza la decodificación. El marco de evaluaciones declara ISO-8859-1 y
+   *  el cliente no depende de lo que anuncie la cabecera (RS-BE-53, punto 8). */
+  charset?: "iso-8859-1";
+  /** Ruta bajo /portalUL/ que el navegador mandaría como Referer. */
+  refererPath?: string;
+};
 
 export class PortalClient {
   constructor(
@@ -160,7 +192,7 @@ export class PortalClient {
    * host que responde 200 y deja de emitir bytes (proxy a medio morir,
    * respuesta chunked truncada) colgaba la promesa para siempre.
    */
-  async fetchPage(path: string, cookies: PortalCookies): Promise<string> {
+  async fetchPage(path: string, cookies: PortalCookies, opciones: OpcionesPagina = {}): Promise<string> {
     const url = `${this.baseUrl}${ROOT}${path}`;
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), this.timeoutMs);
@@ -171,7 +203,10 @@ export class PortalClient {
           method: "GET",
           redirect: "manual",                       // un 302 a inicio.jsp = sesión inválida
           signal: ac.signal,
-          headers: { Cookie: this.cookieHeader(cookies), "User-Agent": UA, Accept: "text/html,*/*;q=0.8" },
+          headers: {
+            Cookie: this.cookieHeader(cookies), "User-Agent": UA, Accept: "text/html,*/*;q=0.8",
+            ...(opciones.refererPath ? { Referer: `${this.baseUrl}${ROOT}${opciones.refererPath}` } : {}),
+          },
         });
       } catch (e) {
         throw portalFailure(e);
@@ -185,7 +220,8 @@ export class PortalClient {
       if (res.status >= 500) throw new HttpError(502, "miUlima devolvió un error.", "PORTAL_UNAVAILABLE");
       if (res.status !== 200) throw new HttpError(502, "Respuesta inesperada de miUlima.", "PORTAL_UNAVAILABLE");
 
-      const charset = res.headers.get("Content-Type")?.match(/charset=([\w-]+)/i)?.[1] ?? "ISO-8859-1";
+      const declarado = res.headers.get("Content-Type")?.match(/charset=([\w-]+)/i)?.[1] ?? "ISO-8859-1";
+      const charset = opciones.charset ?? declarado;
       let buf: ArrayBuffer;
       try {
         buf = await res.arrayBuffer();            // sigue bajo el mismo timeout
