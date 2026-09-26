@@ -174,7 +174,13 @@ describe("degradación: un fallo de asistencia no rompe nada", () => {
     expect(res.warnings.some((w) => w.block === "asistencia" && w.message.includes("el portal no reporta horas programadas"))).toBe(true);
   });
 
-  test("la hora de lectura es el instante en que llega la página, como texto ISO 8601 (RS-BE-58)", async () => {
+  test("la hora de lectura es el instante en que llega la página y no el del UPDATE, como texto ISO 8601 (RS-BE-58)", async () => {
+    // La fase de delegados corre después de la de asistencia y antes de la
+    // transacción, así que un retraso en su primera petición separa la llegada
+    // de las páginas del UPDATE. Una hora tomada al escribir la fila cae
+    // entonces unos RETRASO_MS después de la última llegada y rompe la cota.
+    const RETRASO_MS = 50;
+    const TOLERANCIA_MS = 10;
     const llegadas: number[] = [];
     const base = fakeClient();
     const leer = base.fetchPage as unknown as (p: string, c: unknown) => Promise<string>;
@@ -183,25 +189,30 @@ describe("degradación: un fallo de asistencia no rompe nada", () => {
       fetchPage: async (path: string, c: unknown) => {
         const html = await leer(path, c);
         if (path.startsWith(RUTA)) llegadas.push(Date.now());
+        if (path === PORTAL_PATHS.cursosDelegado) await new Promise((r) => setTimeout(r, RETRASO_MS));
         return html;
       },
     } as unknown as PortalClient;
-    const horas: string[] = [];
-    const escrituras: { id: number; h: unknown }[] = [];
-    const repo = fakeRepo(escrituras, {
+    const escritas: { hora: string; recibida: number }[] = [];
+    const repo = fakeRepo([], {
       updateAttendanceHours: async (_tx: unknown, _id: number, _h: unknown, leidaEn: string) => {
-        horas.push(leidaEn);
+        escritas.push({ hora: leidaEn, recibida: Date.now() });
         return true;
       },
     } as unknown as Partial<PortalSyncRepository>);
     await importar(repo, cliente);
-    const despues = Date.now();
 
-    expect(horas.length).toBeGreaterThan(0);
-    for (const h of horas) {
-      expect(h).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
-      expect(Date.parse(h)).toBeGreaterThanOrEqual(Math.min(...llegadas));
-      expect(Date.parse(h)).toBeLessThanOrEqual(despues);
+    expect(escritas.length).toBeGreaterThan(0);
+    const primera = Math.min(...llegadas);
+    const ultima = Math.max(...llegadas);
+    for (const { hora, recibida } of escritas) {
+      expect(hora).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+      // El retraso ocurre de verdad entre las dos fases, porque sin él la
+      // prueba no distingue la llegada de la página del UPDATE.
+      expect(recibida - ultima).toBeGreaterThanOrEqual(RETRASO_MS - TOLERANCIA_MS);
+      expect(Date.parse(hora)).toBeGreaterThanOrEqual(primera);
+      expect(Date.parse(hora)).toBeLessThanOrEqual(ultima + TOLERANCIA_MS);
+      expect(Date.parse(hora)).toBeLessThan(recibida);
     }
   });
 });
