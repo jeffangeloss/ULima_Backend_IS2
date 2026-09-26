@@ -350,3 +350,33 @@ describe("RS-BE-48 · el contraste de sección rige también con arreglos", () =
     }]);
   });
 });
+
+// ── RS-BE-51 (recarga-portal) · ciclo esperado en la importación ────────────
+
+describe("la importación pasa el ciclo de layout.jsp como ciclo esperado", () => {
+  test("una página de otro ciclo es un aviso de ese curso y la importación sigue", async () => {
+    const normal: { id: number; h: unknown }[] = [];
+    const referencia = await importar(fakeRepo(normal), fakeClient());
+
+    const escrituras: { id: number; h: unknown }[] = [];
+    const base = fakeClient();
+    const leer = base.fetchPage as unknown as (p: string, c: unknown) => Promise<string>;
+    const cliente = {
+      ...base,
+      fetchPage: async (path: string, c: unknown) => {
+        const html = await leer(path, c);
+        return path === `${RUTA}154508`
+          ? html.replace(/(name="prm_sNuCicl"[^>]*value=")[^"]*/i, (_t, pre: string) => `${pre}1`)
+          : html;
+      },
+    } as unknown as PortalClient;
+    const res = await importar(fakeRepo(escrituras), cliente);
+
+    expect(res.warnings).toContainEqual({
+      code: "PARSER_FAILED", block: "asistencia",
+      message: "No se entendió la asistencia de 650033/952: la página es de otro ciclo",
+    });
+    expect(res.summary.attendanceUpdated).toBe(referencia.summary.attendanceUpdated - 1);
+    expect(res.period.code).toBe("2026-2");
+  });
+});

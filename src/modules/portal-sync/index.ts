@@ -5,9 +5,10 @@ import { PortalSyncController } from "./portal-sync.controller.js";
 import { PortalSyncRepository } from "./portal-sync.repository.js";
 import { createPortalSyncRoutes } from "./portal-sync.routes.js";
 import { PortalSyncService } from "./portal-sync.service.js";
+import { portalLoginGuard } from "./portal-login-guard.js";
 
 const portalSyncRepository = new PortalSyncRepository(db);
-const portalSyncService = new PortalSyncService(portalSyncRepository, portalClient, authService);
+const portalSyncService = new PortalSyncService(portalSyncRepository, portalClient, authService, portalLoginGuard);
 const portalSyncController = new PortalSyncController(portalSyncService);
 
 export const portalSyncRoutes = createPortalSyncRoutes(portalSyncController);
