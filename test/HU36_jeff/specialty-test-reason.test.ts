@@ -79,6 +79,33 @@ const VALIDO =
   "Con Sistemas de Información estuvo parejo, y en el desempate te quedaste con escribir finales distintos. " +
   "Mira cursos como «Storytelling» y «Proyecto de Videojuegos».";
 
+/** Un motivo que cumple las siete reglas para el ejemplo-8, empatado entre sw y ti. */
+const VALIDO_EMPATE =
+  "Ingeniería de Software y Tecnologías de la Información quedan a la par contigo. " +
+  "Elegiste programar la app de pedidos de una bodega y también diseñar el wifi de un colegio. " +
+  "Mira cursos como «Arquitectura de Software» y «Computación en la Nube».";
+
+/** La sección RS-BE-43 de la spec, de donde salen el prompt y la tabla de `lectura`. */
+const SPEC = await Bun.file("specs/features/specialty-test/specialty-test.spec.md").text();
+const RS_BE_43 = SPEC.slice(SPEC.indexOf("### RS-BE-43"), SPEC.indexOf("### RS-BE-44"));
+
+/** La tabla de `lectura` de la spec, por plantilla `main`, con «tie» para la fila del empate. */
+const LECTURAS = new Map(
+  [...RS_BE_43.matchAll(/^\| (?:`(\w+)`|\(empate\)) \| (.+) \|$/gm)].map((m) => [m[1] ?? "tie", m[2]!]),
+);
+
+/** La plantilla `main` de cada ejemplo, o «tie» con empate (su `reasonTemplatesUsed`). */
+const MAIN_POR_EJEMPLO: ReadonlyArray<[string, string]> = [
+  ["ejemplo-1", "strong"],
+  ["ejemplo-2", "general"],
+  ["ejemplo-3", "general"],
+  ["ejemplo-4", "low"],
+  ["ejemplo-5", "duelsOverScale"],
+  ["ejemplo-6", "scaleOverDuels"],
+  ["ejemplo-7", "noMainPoints"],
+  ["ejemplo-8", "tie"],
+];
+
 /** Cliente falso que anota cada llamada y responde lo que se le pida. */
 const cliente = (responder: (signal?: AbortSignal) => Promise<string>) => {
   const llamadas: Array<{ messages: unknown; options: Record<string, unknown> | undefined }> = [];
@@ -195,6 +222,35 @@ describe("datos y mensaje para Cohere (RS-BE-43)", () => {
     expect(data.desempate).toBeNull();
     expect(data.nombrables).toEqual(["Desarrollo de Videojuegos"]);
   });
+
+  test("sin desempate, la segunda es nombrable con 50 o mas y no lo es por debajo de 50", () => {
+    // ejemplo-1 deja a si segunda con 55; en ejemplo-5 y ejemplo-6 la segunda es sw, con 48 y 38.
+    expect(datosDe("ejemplo-1").data.nombrables).toEqual(["Ingeniería de Software", "Sistemas de Información"]);
+    expect(datosDe("ejemplo-5").data.nombrables).toEqual(["Desarrollo de Videojuegos"]);
+    expect(datosDe("ejemplo-6").data.nombrables).toEqual(["Tecnologías de la Información"]);
+  });
+
+  for (const [id, main] of MAIN_POR_EJEMPLO) {
+    test(`${id} lleva la lectura de ${main} de la tabla de la spec`, () => {
+      expect(LECTURAS.get(main)).toBeDefined();
+      expect(datosDe(id).data.lectura).toBe(LECTURAS.get(main)!);
+    });
+  }
+
+  test("la tabla de la spec trae una lectura por plantilla main y otra para el empate", () => {
+    expect([...LECTURAS.keys()]).toEqual([
+      "low", "noMainPoints", "strong", "duelsOverScale", "scaleOverDuels", "general", "tie",
+    ]);
+  });
+
+  test("con empate, electivos trae los de las dos ganadoras", () => {
+    expect(datosDe("ejemplo-8").data.electivos).toEqual([
+      "Paradigmas de Programación", "Análisis y Diseño de Algoritmos", "Deep Learning", "Programación Móvil",
+      "Proyecto de Desarrollo de Software", "Arquitectura de Software", "Interacción Humano Computadora",
+      "Internet de las Cosas", "Redes Avanzadas", "Sistemas Distribuidos", "Tópicos Avanzados en Ciberseguridad",
+      "Computación en la Nube", "Arquitectura de TI", "DevOps",
+    ]);
+  });
 });
 
 describe("validacion de la salida (RS-BE-43)", () => {
@@ -232,9 +288,29 @@ describe("validacion de la salida (RS-BE-43)", () => {
     expect(rota(VALIDO.replace("Desarrollo de Videojuegos", "desarrollo de videojuegos"))).toBeNull();
   });
 
+  test("ganadora: con empate tiene que nombrar a las dos ganadoras", () => {
+    const { data } = datosDe("ejemplo-8");
+    const rotaEmpate = (texto: string) => firstBrokenRule(normalizeReason(texto), data, TODAS);
+    const ambas = "Ingeniería de Software y Tecnologías de la Información quedan";
+    expect(rotaEmpate(VALIDO_EMPATE)).toBeNull();
+    expect(rotaEmpate(VALIDO_EMPATE.replace(ambas, "Ingeniería de Software queda"))).toBe("ganadora");
+    expect(rotaEmpate(VALIDO_EMPATE.replace(ambas, "Tecnologías de la Información queda"))).toBe("ganadora");
+  });
+
   test("otras: no nombra fuera de comillas una especialidad que no es nombrable", () => {
     expect(rota(VALIDO.replace("Con Sistemas de Información", "Con Ingeniería de Software"))).toBe("otras");
     expect(rota(VALIDO.replace("Con Sistemas de Información", "Con ingenieria de software"))).toBe("otras");
+  });
+
+  test("otras: el nombre de una especialidad dentro de un electivo entre comillas no cuenta", () => {
+    // Ningún nombre corto de la 2026-09-25.4 lleva el de una especialidad, pero el nombre
+    // completo de 650083 sí, y una versión futura puede usar un nombre corto así.
+    const electivo = "Arquitectura de Tecnologías de la Información";
+    const data: ReasonData = { ...DATOS, electivos: [...DATOS.electivos, electivo] };
+    const conComillas = VALIDO.replace("«Storytelling»", `«${electivo}»`);
+    expect(firstBrokenRule(normalizeReason(conComillas), data, TODAS)).toBeNull();
+    const sinComillas = VALIDO.replace("«Storytelling»", electivo);
+    expect(firstBrokenRule(normalizeReason(sinComillas), data, TODAS)).toBe("otras");
   });
 
   test("comillas: solo electivos de la lista o la respuesta de escala", () => {
@@ -261,10 +337,11 @@ describe("la llamada y el respaldo (RS-BE-43)", () => {
     expect(avisos).not.toHaveBeenCalled();
   });
 
-  test("el prompt es el de la spec, con sus diez reglas", () => {
-    expect(REASON_PROMPT.startsWith("Eres Ulises, el cuervo que acompaña")).toBe(true);
-    expect(REASON_PROMPT).toContain("\n\nREGLAS\n1. Usa solo los datos");
-    expect(REASON_PROMPT.endsWith("10. Responde solo con el texto del motivo, sin saludo ni despedida.")).toBe(true);
+  test("el prompt es, caracter por caracter, el bloque de la spec", () => {
+    const bloques = [...RS_BE_43.matchAll(/^```[a-z]*\n([\s\S]*?)\n```$/gm)].map((m) => m[1]!);
+    const delPrompt = bloques.filter((b) => b.startsWith("Eres Ulises"));
+    expect(delPrompt).toHaveLength(1);
+    expect(REASON_PROMPT).toBe(delPrompt[0]!);
   });
 
   test("tiempo agotado: corta con la senal y sale el motivo de plantillas con timeout", async () => {
