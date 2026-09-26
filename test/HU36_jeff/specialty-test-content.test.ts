@@ -3,8 +3,16 @@ import {
   CONTENT_BY_VERSION,
   CURRENT_VERSION,
 } from "../../src/modules/specialty-test/content/index.js";
+import {
+  DUELS_PER_SPECIALTY, DUELS_WEIGHT_TENTHS, HALF_POINTS, MAX_TIEBREAKS, SCALE_MAX, SCALE_VALUE,
+  SCALE_WEIGHT_TENTHS, TIEBREAK_THRESHOLD, evaluateAnswers, roundAffinity,
+} from "../../src/modules/specialty-test/specialty-test.logic.js";
+import {
+  MAIN_ORDER, TEMPLATE_CONDITIONS, TIEBREAK_TEMPLATE_ORDER, buildTemplateReason,
+} from "../../src/modules/specialty-test/specialty-test.templates.js";
 import type {
   ContentTask,
+  DuelAnswer,
   SpecialtyTestContent,
 } from "../../src/modules/specialty-test/specialty-test.types.js";
 import {
@@ -159,5 +167,89 @@ for (const [clave, c] of CONTENT_BY_VERSION) {
         SCALE_ANSWERS.map((id, valor) => [id, valor]),
       );
     });
+  });
+}
+
+// ── Pesos, plantillas y ejemplos contra la lógica del módulo ────────────────
+
+/** Variables que cada grupo de plantillas puede usar (RS-BE-42). */
+const VARIABLES = new Set([
+  "nombre", "afinidad", "puntos", "duelos", "tareas", "escalaTarea", "escalaRespuesta",
+  "rival", "tareaDesempate", "segunda", "afinidadSegunda", "electivos",
+]);
+const VARIABLES_DEL_EMPATE = new Set(["a", "b", "puntosA", "duelosA", "puntosB", "duelosB"]);
+const VARIABLES_DE_ULISES = new Set(["nombre", "afinidad", "segunda", "afinidadSegunda", "a", "b"]);
+
+const variablesDe = (texto: string): string[] => [...texto.matchAll(/\{(\w+)\}/g)].map((m) => m[1]!);
+
+for (const [clave, c] of CONTENT_BY_VERSION) {
+  describe(`contenido ${clave} contra la logica (RS-BE-37, RS-BE-40 a RS-BE-42)`, () => {
+    test("los pesos y el umbral del archivo son las constantes del modulo", () => {
+      const w = c.weights;
+      expect([w.duel.pick * 2, w.duel.both * 2, w.duel.none * 2]).toEqual([
+        HALF_POINTS.pick, HALF_POINTS.both, HALF_POINTS.none,
+      ]);
+      expect(w.duel.duelsPerSpecialty).toBe(DUELS_PER_SPECIALTY);
+      expect(w.scale.max).toBe(SCALE_MAX);
+      expect(Object.fromEntries(w.scale.options.map((o) => [o.id, o.value]))).toEqual(SCALE_VALUE);
+      expect([w.affinity.duelsWeight * 10, w.affinity.scaleWeight * 10]).toEqual([
+        DUELS_WEIGHT_TENTHS, SCALE_WEIGHT_TENTHS,
+      ]);
+      expect(w.tiebreak.threshold).toBe(TIEBREAK_THRESHOLD);
+      expect(w.tiebreak.maxDuels).toBe(MAX_TIEBREAKS);
+    });
+
+    test("las condiciones y el orden de las plantillas son los del modulo", () => {
+      const t = c.reasonTemplates;
+      expect(t.main.map((p) => p.id)).toEqual([...MAIN_ORDER]);
+      expect(t.tiebreak.map((p) => p.id)).toEqual([...TIEBREAK_TEMPLATE_ORDER]);
+      expect(t.second.map((p) => p.id)).toEqual(["second"]);
+      expect(t.electives.map((p) => p.id)).toEqual(["electives"]);
+      expect(t.tie.map((p) => p.id)).toEqual(["tie"]);
+      for (const p of [...t.main, ...t.tiebreak, ...t.second, ...t.electives, ...t.tie]) {
+        expect({ id: p.id, when: p.when }).toEqual({
+          id: p.id,
+          when: TEMPLATE_CONDITIONS[p.id as keyof typeof TEMPLATE_CONDITIONS],
+        });
+      }
+    });
+
+    test("las plantillas y las lineas de Ulises solo usan variables conocidas", () => {
+      const t = c.reasonTemplates;
+      for (const p of [...t.main, ...t.tiebreak, ...t.second, ...t.electives]) {
+        for (const v of variablesDe(p.text)) expect({ id: p.id, v, ok: VARIABLES.has(v) }).toEqual({ id: p.id, v, ok: true });
+      }
+      for (const v of variablesDe(t.tie[0]!.text)) expect(VARIABLES_DEL_EMPATE.has(v)).toBe(true);
+      const r = c.ulisesLines.result;
+      for (const linea of [r.winner, r.low, r.tie, r.second]) {
+        for (const v of variablesDe(linea)) expect(VARIABLES_DE_ULISES.has(v)).toBe(true);
+      }
+    });
+
+    for (const ej of c.weights.examples) {
+      test(`${ej.id} reproduce ranking, afinidades, empate, desempates, plantillas y motivo`, () => {
+        const recibidos: Array<{ id: string; answer: DuelAnswer }> = [];
+        let paso = evaluateAnswers(c, ej.answers, recibidos);
+        while (paso.kind === "tiebreak") {
+          const respuesta = ej.tiebreakAnswers[recibidos.length];
+          expect(respuesta).toBeDefined();
+          recibidos.push({ id: paso.tiebreaker.id, answer: respuesta! });
+          paso = evaluateAnswers(c, ej.answers, recibidos);
+        }
+        expect(paso.kind).toBe("result");
+        if (paso.kind !== "result") return;
+        const ev = paso.evaluation;
+        const motivo = buildTemplateReason(c, ej.answers, ev);
+
+        expect(recibidos).toHaveLength(ej.tiebreakAnswers.length);
+        expect(ev.ranking).toEqual(ej.result.ranking);
+        expect(Object.fromEntries(SPECIALTY_KEYS.map((k) => [k, roundAffinity(ev.scores[k].S)]))).toEqual(
+          ej.result.display,
+        );
+        expect(ev.tie).toBe(ej.result.tie);
+        expect(motivo.used).toEqual(ej.reasonTemplatesUsed);
+        expect(motivo.text).toBe(ej.reasonText);
+      });
+    }
   });
 }

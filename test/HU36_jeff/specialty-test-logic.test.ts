@@ -14,6 +14,12 @@ import {
   type Score,
   type Step,
 } from "../../src/modules/specialty-test/specialty-test.logic.js";
+import {
+  buildResultUlises,
+  buildTemplateReason,
+  fillTemplate,
+  formatPoints,
+} from "../../src/modules/specialty-test/specialty-test.templates.js";
 import type {
   Answer,
   DuelAnswer,
@@ -185,5 +191,99 @@ describe("desempates (RS-BE-41)", () => {
     const a = ejemplo("ejemplo-3").answers;
     const r = [{ id: "tb-sw-ti-1", answer: "bottom" as const }];
     expect(evaluateAnswers(c, a, r)).toEqual(evaluateAnswers(c, a, r));
+  });
+});
+
+describe("motivo con plantillas (RS-BE-42)", () => {
+  test("los puntos van con coma decimal: 4 y 3,5", () => {
+    expect(formatPoints(8)).toBe("4");
+    expect(formatPoints(7)).toBe("3,5");
+    expect(formatPoints(0)).toBe("0");
+  });
+
+  test("cada plantilla main se alcanza al menos una vez en los ejemplos", () => {
+    const usadas = new Set(
+      c.weights.examples.flatMap((e) => {
+        const ev = evaluacion(e.answers, e.tiebreakAnswers);
+        const m = buildTemplateReason(c, e.answers, ev).main;
+        return m ? [m] : [];
+      }),
+    );
+    expect([...usadas].sort()).toEqual(
+      ["duelsOverScale", "general", "low", "noMainPoints", "scaleOverDuels", "strong"],
+    );
+  });
+
+  test("con empate se usa solo la plantilla tie", () => {
+    const e = ejemplo("ejemplo-8");
+    const motivo = buildTemplateReason(c, e.answers, evaluacion(e.answers, e.tiebreakAnswers));
+    expect(motivo.used).toEqual(["tie"]);
+    expect(motivo.main).toBeNull();
+  });
+
+  test("{electivos} no repite un curso aunque dos tareas lo compartan", () => {
+    const e = ejemplo("ejemplo-2");
+    const motivo = buildTemplateReason(c, e.answers, evaluacion(e.answers, e.tiebreakAnswers));
+    expect(motivo.text.match(/«Proyecto de Videojuegos»/g)).toHaveLength(1);
+  });
+
+  test("una llave sin reemplazar es un error de la implementacion", () => {
+    expect(() => fillTemplate("Hola {nadie}.", {})).toThrow();
+  });
+});
+
+describe("lineas de Ulises del resultado (RS-BE-42)", () => {
+  const lineas = c.ulisesLines;
+
+  test("titular winner con afinidad de 50 o mas, y resolved tras un desempate", () => {
+    const e = ejemplo("ejemplo-2");
+    const u = buildResultUlises(c, evaluacion(e.answers, e.tiebreakAnswers));
+    expect(u.headline).toBe("Lo tuyo apunta a Desarrollo de Videojuegos, con 75 % de afinidad.");
+    expect(u.tiebreakOutcome).toBe(lineas.tiebreak.resolved);
+  });
+
+  test("titular low con afinidad menor que 50", () => {
+    const e = ejemplo("ejemplo-4");
+    const u = buildResultUlises(c, evaluacion(e.answers, e.tiebreakAnswers));
+    expect(u.headline).toBe(
+      "Esta vez ninguna despegó del todo. Por ahora, Tecnologías de la Información va adelante, con 20 %.",
+    );
+  });
+
+  test("con empate el titular es tie y el desenlace stillTied", () => {
+    const e = ejemplo("ejemplo-8");
+    const u = buildResultUlises(c, evaluacion(e.answers, e.tiebreakAnswers));
+    expect(u.headline).toBe(
+      "Empate. Ingeniería de Software y Tecnologías de la Información quedaron igualitas, con 60 %.",
+    );
+    expect(u.tiebreakOutcome).toBe(lineas.tiebreak.stillTied);
+  });
+
+  test("empate con afinidad menor que 50: manda tie y no low", () => {
+    // TERCERA_PASA con «bottom» y «bottom»: ti y si terminan en 45 exactos.
+    const ev = evaluacion(TERCERA_PASA, ["bottom", "bottom"]);
+    expect(ev.tie).toBe(true);
+    expect(ev.scores.ti.S).toBeLessThan(50 * 210);
+    expect(buildResultUlises(c, ev).headline).toBe(
+      "Empate. Tecnologías de la Información y Sistemas de Información quedaron igualitas, con 45 %.",
+    );
+  });
+
+  test("sin desempate no hay desenlace", () => {
+    const e = ejemplo("ejemplo-1");
+    expect(buildResultUlises(c, evaluacion(e.answers, [])).tiebreakOutcome).toBeNull();
+  });
+
+  test("closing y retake van en todo resultado y la linea second de Ulises en ninguno", () => {
+    const segunda = lineas.result.second.split("{")[0]!;
+    for (const e of c.weights.examples) {
+      const u = buildResultUlises(c, evaluacion(e.answers, e.tiebreakAnswers));
+      expect(u.intro).toBe(lineas.result.intro);
+      expect(u.closing).toBe(lineas.result.closing);
+      expect(u.retake).toBe(lineas.result.retake);
+      for (const texto of Object.values(u)) {
+        if (texto) expect(texto.startsWith(segunda)).toBe(false);
+      }
+    }
   });
 });
