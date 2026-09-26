@@ -47,5 +47,5 @@ export const construirVistaUlima = (filas: UlimaGradeRow[]): UlimaGradesView => 
   const lista = [...cursos.values()];
   for (const c of lista) c.assessments.sort(ordenEvaluaciones);
   const horas = lista.map((c) => c.lastReadAt).filter((h): h is string => h !== null);
-  return { lastReadAt: horas.length ? horas.reduce((a, b) => (b > a ? b : a)) : null, courses: lista };
+  return { lastReadAt: horas.reduce<string | null>((a, b) => (a === null || b > a ? b : a), null), courses: lista };
 };

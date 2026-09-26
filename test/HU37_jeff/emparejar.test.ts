@@ -24,6 +24,9 @@ describe("nombre base", () => {
     expect(nombreBase("Práctica calificada III")).toBe("practica calificada");
     expect(nombreBase("  Exposición   Final  ")).toBe("exposicion final");
     expect(nombreBase("Semana 100")).toBe("semana 100");
+    // Espacios raros antes del ordinal: nombreBase los colapsa antes de quitarlo.
+    expect(nombreBase("Control\u00a0N°\t3")).toBe("control");
+    expect(nombreBase("Práctica calificada \u2003 II")).toBe("practica calificada");
   });
 });
 

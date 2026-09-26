@@ -14,8 +14,10 @@ import type {
 
 const TOLERANCIA_PESO = 0.01;
 const CORRIMIENTO_MAXIMO = 2;
-const ORDINAL_ARABIGO = /\s+(?:n\s*[°º.]?\s*)?\d{1,2}$/;
-const ORDINAL_ROMANO = /\s+(?:i|ii|iii|iv|v|vi)$/;
+// nombreBase ya colapsa los espacios en uno solo antes de aplicarlas, así que
+// un espacio literal equivale a \s+ y evita el retroceso superlineal.
+const ORDINAL_ARABIGO = / (?:n ?[°º.]? ?)?\d{1,2}$/;
+const ORDINAL_ROMANO = / (?:i|ii|iii|iv|v|vi)$/;
 
 /** Minúsculas, sin tildes, espacios colapsados y sin un ordinal final. */
 export const nombreBase = (nombre: string): string => {
