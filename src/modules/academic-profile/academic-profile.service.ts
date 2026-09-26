@@ -69,15 +69,13 @@ export class AcademicProfileService {
       }
     }
 
+    // BR-AP-08: todo el reemplazo en una sola transacción del repository.
     try {
-      await this.repository.deactivateAllStudentSpecialties(profile.studentId);
-      if (primarySpecialtyId != null) {
-        await this.repository.upsertStudentSpecialty(profile.studentId, primarySpecialtyId, "primary");
-      }
-      for (const specialtyId of interestSpecialtyIds) {
-        await this.repository.upsertStudentSpecialty(profile.studentId, specialtyId, "interest");
-      }
-      await this.repository.markSpecialtySetupCompleted(profile.studentId);
+      await this.repository.replaceStudentSpecialties(
+        profile.studentId,
+        primarySpecialtyId,
+        interestSpecialtyIds,
+      );
     } catch (error) {
       if (this.isUniqueViolation(error)) {
         throw new HttpError(409, "Conflicto al guardar especialidad principal.", "DUPLICATE_PRIMARY");
