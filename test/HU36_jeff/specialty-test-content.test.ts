@@ -60,6 +60,68 @@ describe("registro de versiones (RS-BE-37)", () => {
   });
 });
 
+/**
+ * RS-BE-37: el registro importa cada JSON de forma estática, sin leer el disco
+ * en tiempo de ejecución, y el arranque del servidor llega a ese import sin
+ * rodeos. Es un guardia que pasa desde el primer día y solo lee el código.
+ *
+ * El empaquetado de Vercel sigue los `import` para decidir qué archivos sube,
+ * así que un JSON leído del disco o importado con `import()` puede quedar
+ * fuera. Con la cadena estática, un JSON que falte impide arrancar la función
+ * (ERR_MODULE_NOT_FOUND), y por eso un `401 MISSING_TOKEN` de
+ * `GET /specialty-test/content` sin token, que no llega a la base, basta en la
+ * vista previa para saber que el contenido entró en el paquete.
+ */
+const CARPETA_CONTENIDO = "src/modules/specialty-test/content";
+
+/** El código sin comentarios: la cabecera del registro explica que no lee el disco. */
+const sinComentarios = (fuente: string): string =>
+  fuente.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+const codigoDe = async (ruta: string): Promise<string> => sinComentarios(await Bun.file(ruta).text());
+
+/** Un `import` de valor, no `import type`, que TypeScript borra al compilar. */
+const importaDeValor = (desde: string): RegExp =>
+  new RegExp(`^import (?!type\\b)[^;]+ from "${desde.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}";$`, "m");
+
+const JSON_DEL_REGISTRO: string[] = [];
+for await (const nombre of new Bun.Glob("*.json").scan(CARPETA_CONTENIDO)) {
+  JSON_DEL_REGISTRO.push(nombre);
+}
+JSON_DEL_REGISTRO.sort();
+
+describe("el registro entra al paquete de Vercel (RS-BE-37)", () => {
+  test("la carpeta del contenido tiene un JSON por version registrada", () => {
+    expect(JSON_DEL_REGISTRO).toEqual([...CONTENT_BY_VERSION.keys()].map((v) => `${v}.json`).sort());
+  });
+
+  test("cada JSON se importa de forma estatica con el atributo type json", async () => {
+    const registro = await codigoDe(`${CARPETA_CONTENIDO}/index.ts`);
+    const importsJson = registro.match(/^import .+\.json".*$/gm) ?? [];
+    expect(importsJson).toHaveLength(JSON_DEL_REGISTRO.length);
+    for (const nombre of JSON_DEL_REGISTRO) {
+      const esperado = new RegExp(
+        `^import \\w+ from "\\./${nombre.replace(/\./g, "\\.")}" with \\{ type: "json" \\};$`,
+        "m",
+      );
+      expect(registro).toMatch(esperado);
+    }
+  });
+
+  test("el registro no lee el disco ni importa en tiempo de ejecucion", async () => {
+    const registro = await codigoDe(`${CARPETA_CONTENIDO}/index.ts`);
+    for (const prohibido of [/\bimport\s*\(/, /\brequire\s*\(/, /readFile/, /Bun\.file/, /from "(node:)?fs/]) {
+      expect(registro).not.toMatch(prohibido);
+    }
+  });
+
+  test("el arranque llega al registro con imports de valor", async () => {
+    expect(await codigoDe("src/server.ts")).toMatch(importaDeValor("./modules/index.js"));
+    expect(await codigoDe("src/modules/index.ts")).toMatch(importaDeValor("./specialty-test/index.js"));
+    expect(await codigoDe("src/modules/specialty-test/index.ts")).toMatch(importaDeValor("./content/index.js"));
+  });
+});
+
 for (const [clave, c] of CONTENT_BY_VERSION) {
   describe(`contenido ${clave} (RS-BE-37)`, () => {
     test("la version tiene la forma AAAA-MM-DD.N y coincide con su clave en el registro", () => {
