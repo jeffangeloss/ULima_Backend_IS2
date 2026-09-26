@@ -32,8 +32,9 @@ import type {
  * `specialty-test-content.test.ts`. Aquí van los bordes que los ejemplos no
  * cubren: la aritmética exacta para todo h, n y e, el orden, el redondeo, los
  * umbrales de 10 y 11, el 10,83 tras el primer desempate, el segundo desempate
- * medido en el par aunque una tercera lo pase, y las líneas de Ulises. Las
- * respuestas de los casos de borde salen de una búsqueda sobre la versión
+ * medido en el par y pedido al mismo par aunque una tercera lo pase, la
+ * plantilla tiebreak solo con la ganadora en el par, y las líneas de Ulises.
+ * Las respuestas de los casos de borde salen de una búsqueda sobre la versión
  * vigente; cada caso anota las afinidades que produce.
  */
 
@@ -80,12 +81,26 @@ const DIEZ_83: Record<string, Answer> = {
 
 /**
  * ti 45, si 41, vj 41 y sw 35 tras las 14. Con «none» en tb-ti-si-1 quedan
- * ti 39,17 y si 37,5, y vj (41) pasa a las dos; el par sigue a 1,67.
+ * ti 39,17 y si 37,5, y vj (41) pasa a las dos; el par sigue a 1,67. Con
+ * «none» también en tb-ti-si-2, ti y si bajan a 35 y gana vj con 41, fuera
+ * del par.
  */
 const TERCERA_PASA: Record<string, Answer> = {
   q01: "top", q02: "none", q03: "bottom", q04: "un_poco", q05: "none", q06: "bottom",
   q07: "both", q08: "bastante", q09: "bottom", q10: "both", q11: "bottom", q12: "bastante",
   q13: "both", q14: "nada",
+};
+
+/**
+ * vj 42, si 38, sw 37 y ti 27 tras las 14. Con «bottom» (vj) en tb-si-vj-1
+ * quedan vj 46,67, sw 37 y si 33,33, así que el par se separa por 13,33
+ * mientras sw, que pasa a si, queda a 9,67 de vj. Medir entre las dos primeras
+ * del momento pediría tb-si-vj-2.
+ */
+const PAR_SE_SEPARA: Record<string, Answer> = {
+  q01: "bottom", q02: "bottom", q03: "none", q04: "bastante", q05: "none", q06: "none",
+  q07: "none", q08: "nada", q09: "both", q10: "both", q11: "bottom", q12: "un_poco",
+  q13: "top", q14: "me_encantaria",
 };
 
 describe("afinidad exacta (RS-BE-40)", () => {
@@ -155,6 +170,17 @@ describe("desempates (RS-BE-41)", () => {
 
   test("el segundo desempate se mide en el par aunque una tercera lo pase", () => {
     const tras1 = scores(
+      tally(c, PAR_SE_SEPARA, [{ tiebreaker: c.tiebreakers.find((t) => t.id === "tb-si-vj-1")!, answer: "bottom" }]),
+    );
+    expect(rankKeys(tras1)).toEqual(["vj", "sw", "si", "ti"]);
+    expect(tras1.vj.S - tras1.si.S).toBe(2800); // 13,33 · 210, más de 10 en el par
+    expect(tras1.vj.S - tras1.sw.S).toBe(2030); // 9,67 · 210, 10 o menos con la segunda del momento
+    const { pedidos } = recorrer(PAR_SE_SEPARA, ["bottom"]);
+    expect(pedidos).toEqual(["tb-si-vj-1"]);
+  });
+
+  test("el segundo desempate es del mismo par aunque una tercera pase al primer lugar", () => {
+    const tras1 = scores(
       tally(c, TERCERA_PASA, [{ tiebreaker: c.tiebreakers.find((t) => t.id === "tb-ti-si-1")!, answer: "none" }]),
     );
     expect(rankKeys(tras1)[0]).toBe("vj");
@@ -219,6 +245,15 @@ describe("motivo con plantillas (RS-BE-42)", () => {
     const motivo = buildTemplateReason(c, e.answers, evaluacion(e.answers, e.tiebreakAnswers));
     expect(motivo.used).toEqual(["tie"]);
     expect(motivo.main).toBeNull();
+  });
+
+  test("sin la ganadora en el par no va la plantilla tiebreak", () => {
+    // TERCERA_PASA con «none» y «none» muestra los dos desempates de ti-si y gana vj con 41.
+    const ev = evaluacion(TERCERA_PASA, ["none", "none"]);
+    expect(ev.shown).toHaveLength(2);
+    expect(ev.pair).toEqual(["ti", "si"]);
+    expect(ev.ranking[0]).toBe("vj");
+    expect(buildTemplateReason(c, TERCERA_PASA, ev).used).toEqual(["low", "electives"]);
   });
 
   test("{electivos} no repite un curso aunque dos tareas lo compartan", () => {
