@@ -43,4 +43,12 @@ export class GradesController {
     await this.service.deleteNota(studentId, sectionId, assessmentId);
     return c.json({ message: "Nota eliminada correctamente" });
   }
+
+  /** RS-BE-57. Solo el propio alumno, que sale del JWT. Sin parámetros. */
+  async getUlimaGrades(c: Context) {
+    const studentId = c.get("studentId") as number;
+    const vista = await this.service.getUlimaGrades(studentId);
+    c.header("Cache-Control", "no-store");
+    return c.json(vista);
+  }
 }

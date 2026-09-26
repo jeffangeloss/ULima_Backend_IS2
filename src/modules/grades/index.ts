@@ -11,8 +11,15 @@ const gradesController = new GradesController(gradesService);
 
 export const gradesRoutes = createGradesRoutes(gradesController);
 
+// RS-BE-56. La recarga devuelve en `view` exactamente esta vista, ya con lo
+// guardado, así que portal-sync recibe el servicio por composición.
+export { gradesService };
+
 export { GradesController } from "./grades.controller.js";
 export { GradesRepository } from "./grades.repository.js";
 export { GradesService } from "./grades.service.js";
 export { calculateAverageSchema, saveNotasSchema } from "./grades.schemas.js";
-export type { GradeValue, NotaInput, CalculateAverageResponse, SaveNotasRequest, LoadNotasResponse } from "./grades.types.js";
+export type {
+  GradeValue, NotaInput, CalculateAverageResponse, SaveNotasRequest, LoadNotasResponse,
+  UlimaAssessment, UlimaCourse, UlimaGradesView,
+} from "./grades.types.js";
