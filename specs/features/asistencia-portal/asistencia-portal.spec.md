@@ -14,6 +14,8 @@ targets:
 # Asistencia del Aula Virtual
 
 > Estado: **APROBADA el 2026-09-07 e implementada.** Diseño cerrado sobre fixtures reales del spike (5 cursos de una cuenta real). Enmienda RS-BE-4 y el paso 9 de `portal-sync.spec.md`, que hasta ahora prohibían tocar las horas de asistencia. **Pendiente**: la verificación de tiempos de §Verification, y re-sondear cerca de la semana 6 para ver el formato del agregado con faltas reales.
+>
+> **Enmienda RS-BE-48, aprobada por el dueño el 2026-09-26 con `recarga-portal.spec.md` y en implementación en la rama `fix/menu-aula-virtual`.** La ULima cambia el menú lateral del Aula Virtual, `parseAulas` ya no encuentra ninguna aula y la importación deja de actualizar la asistencia de todos. RS-BE-48 lee el menú en sus dos formatos, corre la fase de asistencia antes que la de delegados y arma al final los avisos de cada aula, que nombran el aula cuando el curso se desconoce. Esta rama lleva solo RS-BE-48 y la identificación verificada `identificado` de `parseAsistenciaCurso` que ese requisito necesita. El resto de la enmienda de `recarga-portal.spec.md`, que suma el parámetro `cicloEsperado`, las marcas `otroCiclo` e `identityMismatch` y la hora de lectura, sale con la recarga en `feat/recarga-notas-asistencia`. Hasta que esta rama llegue a producción, el backend desplegado sigue el texto sin enmendar.
 
 ## Contexto
 
@@ -29,6 +31,8 @@ targets:
      var link = '/portalUL/av/servlets/ComandoListarAsistenciaAulaVirtualAlumno'+Cad;
    ```
    **Un solo parámetro, y el segundo argumento se ignora**: el servlet deduce al alumno de la sesión.
+
+> **Formato nuevo del menú (2026-09-25, RS-BE-48 de `recarga-portal.spec.md`, aprobado por el dueño el 2026-09-26).** El menú vivo ya no trae los arreglos `aNuAula`, `aCurs` ni `aSecc`. Por cada curso emite un `<li class="curso">` con la carrera, el nombre truncado y la sección, seguido del enlace `OpenAsistenciaAlumno('<aula>')`, y no trae el código del curso. La importación ya identifica cada curso por los ocultos `prm_sCoCurs` y `prm_sCoSecc` de la página de detalle, así que el menú solo aporta el aula y una sección para contrastar. Un aula cuya página no llega o no se identifica queda, en cambio, sin curso conocido, y su aviso nombra el aula.
 
 > **Ruta prohibida.** El HAR contiene `ComandoListarAsistenciaAulaVirtualCursos?…&prm_sCoUserAlum=<código>`, parametrizada por **código de alumno**. Es superficie de IDOR contra terceros y esta feature NO la usa jamás. Si alguna vez `OpenAsistenciaAlumno` empezara a aceptar un código de alumno, la importación se aborta y se escala a Sistemas.
 
@@ -54,8 +58,47 @@ Los tres agregados mapean 1:1 con las tres columnas. Y «Total horas programadas
 - RS-BE-16: El porcentaje de asistencia que ve el alumno se calcula sobre las **horas transcurridas**, no sobre el ciclo entero. La API expone `horasTranscurridas` (= asistidas + inasistencias) junto a las tres horas.
   `[@test] ../../../test/HU_asistencia/attendance-risk.sin-datos.test.ts`
   (el cálculo del porcentaje vive en el cliente: `ULima_Frontend_IS2/test/HU_asistencia/seccion_asistencia_test.dart`)
+- RS-BE-48: `parseAulas` lee el menú lateral del Aula Virtual en sus dos formatos, el de arreglos y el de lista, y la importación identifica cada aula del formato de lista por la página de asistencia de esa misma aula, tanto para escribir la asistencia como para los delegados. Ningún aviso lleva `null` en lugar del curso. Las reglas están en «El menú lateral en dos formatos (RS-BE-48)».
+  `[@test] ../../../test/HU31_jeff/parser.aulas-lista.test.ts`
+  `[@test] ../../../test/HU31_jeff/parser.asistencia-sidebar.test.ts`
+  `[@test] ../../../test/HU31_jeff/parsers.delegado.test.ts`
+  `[@test] ../../../test/HU31_jeff/parser.asistencia.test.ts`
+  `[@test] ../../../test/HU31_jeff/service.asistencia.test.ts`
+  `[@test] ../../../test/HU31_jeff/service.delegados.test.ts`
 
 ## Rules
+
+### El menú lateral en dos formatos (RS-BE-48)
+
+Esta sección copia la parte aprobada de RS-BE-48 de `recarga-portal.spec.md` (aprobada por el dueño el 2026-09-26, en la rama `feat/recarga-notas-asistencia`), limitada a la importación. `parseAulas(html, fnEnlace)` acepta el formato de arreglos, que conserva las reglas de RS-1 de `delegados-portal.spec.md`, y el formato de lista del menú nuevo. Es el único requisito de la recarga que corrige un fallo en producción, no necesita cambio de BD ni de contrato y se publica antes que el resto, en un PR propio (decisión abierta 1 de `recarga-portal.spec.md`).
+
+**Forma del resultado.** `parseAulas` devuelve `ParseResult<AulaMenu[]>`, con `AulaMenu = { aula: string; courseCode: string | null; sectionCode: string | null; origen: "arreglos" | "lista" }`. El tipo reemplaza a `DelegadoAula` en `portal-sync.types.ts`. En el formato de arreglos `courseCode` y `sectionCode` nunca son `null`.
+
+**Elección del formato.** El parser corre primero la lectura por arreglos. Si deja al menos un aula utilizable, ese es el resultado. Si no deja ninguna, corre la lectura por lista. Si tampoco deja ninguna, devuelve `ok: false` con el mismo motivo de hoy («el sidebar no trae ninguna aula utilizable»), porque este portal devuelve la página de inicio de sesión con HTTP 200.
+
+**Lectura por lista.**
+
+1. Un curso empieza en cada etiqueta `<li` cuyo atributo `class` contiene la palabra `curso` como palabra completa, separada por espacios (`curso` y `curso open` sirven, `curso-body` no), y termina donde empieza el siguiente curso o en el primer `</ul>`.
+2. Dentro de ese tramo se buscan las llamadas `fnEnlace('<argumento>')`, con comillas simples o dobles y un argumento de hasta 20 caracteres sin comillas ni `<>`, y se cuentan sus argumentos distintos antes de validarlos. Un tramo sin llamadas se descarta, porque ese curso no ofrece el panel. Un tramo con dos argumentos distintos se descarta entero, aunque uno de ellos no sea un aula válida, porque no hay forma segura de saber cuál es la suya. Un tramo con exactamente un argumento aporta esa aula si pasa el punto 3.
+3. El aula se valida con `^\d{4,8}$`, el mismo criterio de `assertAula`, y un argumento que no cumple descarta el tramo.
+4. `sectionCode` es el último segmento del texto del `<li>`, separado por `/` y normalizado con `clean(stripTags(...))`, cuando cumple `^\d{1,4}$`. Si no lo cumple queda `null` y el aula se conserva, porque la sección del menú solo sirve para contrastar.
+5. `courseCode` es siempre `null`. El `<li>` trae el nombre truncado a 20 caracteres y nunca el código, y un número dentro del nombre no es un código de curso.
+6. Si la misma aula aparece en dos tramos, se conserva la primera aparición cuando las secciones coinciden o una de ellas es `null`, y se descartan las dos cuando las secciones difieren.
+7. El orden del resultado es el del documento.
+
+**Identificación verificada.** La identificación verificada de una página de asistencia es el par (curso, sección) que declara cuando además `prm_sNuAula` es el aula pedida y `prm_sCoUserAlum` es el del alumno. `parseAsistenciaCurso` la devuelve en `identificado: { courseCode, sectionCode }` también cuando la página falla después, en los totales o en el cotejo con las sesiones (RS-BE-51, punto 4, de `recarga-portal.spec.md`). El parámetro `cicloEsperado` de ese punto sale con la recarga.
+
+**Fase de asistencia de la importación.** Identifica cada curso por los ocultos de la página de detalle (`prm_sCoCurs`, `prm_sCoSecc`), así que el formato de lista no le cambia la escritura. Se agrega un contraste. Cuando el aula trae `sectionCode` del menú y la página declara otra sección, ese curso no se escribe, el aula no entra al mapa aula → (curso, sección) y se emite `PARSER_FAILED` con `block: "asistencia"` y el mensaje fijo «La sección del menú no coincide con la de la página de asistencia del aula <aula>.». El mapa aula → (curso, sección) se arma con las identificaciones verificadas y no solo con las páginas que se leen enteras, así que un curso cuya página falla en los totales conserva sus delegados.
+
+**Fase de delegados de la importación.** Pasa a correr después de la de asistencia, las dos fuera de la transacción y una después de la otra, como hoy. Para un aula con `courseCode: null`, toma el curso y la sección del mapa aula → (curso, sección) de la misma importación, porque el aula es el mismo número en los tres paneles. Consulta ese mapa antes de pedir la nómina, así que un aula sin curso conocido no gasta ninguna petición. Si el aula no está en el mapa, sus delegados no se escriben y se emite `PARSER_FAILED` con `block: "delegado"` y el mensaje fijo «No se pudo identificar el curso del aula <aula>.». Si el menú trae una sección y el mapa dice otra, rige la misma regla. El aviso de RS-11 de `delegados-portal.spec.md` («Ninguna de las aulas del panel de delegados empató con tu matrícula») se mide sobre las aulas identificadas. La nómina no cambia (RS-2 a RS-7 de `delegados-portal.spec.md`). Con arreglos rige la lectura de hoy, con lista solo se escribe el aula que una página de asistencia verifica, y con un formato desconocido la fase falla como hoy, sin escribir ningún claim.
+
+**Atribución de un aula sin curso conocido.** Con el menú de lista, un aula cuya página falla no dice de qué curso es. La regla es la misma en la importación y en la recarga.
+
+1. El curso y la sección de un aula salen, en este orden, de los arreglos del menú, de la identificación verificada de su propia página o de la identificación verificada de la página de la misma aula en el otro panel. Si ninguna la da, el aula queda sin curso conocido.
+2. Los avisos de cada aula se arman al final, cuando ya terminan todas las fases. Con curso conocido nombran `<curso>/<sección>`, y sin él nombran el aula, como en «No se pudo traer la asistencia del aula 900101.» o «No se entendió la asistencia del aula 900101» seguido del motivo. Ningún aviso lleva `null`.
+3. La importación no tiene fase de notas, así que con el menú de lista el aula de una página de asistencia que falla sin identificarse queda sin curso conocido y su aviso nombra el aula.
+
+Los mensajes llevan solo literales fijos y valores ya validados con una regex de dígitos. La recarga (`POST /portal-sync/refresh`) usa el mismo parser con `OpenAsistenciaAlumno` y `OpenNotaAlumnoPrePost`, y sus reglas quedan en `recarga-portal.spec.md`.
 
 ### Por qué `horasTranscurridas` (RS-BE-16)
 
@@ -70,6 +113,8 @@ parseAsistenciaCurso(html, aulaEsperada, alumnoEsperado): ParseResult<Asistencia
 ```
 
 `AsistenciaCurso` tiene **exactamente cinco campos**: `courseCode`, `sectionCode`, `totalHours`, `attendedHours`, `absentHours`. La ausencia de campos para sesión, marca y observación **es la garantía de privacidad, no un olvido**.
+
+Desde RS-BE-48 el resultado lleva además, fuera de `data`, la identificación verificada `identificado: { courseCode, sectionCode }` cuando la página declara el aula pedida y el alumno autenticado, también si falla después en los totales o en el cotejo con las sesiones. `AsistenciaCurso` sigue con sus cinco campos.
 
 Reglas de extracción, todas verificadas contra los 5 fixtures:
 
