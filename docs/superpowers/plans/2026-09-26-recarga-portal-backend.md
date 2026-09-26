@@ -10,7 +10,7 @@
 
 **Spec.** `specs/features/recarga-portal/recarga-portal.spec.md` (RS-BE-48 a RS-BE-60, aprobada por el dueño el 2026-09-26 con el cambio de BD de la `0015`). La spec fija los valores exactos (mensajes, umbrales, SQL de la migración, formas de la respuesta y códigos de error), y este plan fija el orden, los archivos, las interfaces y las pruebas. Si difieren, manda la spec. La contraparte de la app es `ULima_Frontend_IS2/specs/features/recarga-portal/recarga-portal.spec.md`, en la rama `feat/recarga-notas-asistencia-fe`.
 
-**Repo y rama.** `$REPO` (el worktree de la rama, ver «Variables de los comandos»), rama `feat/recarga-notas-asistencia`. RS-BE-48 no se implementa aquí. Llega por su propia rama, `fix/menu-aula-virtual`, que se mergea a `main` antes, y esta rama la trae con un merge de `main` en la Tarea 0, antes de escribir una sola línea de código.
+**Repo y rama.** `$REPO` (el worktree de la rama, ver «Variables de los comandos»), rama `feat/recarga-notas-asistencia`. RS-BE-48 no se implementa aquí. Llega por su propia rama, `fix/menu-aula-virtual`, que entra a `main` en `028aea1` (PR #10), y esta rama ya la trae con el merge `a545d42`, previo a cualquier línea de código, así que la Tarea 0 solo lo comprueba.
 
 ## Restricciones globales
 
@@ -97,7 +97,7 @@ Al llegar la notificación, `tail -n 12 "${SCRATCH:?}/tarea-NN.log"` tiene que m
 
 | Requisito | Tareas |
 | --- | --- |
-| RS-BE-48 (llega por `main`) | 0 |
+| RS-BE-48 (llega por `main`, ya fusionado en `a545d42`) | 0 |
 | Modelo de datos y `0015` | 1, 21 |
 | RS-BE-49 | 5, 18, 19 |
 | RS-BE-50 | 2, 3, 9, 10, 12, 16, 17, 18 |
@@ -112,18 +112,18 @@ Al llegar la notificación, `tail -n 12 "${SCRATCH:?}/tarea-NN.log"` tiene que m
 | RS-BE-59 | 5, 6, 7, 20 |
 | RS-BE-60 | 3 |
 | Contrato, enmiendas, `AGENTS.md`, `KNOWLEDGE.md` y `MIGRATIONS.md` | 22 |
-| Verificaciones V1 a V5 y aplicación de la `0015` | 4 (V1), 22 (PARAR) |
+| Verificaciones V1 a V5 y aplicación de la `0015` | 4 (V1, con la ruta ya resuelta), 22 (entrega al dueño) |
 
 ---
 
 ### Tarea 0. Punto de partida, merge de `main` con RS-BE-48 y línea base
 
 **Archivos.**
-- Modificar por el merge. `specs/features/asistencia-portal/asistencia-portal.spec.md` y `specs/features/delegados-portal/delegados-portal.spec.md`, los únicos que chocan (simulado con `git merge-tree` sobre `ab4c219`, el último commit de `fix/menu-aula-virtual` al escribir el plan).
+- Ninguno por escribir. El merge `a545d42` del 2026-09-26 ya trae `main` en `028aea1`, con RS-BE-48 (PR #10), y ya resuelve los dos únicos archivos que chocan, `specs/features/asistencia-portal/asistencia-portal.spec.md` y `specs/features/delegados-portal/delegados-portal.spec.md`. En los bloques de delegados y en el del formato del menú de asistencia vale el lado de `main`, y el bloque de estado de la asistencia conserva los dos lados, el de `main` con RS-BE-48 implementada y el de la rama con el resto de la enmienda (RS-BE-51 y RS-BE-58), pendiente en esta rama.
 
 **Interfaces.**
 - Consume de `main`, ya con RS-BE-48. `AulaMenu = { aula: string; courseCode: string | null; sectionCode: string | null; origen: "arreglos" | "lista" }` y `AsistenciaIdentificada = { courseCode: string; sectionCode: string }` en `portal-sync.types.ts`, `parseAulas(html, fnEnlace): ParseResult<AulaMenu[]>` en `parsers/delegado.ts`, `AsistenciaResult = ParseResult<AsistenciaCurso> & { identificado?: AsistenciaIdentificada }` y `parseAsistenciaCurso(html, aula, alumno): AsistenciaResult` en `parsers/asistencia.ts`, la fase de asistencia de la importación antes que la de delegados, con `cursoPorAula`, `parDeAula` y los avisos armados al final, y el fixture `test/HU31_jeff/fixtures/menu-lista-asistencia.html` con las aulas `900101` a `900105`.
-- Produce. La rama con RS-BE-48 y la línea base de la suite en `$SCRATCH/linea-base.log`.
+- Produce. La rama con RS-BE-48 comprobada y la línea base de la suite en `$SCRATCH/linea-base.log`.
 
 - [ ] **Paso 1. Comprobar dónde está el árbol y quién firma**
 
@@ -131,35 +131,23 @@ Al llegar la notificación, `tail -n 12 "${SCRATCH:?}/tarea-NN.log"` tiene que m
 cd "${REPO:?}" && git rev-parse --abbrev-ref HEAD && git status --short && git log --oneline -3 && git config user.name && git config user.email
 ```
 
-Se espera la rama `feat/recarga-notas-asistencia`, un `git status --short` vacío, el commit de este plan (`docs(recarga-portal): plan de implementación del backend de la recarga …`) encima de `a0a85af`, el nombre `Jeffangeloss` y un correo que termina en `@users.noreply.github.com`. Si el correo es otro, PARAR, porque todos los commits de la rama llevan ese autor. Si el árbol trae commits o cambios sin commitear de un intento anterior de este mismo plan, se revisan contra la tarea a la que pertenecen, se conservan si están bien y se sigue desde la primera tarea incompleta.
+Se espera la rama `feat/recarga-notas-asistencia`, un `git status --short` vacío, el commit que corrige este plan tras su revisión (`docs(recarga-portal): el plan …`) encima del merge `a545d42` (`merge: trae main con el menú del Aula Virtual en dos formatos (RS-BE-48, PR #10)`), el nombre `Jeffangeloss` y un correo que termina en `@users.noreply.github.com`. Si el correo es otro, PARAR, porque todos los commits de la rama llevan ese autor. Si el árbol trae commits o cambios sin commitear de un intento anterior de este mismo plan, se revisan contra la tarea a la que pertenecen, se conservan si están bien y se sigue desde la primera tarea incompleta.
 
-- [ ] **Paso 2. Comprobar que RS-BE-48 ya está en `main`**
+- [ ] **Paso 2. Comprobar que RS-BE-48 ya está en la rama**
 
 ```bash
-cd "${REPO:?}" && git fetch origin && git grep -c 'origen: "lista"' origin/main -- src/modules/portal-sync/parsers/delegado.ts && git grep -c 'export type AsistenciaResult' origin/main -- src/modules/portal-sync/parsers/asistencia.ts && git cat-file -e origin/main:test/HU31_jeff/fixtures/menu-lista-asistencia.html && echo RS-BE-48-EN-MAIN
+cd "${REPO:?}" && git fetch origin && git merge-base --is-ancestor 028aea1 HEAD && git grep -c 'origen: "lista"' HEAD -- src/modules/portal-sync/parsers/delegado.ts && git grep -c 'export type AsistenciaResult' HEAD -- src/modules/portal-sync/parsers/asistencia.ts && git cat-file -e HEAD:test/HU31_jeff/fixtures/menu-lista-asistencia.html && echo RS-BE-48-EN-LA-RAMA
 ```
 
-Se espera `RS-BE-48-EN-MAIN` al final. Si falta, PARAR. La spec prohíbe desplegar la recarga sin RS-BE-48, y este plan se escribe sobre sus interfaces.
+Se espera `RS-BE-48-EN-LA-RAMA` al final. La spec prohíbe desplegar la recarga sin RS-BE-48, y este plan se escribe sobre sus interfaces, pero esa precondición ya se cumple con el merge `a545d42`, así que la tarea sigue sin detenerse. Si la línea no sale, porque el árbol parte de un punto anterior a ese merge, el Paso 3 trae `main` y esta comprobación se repite después.
 
-- [ ] **Paso 3. Traer `main` y resolver los dos choques de documentación**
+- [ ] **Paso 3. Traer `main` solo si avanzó**
 
 ```bash
 cd "${REPO:?}" && git merge --no-ff --no-commit origin/main; git diff --name-only --diff-filter=U
 ```
 
-Se espera que la segunda orden liste, a lo sumo, los dos archivos de la sección «Archivos». Si lista otro, en especial uno de `src/` o de `test/`, `git merge --abort` y PARAR. En los cuatro bloques que chocan, `main` trae el estado más nuevo de RS-BE-48 (implementada) y la rama trae el de antes (pendiente), así que en cada bloque vale el lado de `main`. El resto de cada archivo conserva lo que ya fusiona git.
-
-```bash
-cd "${REPO:?}" && for f in specs/features/asistencia-portal/asistencia-portal.spec.md specs/features/delegados-portal/delegados-portal.spec.md; do [ -f "$f" ] && perl -0pi -e 's/^<<<<<<< [^\n]*\n.*?^=======\n(.*?)^>>>>>>> [^\n]*\n/$1/gms' "$f"; done; grep -n '^<<<<<<<\|^=======$\|^>>>>>>>' specs/features/asistencia-portal/asistencia-portal.spec.md specs/features/delegados-portal/delegados-portal.spec.md; echo "MARCAS=$?"
-```
-
-Se espera `MARCAS=1`, es decir, ningún marcador de conflicto. Después se confirma el merge.
-
-```bash
-cd "${REPO:?}" && git add specs/features/asistencia-portal/asistencia-portal.spec.md specs/features/delegados-portal/delegados-portal.spec.md && git commit -m "merge: trae main con la lectura del menú del Aula Virtual en sus dos formatos (RS-BE-48)" && git log --oneline -1
-```
-
-Si `git merge` dice `Already up to date`, no hay nada que confirmar y se sigue.
+Con `origin/main` en `028aea1`, git responde `Already up to date.`, la segunda orden no lista nada, no hay nada que confirmar y se sigue al Paso 4. Si `main` avanzó después de `028aea1`, cada bloque en conflicto se resuelve a mano y conserva los dos lados, como en `a545d42`, y el merge se confirma con `git add` de los archivos resueltos y un commit `merge: trae main con …` que nombra lo que trae. Si choca un archivo de `src/` o de `test/`, `git merge --abort` y PARAR, porque este plan se escribe sobre las interfaces de `028aea1`.
 
 - [ ] **Paso 4. Línea base en segundo plano**
 
@@ -169,7 +157,7 @@ Con `run_in_background: true`.
 cd "${REPO:?}" && { "${BUN:?}" run build && DATABASE_URL=postgres://user:pass@localhost:5432/test "$BUN" test; } > "${SCRATCH:?}/linea-base.log" 2>&1; echo "EXIT=$?" >> "$SCRATCH/linea-base.log"
 ```
 
-Al llegar la notificación, `tail -n 12 "${SCRATCH:?}/linea-base.log"` tiene que mostrar `0 fail` y `EXIT=0`. Las cifras de `pass`, `skip` y `expect()` quedan anotadas como línea base. Un fallo acá es preexistente y se reporta aparte antes de seguir.
+Al llegar la notificación, `tail -n 12 "${SCRATCH:?}/linea-base.log"` tiene que mostrar `0 fail` y `EXIT=0`. La línea base medida sobre `a545d42` el 2026-09-26 es de 2322 `pass`, 42 `skip`, 0 `fail` y 7561 `expect()` en 133 archivos, con `bun run build` sin errores, y el commit que corrige el plan no la cambia porque solo toca documentación. Las cifras de `pass`, `skip` y `expect()` quedan anotadas como línea base. Un fallo acá es preexistente y se reporta aparte antes de seguir.
 
 ---
 
@@ -1048,7 +1036,7 @@ cd "${REPO:?}" && git add src/services/portal.client.ts test/HU31_jeff/portal.cl
 
 ---
 
-### Tarea 4. Rutas del panel Nota y opciones de `fetchPage` (con la verificación V1)
+### Tarea 4. Rutas del panel Nota y opciones de `fetchPage` (con la ruta que fija la verificación V1)
 
 **Archivos.**
 - Modificar `src/services/portal.client.ts` (`OpcionesPagina`, `fetchPage` y `PORTAL_PATHS`).
@@ -1056,17 +1044,11 @@ cd "${REPO:?}" && git add src/services/portal.client.ts test/HU31_jeff/portal.cl
 
 **Interfaces.**
 - Consume `assertAula` (`^\d{4,8}$`), que ya protege las rutas del Aula Virtual.
-- Produce `export type OpcionesPagina = { charset?: "iso-8859-1"; refererPath?: string }`, `fetchPage(path: string, cookies: PortalCookies, opciones: OpcionesPagina = {}): Promise<string>`, `PORTAL_PATHS.cursosNota` (`"av/servlets/ComandoListarCursosXOpcionAulaVirtualNota"`), `PORTAL_PATHS.notaCurso(aula)` (el servlet que fija V1, con `?prm_sNuAula=<aula>`) y `PORTAL_PATHS.tareaAcademica(aula)` (`"gada/servlets/ComandoConsultarTareaAcademica?prm_sNuAula=<aula>"`). La Tarea 17 pide la página del curso con `{ refererPath: PORTAL_PATHS.cursosNota }` y el marco con `{ charset: "iso-8859-1", refererPath: PORTAL_PATHS.notaCurso(aula) }`.
+- Produce `export type OpcionesPagina = { charset?: "iso-8859-1"; refererPath?: string }`, `fetchPage(path: string, cookies: PortalCookies, opciones: OpcionesPagina = {}): Promise<string>`, `PORTAL_PATHS.cursosNota` (`"av/servlets/ComandoListarCursosXOpcionAulaVirtualNota"`), `PORTAL_PATHS.notaCurso(aula)` (`"gada/servlets/ComandoListarNotasAcadAlum?prm_sNuAula=<aula>"`, el servlet que fija V1) y `PORTAL_PATHS.tareaAcademica(aula)` (`"gada/servlets/ComandoConsultarTareaAcademica?prm_sNuAula=<aula>"`). La Tarea 17 pide la página del curso con `{ refererPath: PORTAL_PATHS.cursosNota }` y el marco con `{ charset: "iso-8859-1", refererPath: PORTAL_PATHS.notaCurso(aula) }`.
 
-- [ ] **Paso 1. Verificación V1 (PARAR si falta)**
+- [ ] **Paso 1. Verificación V1, ya resuelta**
 
-La spec pide V1 antes de implementar RS-BE-52, y la decisión abierta 17 autoriza los sondeos de solo lectura de V1 a V4. Hace falta, en el chat, el resultado de V1 que dé el dueño o su permiso para correr la parte sin sesión, que es un `GET` de un archivo estático público. Sin ninguno de los dos, PARAR. Con el permiso, se corre esto y la salida no se guarda en ningún repo.
-
-```bash
-curl -s --max-time 20 https://webaloe.ulima.edu.pe/portalUL/av/scripts/aVirtualBB.js | tr -d '\r' | grep -n -A 16 'function OpenNotaAlumnoPrePost'
-```
-
-La salida muestra la ruta del servlet que arma `OpenNotaAlumnoPrePost` y los parámetros que manda. Si manda solo `prm_sNuAula`, esa ruta (relativa a `/portalUL/`, por ejemplo `av/servlets/Comando…`) es el valor de `NOTA_CURSO_SERVLET` del Paso 4. Si manda un código de alumno o cualquier otro parámetro además del aula, PARAR y escalar al dueño, con el mismo criterio que la ruta prohibida de `asistencia-portal.spec.md`. La parte con sesión de V1 (el `Content-Type` de la página del curso y del marco, y si el portal exige `Referer`) la corre el dueño con su cuenta, y su resultado entra a la spec en la Tarea 22.
+La spec pide V1 antes de implementar RS-BE-52, y la parte sin sesión ya está hecha el 2026-09-26 sobre el script público `av/scripts/aVirtualBB.js`, un archivo estático que no lleva datos de nadie. En ese script, el menú de Nota enlaza con `OpenNotaAlumnoPrePost(Aula, Alumno)`, que arma `/portalUL/gada/servlets/ComandoListarNotasAcadAlum?prm_sNuAula=<aula>` y no usa su segundo argumento. La ruta relativa a `/portalUL/` es `gada/servlets/ComandoListarNotasAcadAlum` y el aula es su único parámetro, así que no toca la ruta prohibida de `asistencia-portal.spec.md` y es el valor de `NOTA_CURSO_SERVLET` del Paso 4. Este paso no pide ningún sondeo ni detiene la tarea. La parte con sesión de V1 (el `Content-Type` de la página del curso y del marco, y si el portal exige `Referer`) la corre el dueño con su cuenta, y su resultado entra a la spec en la Tarea 22 si ya existe.
 
 - [ ] **Paso 2. Escribir la prueba que falla**
 
@@ -1089,9 +1071,7 @@ describe("rutas del panel Nota (RS-BE-52)", () => {
   });
 
   test("la página del curso es el servlet que fija V1, con el aula como único parámetro", () => {
-    expect(PORTAL_PATHS.notaCurso("900101")).toMatch(
-      /^(?:av|gada)\/servlets\/Comando[A-Za-z]+\?prm_sNuAula=900101$/,
-    );
+    expect(PORTAL_PATHS.notaCurso("900101")).toBe("gada/servlets/ComandoListarNotasAcadAlum?prm_sNuAula=900101");
   });
 
   test("el marco de evaluaciones se arma con el aula, nunca con el src del HTML", () => {
@@ -1156,7 +1136,7 @@ Se espera que fallen las rutas (no existen) y los casos con opciones de charset 
 
 - [ ] **Paso 4. Implementar en `portal.client.ts`**
 
-Antes de `PORTAL_PATHS`, la ruta que da V1. El valor de ejemplo es solo la forma. Se reemplaza por la ruta que imprime el Paso 1, relativa a `/portalUL/` y sin el `?`.
+Antes de `PORTAL_PATHS`, la ruta que fija V1 (Paso 1), relativa a `/portalUL/` y sin el `?`.
 
 ```ts
 /**
@@ -1166,7 +1146,7 @@ Antes de `PORTAL_PATHS`, la ruta que da V1. El valor de ejemplo es solo la forma
  * detiene y se escala, con el mismo criterio de la ruta prohibida de
  * asistencia-portal.spec.md.
  */
-const NOTA_CURSO_SERVLET = "av/servlets/ComandoRutaQueDaV1";
+const NOTA_CURSO_SERVLET = "gada/servlets/ComandoListarNotasAcadAlum";
 ```
 
 Dentro de `PORTAL_PATHS`, después de `asistenciaAlumno`.
@@ -1226,14 +1206,14 @@ El resto de `fetchPage` no cambia, y `logout` sigue llamando `fetchPage(PORTAL_P
 cd "${REPO:?}" && DATABASE_URL=postgres://user:pass@localhost:5432/test "${BUN:?}" test test/HU37_jeff/portal.client.nota.test.ts test/HU31_jeff/portal.client.test.ts
 ```
 
-Se esperan 8 pruebas nuevas en verde y las del cliente de siempre sin cambios. Si el valor de ejemplo sigue en el código, la segunda prueba pasa igual, así que antes del commit `grep -n 'ComandoRutaQueDaV1' src/services/portal.client.ts` tiene que salir vacío.
+Se esperan 8 pruebas nuevas en verde y las del cliente de siempre sin cambios.
 
 - [ ] **Paso 6. Build y suite completa en segundo plano** con `tarea-04.log`. Se espera `0 fail`, `EXIT=0` y 8 pruebas más que en la Tarea 3.
 
 - [ ] **Paso 7. Commit**
 
 ```bash
-cd "${REPO:?}" && git add src/services/portal.client.ts test/HU37_jeff/portal.client.nota.test.ts && git commit -m "feat(portal-client): rutas del panel Nota y opciones de charset y Referer en fetchPage (RS-BE-52, RS-BE-53)" -m "La ruta de la página del curso sale de la verificación V1 y su único parámetro es el aula. El marco de evaluaciones se arma con el aula del menú y se decodifica como ISO-8859-1 sin depender de la cabecera."
+cd "${REPO:?}" && git add src/services/portal.client.ts test/HU37_jeff/portal.client.nota.test.ts && git commit -m "feat(portal-client): rutas del panel Nota y opciones de charset y Referer en fetchPage (RS-BE-52, RS-BE-53)" -m "La página del curso es ComandoListarNotasAcadAlum, la ruta que fija la verificación V1, y su único parámetro es el aula. El marco de evaluaciones se arma con el aula del menú y se decodifica como ISO-8859-1 sin depender de la cabecera."
 ```
 
 ---
@@ -5230,7 +5210,7 @@ cd "${REPO:?}" && git add src/modules/portal-sync/refresh/refresh.types.ts src/m
 - Modificar `src/modules/portal-sync/refresh/refresh.logic.ts` (chequeo del promedio).
 - Crear `src/modules/portal-sync/refresh/fase-notas.ts`.
 - Modificar `test/HU37_jeff/recarga.dobles.ts` (el menú de Nota).
-- Pruebas `test/HU37_jeff/refresh.notas.test.ts` y `test/HU37_jeff/refresh.budget.test.ts` (segunda parte).
+- Pruebas `test/HU37_jeff/refresh.notas.test.ts` (la fase, y la Tarea 18 le suma la prueba de servicio de RS-BE-52, punto 6) y `test/HU37_jeff/refresh.budget.test.ts` (segunda parte).
 
 **Interfaces.**
 - Consume `parseAulas`, `parseNotaCurso` y `parseDetalleEvaluaciones` (Tareas 6 y 7), `PORTAL_PATHS.cursosNota`, `notaCurso` y `tareaAcademica` (Tarea 4) y los tipos y `falloDe` de la Tarea 16.
@@ -5385,15 +5365,19 @@ describe("RS-BE-52 · identificación y contraste", () => {
   test("el mapa de la asistencia con otro curso para esa aula es contraste", async () => {
     const mapa = new Map(MAPA);
     mapa.set("900102", { courseCode: "690499", sectionCode: "812" });
-    const { fase } = await leer({}, mapa);
+    const { fase, pedidos } = await leer({}, mapa);
     expect(fase.aulas[1]).toMatchObject({ estado: "contraste" });
+    expect(pedidos.some((p) => p.path === PORTAL_PATHS.tareaAcademica("900102"))).toBe(false);
+    expect(fase.identificadas.has("900102")).toBe(false);
   });
 
   test("el mapa de la asistencia con otra sección para esa aula es contraste", async () => {
     const mapa = new Map(MAPA);
     mapa.set("900102", { courseCode: "690418", sectionCode: "813" });
-    const { fase } = await leer({}, mapa);
+    const { fase, pedidos } = await leer({}, mapa);
     expect(fase.aulas[1]).toMatchObject({ estado: "contraste" });
+    expect(pedidos.some((p) => p.path === PORTAL_PATHS.tareaAcademica("900102"))).toBe(false);
+    expect(fase.identificadas.has("900102")).toBe(false);
   });
 
   test("un aula que la asistencia no identificó se lee igual", async () => {
@@ -5459,6 +5443,8 @@ describe("RS-BE-53, punto 7 · chequeo con el promedio de la ULima", () => {
   });
 });
 ```
+
+La fila RS-BE-52 de «Pruebas por requisito» pide además, en este mismo archivo, una prueba de servicio para tres contrastes, que son la sección del menú distinta de la de la página, el mapa de la asistencia con otro curso para esa aula y el mapa con otra sección. En los tres, el servicio no escribe notas del curso y emite `PARSER_FAILED` con `block: "nota"` y el mensaje «El curso del aula <aula> no coincide entre los paneles de miUlima.». Esa prueba necesita `PortalRefreshService` y los dobles de `recarga.servicio.ts`, que nacen en la Tarea 18, así que esa tarea la suma al final de este archivo. Aquí, las tres pruebas de la fase fijan lo que le toca a la fase, que deja el aula en `contraste`, sin pedir su marco y fuera de `identificadas`.
 
 Al final de `test/HU37_jeff/refresh.budget.test.ts`, con los imports que faltan al comienzo del archivo (`leerNotas` de `fase-notas.js`, `PORTAL_PATHS` de `portal.client.js` y `MENU_NOTA`, `marco` y `notaDe` de `recarga.dobles.js`).
 
@@ -5635,7 +5621,7 @@ cd "${REPO:?}" && git add src/modules/portal-sync/refresh/refresh.logic.ts src/m
 - Modificar `src/modules/portal-sync/refresh/refresh.logic.ts` (errores, atribución y registro por fase).
 - Crear `src/modules/portal-sync/refresh/refresh.service.ts`.
 - Crear `test/HU37_jeff/recarga.servicio.ts` (dobles del servicio).
-- Pruebas `test/HU37_jeff/refresh.service.test.ts` y `test/HU37_jeff/refresh.budget.test.ts` (tercera parte).
+- Pruebas `test/HU37_jeff/refresh.service.test.ts`, `test/HU37_jeff/refresh.budget.test.ts` (tercera parte) y `test/HU37_jeff/refresh.notas.test.ts` (la prueba de servicio de RS-BE-52, punto 6, al final del archivo).
 
 **Interfaces.**
 - Consume todo lo anterior. `PortalRefreshRepository` (Tarea 13), `PortalLoginGuard`, `refreshInProgress` y `tooManyRejectedLogins` (Tarea 9), `PortalClient.login` con plazo (Tarea 3), `fetchPage` con opciones y las rutas del panel Nota (Tarea 4), `parseCicloActivo`, `resolveAttendanceHours`, `emparejarEvaluaciones` y `silaboNoCoincide` (Tarea 8), `leerAsistencia` (Tarea 16), `leerNotas` y `promedioNoCuadra` (Tarea 17) y `UlimaGradesView` (Tarea 14).
@@ -6180,13 +6166,68 @@ describe("RS-BE-50 · presupuesto de la recarga entera", () => {
 
 En el segundo caso, la ronda de apertura pide sus tres páginas en t = 0, 10 000 y 20 000, y la fase de asistencia pide tres más en t = 30 000, 40 000 y 50 000. En t = 60 000 el presupuesto está agotado, así que las aulas 900104 y 900105 y todas las del panel Nota quedan sin pedir.
 
+Al final de `test/HU37_jeff/refresh.notas.test.ts`, la prueba de servicio que pide la fila RS-BE-52 de «Pruebas por requisito» para los tres contrastes del punto 6. El import de `./recarga.dobles.js` suma `asistenciaDe`, y una línea nueva importa `armar` de `./recarga.servicio.js`.
+
+```ts
+import { armar } from "./recarga.servicio.js";
+```
+
+```ts
+describe("RS-BE-52, punto 6 · el servicio ante un contraste entre los paneles", () => {
+  /**
+   * Con el servicio entero y sus dobles (recarga.servicio.ts). En los tres
+   * casos el aula no pide su marco, su matrícula no escribe notas, las otras
+   * cuatro sí, y el único aviso del bloque nota es el del contraste, que nombra
+   * el aula y no lleva ninguna nota.
+   */
+  const aviso = (aula: string) => ({
+    code: "PARSER_FAILED", block: "nota", message: `El curso del aula ${aula} no coincide entre los paneles de miUlima.`,
+  });
+
+  const comprobar = async (a: ReturnType<typeof armar>, aula: string) => {
+    const res = await a.servicio.refresh(a.entrada());
+    const otras = CURSOS.filter((c) => c.aula !== aula).map((c) => c.enrollmentId);
+    expect(a.pedidos.some((p) => p.path === PORTAL_PATHS.tareaAcademica(aula))).toBe(false);
+    expect(a.de("markGradesRead").map(([id]) => id)).toEqual(otras);
+    expect(a.de("replacePortalScores").map(([id]) => id)).toEqual(otras);
+    expect(res.grades).toEqual({ read: 4, failed: 1, unavailable: 0, withValue: 0 });
+    expect(res.warnings.filter((w) => w.block === "nota")).toEqual([aviso(aula)]);
+    return res;
+  };
+
+  test("la sección del menú de Nota distinta de la de la página no escribe notas y avisa", async () => {
+    const menu = menuLista("OpenNotaAlumnoPrePost", CURSOS.map((c) => ({ aula: c.aula, seccion: c.aula === "900101" ? "999" : c.seccion })));
+    const res = await comprobar(armar({ paginas: { [PORTAL_PATHS.cursosNota]: menu } }), "900101");
+    expect(res.courses[0]).toMatchObject({ courseCode: "690417", attendance: "updated", grades: "failed" });
+  });
+
+  test("el mapa de la asistencia con otro curso para esa aula no escribe notas y avisa", async () => {
+    await comprobar(armar({ paginas: {
+      [PORTAL_PATHS.asistenciaAlumno("900102")]: asistenciaDe("900102", { prm_sCoCurs: "690499" }),
+    } }), "900102");
+  });
+
+  test("el mapa de la asistencia con otra sección para esa aula no escribe notas y avisa", async () => {
+    // El menú de Asistencia trae la misma sección que la página, para que la
+    // fase de asistencia no caiga en su propio contraste y el aula entre al mapa.
+    const menuAsistencia = menuLista("OpenAsistenciaAlumno", CURSOS.map((c) => ({ aula: c.aula, seccion: c.aula === "900102" ? "813" : c.seccion })));
+    await comprobar(armar({ paginas: {
+      [PORTAL_PATHS.cursosAsistencia]: menuAsistencia,
+      [PORTAL_PATHS.asistenciaAlumno("900102")]: asistenciaDe("900102", { prm_sCoSecc: "813" }),
+    } }), "900102");
+  });
+});
+```
+
+En el primer caso, la página de asistencia de `900101` da el par `690417/812`, así que el aula se atribuye a su matrícula y esta queda con `grades: "failed"`. En los otros dos, la asistencia de `900102` declara un par sin matrícula en ULima++ y lleva su propio aviso `NOT_ENROLLED` del bloque `asistencia`, que la prueba no mira porque queda fuera del punto 6 y ya lo cubre la prueba de `NOT_ENROLLED` de `refresh.service.test.ts`.
+
 - [ ] **Paso 3. Correr las pruebas y verlas fallar**
 
 ```bash
-cd "${REPO:?}" && DATABASE_URL=postgres://user:pass@localhost:5432/test "${BUN:?}" test test/HU37_jeff/refresh.service.test.ts test/HU37_jeff/refresh.budget.test.ts
+cd "${REPO:?}" && DATABASE_URL=postgres://user:pass@localhost:5432/test "${BUN:?}" test test/HU37_jeff/refresh.service.test.ts test/HU37_jeff/refresh.budget.test.ts test/HU37_jeff/refresh.notas.test.ts
 ```
 
-Se espera un fallo al cargar, porque `refresh.service.ts` no existe.
+Se espera un fallo al cargar en los tres archivos, porque `refresh.service.ts` no existe y los tres importan `recarga.servicio.ts`.
 
 - [ ] **Paso 4. Sumar los códigos de aviso a `portal-sync.types.ts`**
 
@@ -6681,17 +6722,17 @@ export class PortalRefreshService {
 - [ ] **Paso 7. Correr las pruebas y verlas pasar**
 
 ```bash
-cd "${REPO:?}" && DATABASE_URL=postgres://user:pass@localhost:5432/test "${BUN:?}" test test/HU37_jeff/refresh.service.test.ts test/HU37_jeff/refresh.budget.test.ts
+cd "${REPO:?}" && DATABASE_URL=postgres://user:pass@localhost:5432/test "${BUN:?}" test test/HU37_jeff/refresh.service.test.ts test/HU37_jeff/refresh.budget.test.ts test/HU37_jeff/refresh.notas.test.ts
 ```
 
-Se esperan 35 pruebas nuevas en verde (32 del servicio y 3 del presupuesto) y las 3 de presupuesto de las Tareas 16 y 17.
+Se esperan 38 pruebas nuevas en verde (32 del servicio, 3 del servicio ante un contraste en `refresh.notas.test.ts` y 3 del presupuesto), y siguen en verde las 14 de la fase de notas de la Tarea 17 y las 3 de presupuesto de las Tareas 16 y 17.
 
-- [ ] **Paso 8. Build y suite completa en segundo plano** con `tarea-18.log`. Se espera `0 fail`, `EXIT=0` y 35 pruebas más que en la Tarea 17.
+- [ ] **Paso 8. Build y suite completa en segundo plano** con `tarea-18.log`. Se espera `0 fail`, `EXIT=0` y 38 pruebas más que en la Tarea 17.
 
 - [ ] **Paso 9. Commit**
 
 ```bash
-cd "${REPO:?}" && git add src/modules/portal-sync/portal-sync.types.ts src/modules/portal-sync/refresh/refresh.logic.ts src/modules/portal-sync/refresh/refresh.service.ts test/HU37_jeff/recarga.servicio.ts test/HU37_jeff/refresh.service.test.ts test/HU37_jeff/refresh.budget.test.ts && git commit -m "feat(recarga-portal): servicio de la recarga con un solo inicio de sesión (RS-BE-49 a RS-BE-56)" -m "El servicio revisa las condiciones previas antes de tocar el portal, inicia sesión una vez con el plazo del presupuesto, lee layout.jsp y los dos menús en una ronda, corta ante otro ciclo o un código de alumno ajeno, lee la asistencia y las notas, atribuye cada aula por la regla de RS-BE-48, empareja con el sílabo de cada matrícula y guarda todo en una transacción con candado. La respuesta trae los contadores, el estado de cada matrícula, la vista de las notas y los avisos, y sin ningún curso leído responde el error por precedencia."
+cd "${REPO:?}" && git add src/modules/portal-sync/portal-sync.types.ts src/modules/portal-sync/refresh/refresh.logic.ts src/modules/portal-sync/refresh/refresh.service.ts test/HU37_jeff/recarga.servicio.ts test/HU37_jeff/refresh.service.test.ts test/HU37_jeff/refresh.budget.test.ts test/HU37_jeff/refresh.notas.test.ts && git commit -m "feat(recarga-portal): servicio de la recarga con un solo inicio de sesión (RS-BE-49 a RS-BE-56)" -m "El servicio revisa las condiciones previas antes de tocar el portal, inicia sesión una vez con el plazo del presupuesto, lee layout.jsp y los dos menús en una ronda, corta ante otro ciclo o un código de alumno ajeno, lee la asistencia y las notas, atribuye cada aula por la regla de RS-BE-48, empareja con el sílabo de cada matrícula y guarda todo en una transacción con candado. La respuesta trae los contadores, el estado de cada matrícula, la vista de las notas y los avisos, y sin ningún curso leído responde el error por precedencia. Ante un contraste entre los paneles, el curso no escribe notas y lleva su aviso (RS-BE-52, punto 6)."
 ```
 
 ---
@@ -7417,7 +7458,7 @@ cd "${REPO:?}" && git add test/HU37_jeff/refresh.postgres.test.ts && git commit 
 - Modificar `specs/features/recarga-portal/recarga-portal.spec.md`, `specs/features/{asistencia-portal,portal-sync,delegados-portal,grades,official-grades,schedule,course-detail}/*.spec.md`, `docs/specs/api-contracts.md`, `docs/specs/feature-index.md`, `MIGRATIONS.md`, `AGENTS.md` y `KNOWLEDGE.md`.
 
 **Interfaces.**
-- Consume la implementación de las Tareas 1 a 21 y el resultado de V1 (Tarea 4).
+- Consume la implementación de las Tareas 1 a 21 y la ruta que fija V1 (Tarea 4), resuelta el 2026-09-26, así que la documentación no espera ningún sondeo.
 - Produce la documentación al día y la rama lista para que el dueño aplique la `0015`, corra las verificaciones pendientes y decida el PR. El README no está en los `targets` de la spec y no se toca.
 
 - [ ] **Paso 1. Enlazar las pruebas en la spec de la recarga**
@@ -7442,7 +7483,7 @@ En el bloque «Estado», la frase «Los `[@test]` con la marca *(pendiente)* apu
 
 En RS-BE-59, la frase «Los archivos nuevos son `test/HU31_jeff/fixtures/sidebar-lista-asistencia.html`, `sidebar-lista-nota.html` y `sidebar-lista-delegado.html`, y» pasa a «Los archivos nuevos son `test/HU31_jeff/fixtures/menu-lista-asistencia.html`, que llega con RS-BE-48, y `menu-lista-nota.html`, mientras que el menú de Delegado se arma dentro de su prueba, y», porque esos son los nombres que usan RS-BE-48 y la Tarea 17.
 
-En «Verificación antes de publicar», al final del punto V1, la frase «Hecha la parte sin sesión el <fecha de la Tarea 4>. `OpenNotaAlumnoPrePost` pide `<ruta que fija la Tarea 4>` con `prm_sNuAula` como único parámetro.», con la fecha y la ruta reales. Si el dueño ya corrió la parte con sesión, se suma su resultado (el `Content-Type` de la página y del marco, y si exige `Referer`), y si no, «La parte con sesión la corre el dueño.».
+En «Verificación antes de publicar», al final del punto V1, la frase «Hecha la parte sin sesión el 2026-09-26. `OpenNotaAlumnoPrePost` pide `/portalUL/gada/servlets/ComandoListarNotasAcadAlum` con `prm_sNuAula` como único parámetro.». Si el dueño ya corrió la parte con sesión, se suma su resultado (el `Content-Type` de la página y del marco, y si exige `Referer`), y si no, «La parte con sesión la corre el dueño.».
 
 - [ ] **Paso 3. El estado de las enmiendas y del contrato**
 
@@ -7507,7 +7548,7 @@ cd "${REPO:?}" && git add specs/features/recarga-portal/recarga-portal.spec.md s
 La rama queda sin `push` y sin PR. Lo que sigue lo decide y lo hace el dueño, en este orden.
 
 1. Aprueba o cambia los textos nuevos que ve el alumno, que la spec no fija palabra por palabra. Son «No se pudo abrir el panel de notas en miUlima.», «No se entendió el menú de asistencia de miUlima.», «No se entendió el menú de notas de miUlima.», «No se pudieron traer las notas de <curso>/<sección>.» (o «del aula <aula>»), «No se entendieron las notas de <curso>/<sección>: <motivo>», «El curso <curso>/<sección> de miUlima no está en tu matrícula de ULima++.», «El promedio que publica la ULima no coincide con sus evaluaciones en <curso>/<sección>.», «La lectura de miUlima tardó demasiado y algunos cursos quedaron sin leer.» y los motivos fijos de los lectores de las Tareas 6 y 7.
-2. Corre la parte con sesión de V1 si falta, y V3 cuando quiera habilitar las cadenas en paralelo (hasta entonces rige el orden secuencial de RS-BE-53).
+2. Corre la parte con sesión de V1 si falta, que registra el `Content-Type` y el `Referer` porque la ruta ya está fijada, y V3 cuando quiera habilitar las cadenas en paralelo (hasta entonces rige el orden secuencial de RS-BE-53).
 3. Aplica la `0015` con respaldo y su permiso, y completa su entrada en `MIGRATIONS.md`. Nadie despliega la rama antes, ni en *Preview*.
 4. Hace V2 cuando la ULima publique la primera nota, y el lector y sus fixtures se ajustan con esa muestra, armada a mano, antes de publicar.
 5. Hace V5 (tres recargas desde `iad1` en 45 s o menos y sin `504`, con las duraciones por fase del registro) antes de publicar la app.
