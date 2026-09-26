@@ -58,12 +58,24 @@ const PORTAL_MAX_PER_HOUR = 5;
  * equivocarse es lo normal, y sin esto cinco tipeos lo dejarían bloqueado una
  * hora sin haber importado jamás.
  *
- * Solo se devuelve por login rechazado. Un 502 del portal NO devuelve cupo:
- * ahí sí se gastaron peticiones salientes contra la Universidad.
+ * Se devuelve por login rechazado y, desde RS-BE-50, cuando la importación
+ * con credentials termina antes de llamar al portal. Un 502 del portal NO
+ * devuelve cupo: ahí sí se gastaron peticiones salientes contra la Universidad.
  */
 const refundPortalQuota = (studentId: number): void => {
   const entry = portalStore.get(studentId);
   if (entry && entry.count > 0) entry.count--;
+};
+
+/** Código y `details.kind` del error de una respuesta que ya armó el errorHandler. */
+const errorDeRespuesta = async (res: Response): Promise<{ code?: string; kind?: string }> => {
+  try {
+    const cuerpo = await res.clone().json() as { error?: { code?: string; details?: { kind?: string } } };
+    return { code: cuerpo?.error?.code, kind: cuerpo?.error?.details?.kind };
+  } catch {
+    // Cuerpo no JSON: no se devuelve cupo, que es el lado seguro.
+    return {};
+  }
 };
 
 /** Cada importación dispara ~9-11 peticiones salientes al portal de la Universidad. */
@@ -81,7 +93,7 @@ export async function portalSyncRateLimit(c: Context, next: Next) {
       error: {
         code: "RATE_LIMITED",
         message: `Demasiadas sincronizaciones. Intenta de nuevo en ${minutesLeft} minuto(s).`,
-        details: { retryAfterMinutes: minutesLeft },
+        details: { retryAfterMinutes: minutesLeft, kind: "quota" },
       },
     }, 429);
   } else {
@@ -91,15 +103,82 @@ export async function portalSyncRateLimit(c: Context, next: Next) {
   await next();
 
   // El errorHandler global ya convirtió la excepción en respuesta, así que acá
-  // se lee el código del cuerpo y no un throw.
-  if (c.res.status === 409) {
-    try {
-      const cuerpo = await c.res.clone().json() as { error?: { code?: string } };
-      if (cuerpo?.error?.code === "PORTAL_LOGIN_REJECTED") refundPortalQuota(studentId);
-    } catch {
-      /* cuerpo no JSON: no se devuelve cupo, que es el lado seguro */
+  // se lee el código del cuerpo y no un throw. RS-BE-50. Se devuelve también
+  // cuando la importación con credentials termina antes de llamar al portal,
+  // por una recarga del mismo alumno en curso o por el tope de rechazos.
+  if (c.res.status === 409 || c.res.status === 429) {
+    const { code, kind } = await errorDeRespuesta(c.res);
+    if (
+      code === "PORTAL_LOGIN_REJECTED"
+      || code === "PORTAL_REFRESH_IN_PROGRESS"
+      || (code === "RATE_LIMITED" && kind === "rejected_logins")
+    ) {
+      refundPortalQuota(studentId);
     }
   }
+}
+
+// ── POST /portal-sync/refresh (RS-BE-50) ────────────────────────────────────
+//
+// Cupo PROPIO de 5 recargas por alumno por hora, separado del de la
+// importación. Se descuenta antes de trabajar, igual que el de la importación,
+// y se devuelve cuando la recarga termina sin haber enviado ninguna petición al
+// portal, o ante un PORTAL_LOGIN_REJECTED, porque quien se equivoca al tipear
+// su propio código no tiene por qué perder el cupo.
+//
+// Para saber si la recarga tocó el portal, el limitador deja en el contexto un
+// rastro que el servicio marca justo antes de iniciar sesión. El código de
+// error no alcanza, porque el 409 IMPORT_REQUIRED sale antes del portal (sin
+// matrícula) y también después (cambio de ciclo), y solo el primero devuelve.
+//
+// Mismo límite del mecanismo que los de arriba: vive en la memoria de cada
+// instancia y no es un límite global.
+
+const refreshStore = new Map<number, RateLimitEntry>();
+const REFRESH_MAX_PER_HOUR = 5;
+
+/** Clave del rastro que el limitador de la recarga deja en el contexto. */
+export const REFRESH_TRACE_KEY = "portalRefreshTrace";
+
+/** Rastro de una recarga. `portalTocado` pasa a true justo antes de iniciar sesión. */
+export type RefreshTrace = { portalTocado: boolean };
+
+export async function portalRefreshRateLimit(c: Context, next: Next) {
+  const studentId = c.get("studentId") as number | undefined;
+  if (!studentId) return next();
+
+  const now = Date.now();
+  let cupo = refreshStore.get(studentId);
+  if (!cupo || now > cupo.resetAt) {
+    cupo = { count: 0, resetAt: now + WINDOW_MS };
+    refreshStore.set(studentId, cupo);
+  }
+  if (cupo.count >= REFRESH_MAX_PER_HOUR) {
+    const minutesLeft = Math.ceil((cupo.resetAt - now) / 60000);
+    c.header("X-RateLimit-Remaining", "0");
+    return c.json({
+      error: {
+        code: "RATE_LIMITED",
+        message: `Demasiadas actualizaciones. Intenta de nuevo en ${minutesLeft} minuto(s).`,
+        details: { retryAfterMinutes: minutesLeft, kind: "quota" },
+      },
+    }, 429);
+  }
+  // Se descuenta ANTES de trabajar, para que cinco recargas simultáneas no
+  // pasen todas el chequeo antes de que ninguna sume.
+  cupo.count++;
+  const rastro: RefreshTrace = { portalTocado: false };
+  c.set(REFRESH_TRACE_KEY, rastro);
+
+  await next();
+
+  if (c.res.status >= 400) {
+    const { code } = await errorDeRespuesta(c.res);
+    if ((!rastro.portalTocado || code === "PORTAL_LOGIN_REJECTED") && cupo.count > 0) cupo.count--;
+  }
+  // Después de la devolución, para que el número diga el cupo que de verdad queda.
+  c.header("X-RateLimit-Remaining", String(Math.max(0, REFRESH_MAX_PER_HOUR - cupo.count)));
+  return;
 }
 
 // ── POST /auth/register (RS-BE-17) ──────────────────────────────────────────
