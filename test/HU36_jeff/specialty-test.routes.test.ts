@@ -175,6 +175,18 @@ describe("quien puede entrar a /specialty-test (RS-BE-46)", () => {
       expect(delModulo()).toHaveLength(0);
     });
 
+    // El token docente no trae `studentId`, así que la guarda del controller
+    // también lo corta con el mismo 403. Este caso trae un `studentId` válido y
+    // solo `requireRole(...STUDENT_ROLES)` lo detiene.
+    test(`${metodo} ${ruta} con un rol que no es de alumno y un studentId valido responde 403 FORBIDDEN`, async () => {
+      const res = await pedir(metodo, ruta, { token: tokenDe("admin", alumnoNuevo()), body });
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({
+        error: { code: "FORBIDDEN", message: "No tiene permisos para acceder a este recurso." },
+      });
+      expect(delModulo()).toHaveLength(0);
+    });
+
     test(`${metodo} ${ruta} con un studentId 0 responde 403 y no consulta nada`, async () => {
       const res = await pedir(metodo, ruta, { token: tokenDe("student", 0), body });
       expect(res.status).toBe(403);
@@ -215,14 +227,15 @@ describe("GET /specialty-test/content (RS-BE-38)", () => {
 });
 
 describe("POST /specialty-test/me/evaluate (RS-BE-39 y RS-BE-46)", () => {
-  test("recorrido del ejemplo-2: dos desempates y el resultado, con el alumno del token", async () => {
+  test("recorrido del ejemplo-2 con dos desempates y el resultado, con el alumno del token y no el studentId del cuerpo", async () => {
     const alumno = alumnoNuevo();
     const token = tokenDe("student", alumno);
     let res = await pedir("POST", "/specialty-test/me/evaluate", { token, body: { ...CUERPO(), studentId: 99 } });
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     expect(await res.json()).toMatchObject({ status: "tiebreak", tiebreak: { id: "tb-si-vj-1" } });
-    expect(delModulo().some((q) => q.sql.toLowerCase().includes("insert"))).toBe(false);
+    // Solo el alumno del token y su carrera, sin el 99 del cuerpo y sin guardar nada.
+    expect(delModulo().map((q) => q.params)).toEqual([[alumno], [3]]);
 
     res = await pedir("POST", "/specialty-test/me/evaluate", {
       token, body: CUERPO("ejemplo-2", [{ id: "tb-si-vj-1", answer: "bottom" }]),
@@ -231,7 +244,10 @@ describe("POST /specialty-test/me/evaluate (RS-BE-39 y RS-BE-46)", () => {
 
     res = await pedir("POST", "/specialty-test/me/evaluate", {
       token,
-      body: CUERPO("ejemplo-2", [{ id: "tb-si-vj-1", answer: "bottom" }, { id: "tb-si-vj-2", answer: "top" }]),
+      body: {
+        ...CUERPO("ejemplo-2", [{ id: "tb-si-vj-1", answer: "bottom" }, { id: "tb-si-vj-2", answer: "top" }]),
+        studentId: 99,
+      },
     });
     expect(res.status).toBe(200);
     const cuerpo = await res.json() as { status: string; result: Record<string, unknown> };
