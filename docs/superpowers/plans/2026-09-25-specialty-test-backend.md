@@ -5730,8 +5730,20 @@ cd "${REPO:?}" && git status --short && git add specs/features/specialty-test/sp
 
 Nada de esta lista lo hace el implementador. Son los pasos de «Verificación antes del merge» que dependen del dueño o del despliegue.
 
-1. El dueño confirma en solo lectura que las especialidades con `is_active = true` de Ingeniería de Sistemas son exactamente las cuatro oficiales, con los ids 1, 5, 6 y 7 y los nombres del contenido.
+1. El dueño confirma en solo lectura que las especialidades con `is_active = true` de Ingeniería de Sistemas son exactamente las cuatro oficiales, con los ids 1, 5, 6 y 7 y los nombres del contenido. Sirve esta consulta, que corre en una transacción de solo lectura y lista todas las especialidades de la carrera dueña de esos ids.
+
+   ```sql
+   begin transaction read only;
+   select c.name as carrera, s.id, s.name, s.is_active
+   from specialty s
+   join career c on c.id = s.career_id
+   where s.career_id in (select career_id from specialty where id in (1, 5, 6, 7))
+   order by s.career_id, s.id;
+   rollback;
+   ```
+
+   El resultado correcto trae una sola carrera, y sus filas con `is_active = true` son justo las de los ids 1, 5, 6 y 7, con los nombres Ingeniería de Software, Tecnologías de la Información, Sistemas de Información y Desarrollo de Videojuegos, que el servidor compara sin tildes ni mayúsculas y sin espacios al borde. Un nombre que no coincide deja las tres rutas del módulo en `404 SPECIALTY_TEST_NOT_AVAILABLE`.
 2. En el despliegue, con el respaldo previo y su permiso explícito, el dueño aplica `bun run db:apply drizzle/0014_specialty_test_result.sql` antes del merge del código que la usa, verifica `to_regclass('student_specialty_test_result')`, las cinco columnas, la clave, la FK con `ON DELETE CASCADE` y los dos CHECK, y registra la migración en `MIGRATIONS.md` con su fecha, su respaldo y su verificación.
 3. Si el dueño lo autoriza, `specialty-test.postgres.test.ts` corre con `TEST_DATABASE_URL` hacia un Postgres local desechable, con el comando de su cabecera.
-4. Un `GET /specialty-test/content` desde una vista previa de Vercel que no use la base de producción comprueba que el JSON entra al empaquetado.
+4. Un `GET /specialty-test/content` sin token desde una vista previa de Vercel que no use la base de producción comprueba que el JSON entra al empaquetado. La respuesta esperada es `401 MISSING_TOKEN`, que sale antes de consultar la base. Si el JSON quedara fuera, la función no arrancaría y la vista previa respondería `500` en toda ruta, porque el registro se importa de forma estática desde `server.ts`, cadena que fija la guardia de RS-BE-37 en `specialty-test-content.test.ts`. El 2026-09-26, un `vercel build` local sobre `96ac535`, con la CLI 59.11.2, `@vercel/hono` 7.0.0, ajustes de proyecto de prueba y ninguna variable real, deja el JSON idéntico dentro de la función, y esa función arranca con Node 24 y responde el `401`. Esa prueba local no reemplaza la vista previa, porque el builder remoto y la versión de Node del proyecto pueden ser otros.
 5. Un recorrido contra el backend desplegado con una cuenta de prueba termina una vez sin desempate y otra con dos, ve el resultado en `GET /specialty-test/me/result` y comprueba que el motivo llega con `reasonSource: "ai"` y, con Cohere forzado a fallar en un entorno de prueba, con `"templates"`.

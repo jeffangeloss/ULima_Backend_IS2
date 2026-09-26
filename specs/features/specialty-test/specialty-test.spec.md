@@ -732,7 +732,7 @@ Todas viven en `test/HU36_jeff/`.
 
 | Regla | Pruebas | Qué fijan |
 | --- | --- | --- |
-| RS-BE-37 | `specialty-test-content.test.ts` | Invariantes de cada versión del registro, con el ícono de cada tarea en la forma `{ lucide, flutter }`, `flutter` igual al camelCase de `lucide`, ningún nombre repetido entre las 48 tareas y ninguno igual al de una especialidad, pesos y condiciones iguales a las constantes, y los ocho ejemplos reproducidos letra por letra |
+| RS-BE-37 | `specialty-test-content.test.ts` | Invariantes de cada versión del registro, con el ícono de cada tarea en la forma `{ lucide, flutter }`, `flutter` igual al camelCase de `lucide`, ningún nombre repetido entre las 48 tareas y ninguno igual al de una especialidad, pesos y condiciones iguales a las constantes, los ocho ejemplos reproducidos letra por letra y un import estático por JSON, sin leer el disco, en la cadena que parte de `server.ts` |
 | RS-BE-38 | `specialty-test.routes.test.ts`, `specialty-test.service.test.ts` | Qué campos viajan y cuáles no, el `icon` de cada especialidad y de cada tarea como la cadena de `icon.lucide` y ningún `icon.flutter` en la respuesta, resolución de `specialtyId` por nombre sin tildes ni mayúsculas, `404 SPECIALTY_TEST_NOT_AVAILABLE` |
 | RS-BE-39 | `specialty-test.routes.test.ts`, `specialty-test.service.test.ts` | Orden de la validación, `413`, `429`, `400` de forma, `409` de versión, respuestas faltantes, de más y con valor de otro tipo, desempate que no toca, con otro id o de más |
 | RS-BE-40 | `specialty-test-logic.test.ts` | `S` y `U` enteros e iguales a la fracción exacta para todo `h`, `n` y `e`; orden por `S`, `U`, `e` y orden fijo; redondeo de 17,5 a 18 |
@@ -906,4 +906,6 @@ specs.
   entorno de prueba, con `"templates"`.
 - Una llamada de `GET /specialty-test/content` desde un despliegue de vista previa que no use
   la base de producción, para comprobar que el JSON del contenido entra en el empaquetado de
-  Vercel.
+  Vercel. Basta la llamada sin token. El registro se importa de forma estática desde
+  `server.ts` (RS-BE-37), así que sin el JSON la función no arranca y toda ruta responde
+  `500`, y con él la ruta responde `401 MISSING_TOKEN` antes de consultar la base.
