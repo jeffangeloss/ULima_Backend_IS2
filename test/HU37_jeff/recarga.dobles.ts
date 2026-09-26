@@ -30,6 +30,7 @@ const leer = (ruta: string) => Bun.file(ruta).text();
 export const PAGINA_ASISTENCIA = await leer("test/HU37_jeff/fixtures/asistencia-curso-900101.html");
 export const PAGINA_NOTA = await leer("test/HU37_jeff/fixtures/nota-curso-900101.html");
 export const MENU_ASISTENCIA = await leer("test/HU31_jeff/fixtures/menu-lista-asistencia.html");
+export const MENU_NOTA = await leer("test/HU31_jeff/fixtures/menu-lista-nota.html");
 export const LAYOUT = '<html><body><font face="Arial" size="2">CICLO: 2026-2</font></body></html>';
 
 /** Cambia el `value` de un oculto de la página de asistencia. */
