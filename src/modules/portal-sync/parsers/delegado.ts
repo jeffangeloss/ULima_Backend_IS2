@@ -1,6 +1,6 @@
-import { clean, inputValueByName, type ParseResult } from "./html.js";
+import { clean, inputValueByName, stripTags, type ParseResult } from "./html.js";
 import type {
-  DelegadoAula, DelegadoDescarte, DelegadosNomina,
+  AulaMenu, DelegadoDescarte, DelegadosNomina,
 } from "../portal-sync.types.js";
 
 /**
@@ -44,6 +44,10 @@ const jsArray = (html: string, name: string): Map<number, string> => {
   return out;
 };
 
+/** El aula con el mismo criterio de `assertAula` en el cliente del portal. */
+const AULA = /^\d{4,8}$/;
+const SECCION = /^\d{1,4}$/;
+
 /** Aulas que el sidebar realmente ofrece abrir. */
 const aulasAbiertas = (html: string, fnEnlace: string): Set<string> =>
   new Set(
@@ -51,7 +55,8 @@ const aulasAbiertas = (html: string, fnEnlace: string): Set<string> =>
   );
 
 /**
- * Sidebar de delegados -> el aula de cada curso, con el par que lo identifica.
+ * Formato de arreglos del menú (RS-1 de `delegados-portal.spec.md`), sin cambios
+ * desde antes de RS-BE-48.
  *
  * El emparejamiento es por el subíndice `[i]` de cada array y NUNCA por la
  * posición dentro del resultado de la regex: el JSP emite ramas condicionales,
@@ -73,37 +78,129 @@ const aulasAbiertas = (html: string, fnEnlace: string): Set<string> =>
  * sidebar: los arrays los llena el JSP siempre, pero el enlace solo se emite
  * para los cursos que de verdad tienen panel de delegados.
  */
+const aulasPorArreglos = (html: string, fnEnlace: string): AulaMenu[] => {
+  const aulas = jsArray(html, "aNuAula");
+  const cursos = jsArray(html, "aCurs");
+  const secciones = jsArray(html, "aSecc");
+  const abiertas = aulasAbiertas(html, fnEnlace);
+
+  const out: AulaMenu[] = [];
+  for (const i of [...aulas.keys()].sort((a, b) => a - b)) {
+    const aula = aulas.get(i) ?? "";
+    const courseCode = cursos.get(i) ?? "";
+    const sectionCode = secciones.get(i) ?? "";
+    if (!AULA.test(aula)) continue;
+    if (!/^\d{4,6}$/.test(courseCode)) continue;
+    if (!SECCION.test(sectionCode)) continue;
+    if (!abiertas.has(aula)) continue;
+    out.push({ aula, courseCode, sectionCode, origen: "arreglos" });
+  }
+  return out;
+};
+
+/** Etiqueta de apertura de un `<li>`, con sus atributos. */
+const LI_TAG = /<li\b[^>]*>/gi;
+/** El atributo `class` de una etiqueta, con comillas dobles, simples o sin ellas. */
+const CLASS_ATTR = /\sclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i;
+/** Donde termina el texto del `<li>` dentro de su tramo. */
+const FIN_TEXTO_LI = /<\/li\s*>|<ul\b|<a\b/i;
+const CIERRE_UL = /<\/ul\s*>/i;
+
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** RS-BE-48, punto 1. `curso` tiene que ser una palabra entera del atributo,
+ *  así que `curso open` empieza un curso y `curso-body` no. */
+const empiezaCurso = (tag: string): boolean => {
+  const m = CLASS_ATTR.exec(tag);
+  const valor = m ? (m[1] ?? m[2] ?? m[3] ?? "") : "";
+  return valor.split(/\s+/).includes("curso");
+};
+
+/**
+ * Formato de lista del menú (RS-BE-48). Por cada curso el portal emite un
+ * `<li class="curso">CARRERA / <nombre truncado> / <sección></li>` seguido del
+ * enlace `fnEnlace('<aula>')`, y no trae el código del curso, así que cada aula
+ * sale con `courseCode: null` y quien la consume identifica el curso por otra
+ * página.
+ */
+const aulasPorLista = (html: string, fnEnlace: string): AulaMenu[] => {
+  // La frontera de identificador evita que `MiOpenDelegado(` cuente como
+  // `OpenDelegado(`. El argumento se captura con cualquier contenido corto sin
+  // comillas ni `<>` para contar los argumentos distintos ANTES de validarlos.
+  const llamada = new RegExp(
+    `(?:^|[^A-Za-z0-9_$])${escapeRe(fnEnlace)}\\s*\\(\\s*(['"])([^'"<>]{0,20})\\1`,
+    "g",
+  );
+  const cursos = [...html.matchAll(LI_TAG)]
+    .filter((m) => empiezaCurso(m[0]))
+    .map((m) => ({ inicio: m.index ?? 0, finTag: (m.index ?? 0) + m[0].length }));
+
+  const candidatas: Array<{ aula: string; sectionCode: string | null }> = [];
+  cursos.forEach((li, i) => {
+    // Punto 1. El tramo termina donde empieza el siguiente curso o en el
+    // primer `</ul>`, lo que llegue antes.
+    const siguiente = cursos[i + 1]?.inicio ?? html.length;
+    const cierre = html.slice(li.finTag).search(CIERRE_UL);
+    const fin = cierre === -1 ? siguiente : Math.min(siguiente, li.finTag + cierre);
+    const tramo = html.slice(li.inicio, fin);
+
+    // Puntos 2 y 3. Sin llamadas el curso no ofrece el panel, y con dos
+    // argumentos distintos no hay forma segura de saber cuál es su aula.
+    const args = new Set([...tramo.matchAll(llamada)].map((m) => m[2] ?? ""));
+    if (args.size !== 1) return;
+    const [aula] = [...args];
+    if (!aula || !AULA.test(aula)) return;
+
+    // Punto 4. La sección solo sirve para contrastar, así que una que no es
+    // numérica deja `null` y el aula se conserva.
+    const cuerpo = html.slice(li.finTag, fin);
+    const finTexto = cuerpo.search(FIN_TEXTO_LI);
+    const texto = clean(stripTags(finTexto === -1 ? cuerpo : cuerpo.slice(0, finTexto)));
+    const ultimo = clean(texto.split("/").pop() ?? "");
+    candidatas.push({ aula, sectionCode: SECCION.test(ultimo) ? ultimo : null });
+  });
+
+  // Punto 6. La misma aula en dos tramos con secciones distintas se descarta
+  // entera. Si coinciden o alguna es `null`, queda la primera aparición.
+  const seccionesPorAula = new Map<string, Set<string>>();
+  for (const c of candidatas) {
+    const vistas = seccionesPorAula.get(c.aula) ?? new Set<string>();
+    if (c.sectionCode !== null) vistas.add(c.sectionCode);
+    seccionesPorAula.set(c.aula, vistas);
+  }
+  const out: AulaMenu[] = [];
+  const emitidas = new Set<string>();
+  for (const c of candidatas) {
+    if (emitidas.has(c.aula) || (seccionesPorAula.get(c.aula)?.size ?? 0) > 1) continue;
+    emitidas.add(c.aula);
+    // Punto 5. El `<li>` trae el nombre truncado y nunca el código.
+    out.push({ aula: c.aula, courseCode: null, sectionCode: c.sectionCode, origen: "lista" });
+  }
+  return out;
+};
+
+/**
+ * Menú lateral del Aula Virtual -> el aula de cada curso (RS-1 y RS-BE-48).
+ *
+ * Primero se lee el formato de arreglos y, si deja al menos un aula, ese es el
+ * resultado. Si no deja ninguna, se lee el formato de lista del menú nuevo.
+ */
 export const parseAulas = (
   html: string,
   /** RS-BE-15: el sidebar de Asistencia emite los MISMOS arrays JS pero enlaza
    *  con `OpenAsistenciaAlumno`. Se parametriza para reusar este parser entero
    *  en vez de escribir un gemelo; el default deja intacto al de delegados. */
   fnEnlace = "OpenDelegado",
-): ParseResult<DelegadoAula[]> => {
-  const aulas = jsArray(html, "aNuAula");
-  const cursos = jsArray(html, "aCurs");
-  const secciones = jsArray(html, "aSecc");
-  const abiertas = aulasAbiertas(html, fnEnlace);
-
-  const out: DelegadoAula[] = [];
-  for (const i of [...aulas.keys()].sort((a, b) => a - b)) {
-    const aula = aulas.get(i) ?? "";
-    const courseCode = cursos.get(i) ?? "";
-    const sectionCode = secciones.get(i) ?? "";
-    if (!/^\d{4,8}$/.test(aula)) continue;
-    if (!/^\d{4,6}$/.test(courseCode)) continue;
-    if (!/^\d{1,4}$/.test(sectionCode)) continue;
-    if (!abiertas.has(aula)) continue;
-    out.push({ aula, courseCode, sectionCode });
-  }
+): ParseResult<AulaMenu[]> => {
+  const porArreglos = aulasPorArreglos(html, fnEnlace);
+  if (porArreglos.length) return { ok: true, data: porArreglos };
+  const porLista = aulasPorLista(html, fnEnlace);
+  if (porLista.length) return { ok: true, data: porLista };
 
   // Cero aulas no es "este alumno no tiene cursos": este portal devuelve la
   // página de login con HTTP 200, y así se ve. Se falla, como todos los demás
   // parsers del módulo, en vez de reportar un sidebar vacío.
-  if (!out.length) {
-    return { ok: false, reason: "el sidebar no trae ninguna aula utilizable" };
-  }
-  return { ok: true, data: out };
+  return { ok: false, reason: "el sidebar no trae ninguna aula utilizable" };
 };
 
 /** Cualquier `<input>`, con sus atributos intactos. */

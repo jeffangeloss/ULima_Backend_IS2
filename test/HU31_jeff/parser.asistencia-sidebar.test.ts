@@ -15,11 +15,11 @@ describe("parseAulas sobre el sidebar de Asistencia", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.data).toEqual([
-      { aula: "154508", courseCode: "650033", sectionCode: "952" },
-      { aula: "154516", courseCode: "650035", sectionCode: "958" },
-      { aula: "154604", courseCode: "650067", sectionCode: "952" },
-      { aula: "154607", courseCode: "650070", sectionCode: "654" },
-      { aula: "154621", courseCode: "650084", sectionCode: "1051" },
+      { aula: "154508", courseCode: "650033", sectionCode: "952", origen: "arreglos" },
+      { aula: "154516", courseCode: "650035", sectionCode: "958", origen: "arreglos" },
+      { aula: "154604", courseCode: "650067", sectionCode: "952", origen: "arreglos" },
+      { aula: "154607", courseCode: "650070", sectionCode: "654", origen: "arreglos" },
+      { aula: "154621", courseCode: "650084", sectionCode: "1051", origen: "arreglos" },
     ]);
   });
 

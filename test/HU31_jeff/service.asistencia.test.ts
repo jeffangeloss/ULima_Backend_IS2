@@ -154,3 +154,148 @@ describe("degradación: un fallo de asistencia no rompe nada", () => {
     expect(res.summary.attendanceSkipped).toBeGreaterThan(0);
   });
 });
+
+// ── RS-BE-48 · el menú de lista ──────────────────────────────────────────────
+// El menú nuevo no trae el código del curso. Las aulas inventadas 900101 a
+// 900105 se identifican por su página de asistencia, que declara los mismos
+// pares del fixture de matrícula, así que cada una tiene matrícula que escribir.
+const PAR_LISTA: Record<string, { curso: string; sec: string }> = {
+  "900101": { curso: "650033", sec: "952" },
+  "900102": { curso: "650035", sec: "958" },
+  "900103": { curso: "650067", sec: "952" },
+  "900104": { curso: "650070", sec: "654" },
+  "900105": { curso: "650084", sec: "1051" },
+};
+Object.assign(PAR_POR_AULA, PAR_LISTA);
+const AULAS_LISTA = Object.keys(PAR_LISTA);
+
+/** Menú de lista armado a mano, con la estructura de `menu-lista-asistencia.html`. */
+const menuLista = (secciones: Record<string, string> = {}): string =>
+  `<html><body><ul class="asignaturas">\n${AULAS_LISTA.map((aula) =>
+    `<li class="curso">CARRERA ING.SI. / CURSO INVENTADO / ${secciones[aula] ?? PAR_LISTA[aula]!.sec}</li>\n`
+    + `&nbsp;&nbsp;&nbsp;- <a href="javascript:OpenAsistenciaAlumno('${aula}');">Asistencia</a><br><br>\n`).join("")}`
+  + "</ul></body></html>";
+
+/** Portal con el menú de lista. `pagina` permite cambiar la respuesta de un aula. */
+const clienteLista = (
+  opciones: { secciones?: Record<string, string>; pagina?: (aula: string) => string } = {},
+): PortalClient =>
+  ({
+    fetchPage: async (path: string) => {
+      if (path === PORTAL_PATHS.layout) return layout;
+      if (path === PORTAL_PATHS.cursosAsistencia) return menuLista(opciones.secciones);
+      if (path === PORTAL_PATHS.cursosDelegado) return "<html></html>";
+      if (path.startsWith(RUTA)) {
+        const aula = path.slice(RUTA.length);
+        return opciones.pagina ? opciones.pagina(aula) : asistenciaDe(aula);
+      }
+      return "<html></html>";
+    },
+    fetchAll: async () => ({ matricula, record }),
+    fetchSyllabus: async () => null,
+    syllabusBaseUrl: "https://cactus.ulima.edu.pe",
+    logout: async () => {},
+  }) as unknown as PortalClient;
+
+const avisosDeAsistencia = (res: { warnings: Array<{ code: string; block: string; message: string }> }) =>
+  res.warnings.filter((w) => w.block === "asistencia");
+const sinNull = (res: { warnings: Array<{ message: string }> }) =>
+  expect(res.warnings.map((w) => w.message).join(" | ")).not.toContain("null");
+
+describe("RS-BE-48 · la asistencia con el menú de lista", () => {
+  test("escribe las cinco matrículas, identificadas por su página de asistencia", async () => {
+    const escrituras: { id: number; h: unknown }[] = [];
+    const res = await importar(fakeRepo(escrituras), clienteLista());
+
+    expect(escrituras).toHaveLength(5);
+    expect(new Set(escrituras.map((e) => e.id)).size).toBe(5);
+    expect(res.summary.attendanceUpdated).toBe(5);
+    expect(avisosDeAsistencia(res)).toEqual([]);
+  });
+
+  test("la sección del menú distinta de la de la página no escribe asistencia y avisa con el aula", async () => {
+    const escrituras: { id: number; h: unknown }[] = [];
+    const res = await importar(fakeRepo(escrituras), clienteLista({ secciones: { "900102": "959" } }));
+
+    expect(escrituras).toHaveLength(4);
+    expect(res.summary.attendanceUpdated).toBe(4);
+    expect(avisosDeAsistencia(res)).toEqual([{
+      code: "PARSER_FAILED", block: "asistencia",
+      message: "La sección del menú no coincide con la de la página de asistencia del aula 900102.",
+    }]);
+  });
+
+  test("una sección null en el menú no contrasta y la matrícula se escribe", async () => {
+    const escrituras: { id: number; h: unknown }[] = [];
+    const res = await importar(fakeRepo(escrituras), clienteLista({ secciones: { "900102": "SIN SECCION" } }));
+
+    expect(escrituras).toHaveLength(5);
+    expect(avisosDeAsistencia(res)).toEqual([]);
+  });
+
+  test("un aula cuya página no se descarga avisa con el aula y nunca con null", async () => {
+    const escrituras: { id: number; h: unknown }[] = [];
+    const res = await importar(fakeRepo(escrituras), clienteLista({
+      pagina: (aula) => { if (aula === "900103") throw new Error("ETIMEDOUT"); return asistenciaDe(aula); },
+    }));
+
+    expect(escrituras).toHaveLength(4);
+    expect(avisosDeAsistencia(res)).toEqual([{
+      code: "ASISTENCIA_UNAVAILABLE", block: "asistencia",
+      message: "No se pudo traer la asistencia del aula 900103.",
+    }]);
+    sinNull(res);
+  });
+
+  test("un aula cuya página no se identifica avisa con el aula y el motivo", async () => {
+    const login = "<html><body><form action='j_security_check'><input name='j_username'></form></body></html>";
+    const escrituras: { id: number; h: unknown }[] = [];
+    const res = await importar(fakeRepo(escrituras), clienteLista({
+      pagina: (aula) => (aula === "900104" ? login : asistenciaDe(aula)),
+    }));
+
+    expect(escrituras).toHaveLength(4);
+    expect(avisosDeAsistencia(res)).toEqual([{
+      code: "PARSER_FAILED", block: "asistencia",
+      message: "No se entendió la asistencia del aula 900104: la respuesta no es una página de asistencia",
+    }]);
+    sinNull(res);
+  });
+
+  test("una página que se identifica y falla en los totales avisa con su curso", async () => {
+    const escrituras: { id: number; h: unknown }[] = [];
+    const res = await importar(fakeRepo(escrituras), clienteLista({
+      pagina: (aula) => {
+        const html = asistenciaDe(aula);
+        return aula === "900105" ? html.replace(/Total horas programadas/, "Total horas dictadas") : html;
+      },
+    }));
+
+    expect(escrituras).toHaveLength(4);
+    expect(avisosDeAsistencia(res)).toEqual([{
+      code: "PARSER_FAILED", block: "asistencia",
+      message: "No se entendió la asistencia de 650084/1051: faltan los totales de asistencia (2 de 3)",
+    }]);
+  });
+});
+
+describe("RS-BE-48 · el contraste de sección rige también con arreglos", () => {
+  test("una página que declara otra sección que la del arreglo no se escribe", async () => {
+    const escrituras: { id: number; h: unknown }[] = [];
+    const cliente = fakeClient();
+    const base = cliente.fetchPage.bind(cliente);
+    (cliente as unknown as { fetchPage: (p: string) => Promise<string> }).fetchPage = async (path: string) => {
+      const html = await base(path, {} as never);
+      return path === `${RUTA}154516`
+        ? html.replace(/(name="prm_sCoSecc"[^>]*value=")[^"]*/i, "$1959")
+        : html;
+    };
+    const res = await importar(fakeRepo(escrituras), cliente);
+
+    expect(escrituras).toHaveLength(4);
+    expect(avisosDeAsistencia(res)).toEqual([{
+      code: "PARSER_FAILED", block: "asistencia",
+      message: "La sección del menú no coincide con la de la página de asistencia del aula 154516.",
+    }]);
+  });
+});

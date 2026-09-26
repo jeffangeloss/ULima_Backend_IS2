@@ -85,10 +85,21 @@ export interface Impedimentos { hasImpediment: boolean; hasDebt: boolean; text: 
  *  Domino; `url` ya lleva el filename percent-encoded. */
 export interface SyllabusEntry { unid: string; fileName: string; url: string }
 
-/** Una fila del sidebar del panel Delegado: el `aula` es la llave del portal;
- *  `courseCode` + `sectionCode` es la llave con la que empata contra las
- *  secciones que la matrícula está creando. */
-export interface DelegadoAula { aula: string; courseCode: string; sectionCode: string }
+/** Un aula del menú lateral del Aula Virtual (paneles Asistencia, Nota y
+ *  Delegado). El `aula` es la llave del portal, y `courseCode` con
+ *  `sectionCode` es la llave con la que empata contra las secciones que la
+ *  matrícula está creando.
+ *
+ *  RS-BE-48. En el formato de arreglos los dos códigos nunca son `null`. En el
+ *  formato de lista `courseCode` siempre es `null`, porque el `<li>` no trae el
+ *  código, y `sectionCode` es `null` cuando el `<li>` no trae una sección
+ *  numérica. Quien consume el resultado identifica el curso por otra página. */
+export interface AulaMenu {
+  aula: string;
+  courseCode: string | null;
+  sectionCode: string | null;
+  origen: "arreglos" | "lista";
+}
 
 /** El representante tal como el portal lo publica: sin cuenta, sin correo. */
 export interface DelegadoPersona { code: string; fullName: string }
@@ -191,3 +202,11 @@ export type AsistenciaCurso = {
   /** Horas del bloque "Total inasistencias"; NUNCA derivado de los otros dos. */
   absentHours: number;
 };
+
+/**
+ * Identificación verificada de una página de asistencia (RS-BE-48, con el punto
+ * 4 de RS-BE-51 de la recarga). Es el par (curso, sección) que declara la página
+ * cuando además `prm_sNuAula` es el aula pedida y `prm_sCoUserAlum` es el alumno
+ * autenticado. Viaja fuera de `AsistenciaCurso`, que conserva sus cinco campos.
+ */
+export type AsistenciaIdentificada = { courseCode: string; sectionCode: string };
