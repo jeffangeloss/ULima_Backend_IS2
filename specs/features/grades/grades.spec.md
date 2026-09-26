@@ -30,6 +30,10 @@ Endpoints relacionados a cursos, evaluaciones, cálculo de notas y persistencia 
 - `POST /grades/me/calculate` recibe `{ valor, peso }[]` y devuelve `{ promedio, sumaPesos }`.
 - La lógica de cálculo está en `grades.logic.ts` como funciones puras testeables.
 
+### BR-GRADES-05: Notas de la ULima (propuesta del 2026-09-25, pendiente de aprobación)
+- `GET /grades/me/ulima` devuelve, por cada matrícula activa del alumno en el período activo, las notas parciales por evaluación que la ULima publica en el panel Nota del Aula Virtual, con su semana, su peso, su nota o su marca, su pareja en el sílabo (`assessmentId` y `match`) y la hora de la última lectura. Las escribe solo `POST /portal-sync/refresh`. Solo el propio alumno las lee, con `Cache-Control: no-store`.
+- La calculadora muestra fijas, con la marca «ULima», las que tienen pareja en el sílabo, y no toca `simulated_grades`. Ver `specs/features/recarga-portal/recarga-portal.spec.md` (RS-BE-54 y RS-BE-57) y sus decisiones abiertas 6, 7, 9 y 12.
+
 ## Endpoints
 
 Bajo `Authorization: Bearer <token>` (rol alumno):
@@ -38,6 +42,7 @@ Bajo `Authorization: Bearer <token>` (rol alumno):
 - `POST /grades/me/calculate`
 - `GET /grades/me/notes`
 - `POST /grades/me/notes`
+- `GET /grades/me/ulima` (propuesto, BR-GRADES-05)
 
 ## Test Links
 

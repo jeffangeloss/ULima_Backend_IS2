@@ -14,6 +14,8 @@ targets:
 # Asistencia del Aula Virtual
 
 > Estado: **APROBADA el 2026-09-07 e implementada.** Diseño cerrado sobre fixtures reales del spike (5 cursos de una cuenta real). Enmienda RS-BE-4 y el paso 9 de `portal-sync.spec.md`, que hasta ahora prohibían tocar las horas de asistencia. **Pendiente**: la verificación de tiempos de §Verification, y re-sondear cerca de la semana 6 para ver el formato del agregado con faltas reales.
+>
+> **Enmienda propuesta del 2026-09-25, pendiente de aprobación del dueño** (`specs/features/recarga-portal/recarga-portal.spec.md`). La ULima cambia el menú lateral del Aula Virtual, `parseAulas` ya no encuentra ninguna aula y la importación deja de actualizar la asistencia de todos. RS-BE-48 lee el menú en sus dos formatos. RS-BE-51 reutiliza este parser en `POST /portal-sync/refresh` y le suma el parámetro opcional `cicloEsperado`, que la importación también pasa. RS-BE-58 guarda la hora de cada lectura en `enrollment.portal_attendance_read_at`, también desde la importación. Mientras la enmienda no se apruebe, rige el texto de esta spec.
 
 ## Contexto
 
@@ -29,6 +31,8 @@ targets:
      var link = '/portalUL/av/servlets/ComandoListarAsistenciaAulaVirtualAlumno'+Cad;
    ```
    **Un solo parámetro, y el segundo argumento se ignora**: el servlet deduce al alumno de la sesión.
+
+> **Formato nuevo del menú (2026-09-25, propuesta en `recarga-portal.spec.md`, RS-BE-48).** El menú vivo ya no trae los arreglos `aNuAula`, `aCurs` ni `aSecc`. Por cada curso emite un `<li class="curso">` con la carrera, el nombre truncado y la sección, seguido del enlace `OpenAsistenciaAlumno('<aula>')`, y no trae el código del curso. La importación ya identifica cada curso por los ocultos `prm_sCoCurs` y `prm_sCoSecc` de la página de detalle, así que el menú solo aporta el aula y una sección para contrastar.
 
 > **Ruta prohibida.** El HAR contiene `ComandoListarAsistenciaAulaVirtualCursos?…&prm_sCoUserAlum=<código>`, parametrizada por **código de alumno**. Es superficie de IDOR contra terceros y esta feature NO la usa jamás. Si alguna vez `OpenAsistenciaAlumno` empezara a aceptar un código de alumno, la importación se aborta y se escala a Sistemas.
 
@@ -107,6 +111,8 @@ Los fixtures de test se commitean **anonimizados**: nombre de alumno, nombre de 
 **Nadie ha visto una fila de inasistencia.** Las 21 filas de los 5 fixtures tienen una sola marca y los cinco agregados dicen `0 horas / 0 %`. El diseño esquiva el vocabulario negativo leyendo agregados en vez de marcas, pero **no** esquiva el formato del agregado con faltas reales: si el JSP emite algo que el regex no reconoce, el parser falla exactamente para los alumnos que tienen faltas, que son los que importan.
 
 Mitigación: re-sondear a mitad de ciclo (~semana 6, cuando existan faltas) y ajustar el regex con esa muestra. Hasta entonces esta cobertura es **parcial y sesgada**, y así debe leerse.
+
+**Actualización del 2026-09-25.** El sondeo de solo lectura de ese día pasa `parseAsistenciaCurso` por las cinco páginas vivas del dueño, una de ellas con faltas, y las cinco se leen bien, incluido el bloque «Total inasistencias» con horas distintas de cero. Esa página no entra al repositorio. `recarga-portal.spec.md` (RS-BE-59) pide un fixture construido a mano con faltas inventadas. Queda sin muestra el vocabulario de marcas distintas de «Sí», que el parser no necesita porque lee los agregados.
 
 ## Verification
 
