@@ -202,3 +202,11 @@ export type AsistenciaCurso = {
   /** Horas del bloque "Total inasistencias"; NUNCA derivado de los otros dos. */
   absentHours: number;
 };
+
+/**
+ * Identificación verificada de una página de asistencia (RS-BE-48, con el punto
+ * 4 de RS-BE-51 de la recarga). Es el par (curso, sección) que declara la página
+ * cuando además `prm_sNuAula` es el aula pedida y `prm_sCoUserAlum` es el alumno
+ * autenticado. Viaja fuera de `AsistenciaCurso`, que conserva sus cinco campos.
+ */
+export type AsistenciaIdentificada = { courseCode: string; sectionCode: string };

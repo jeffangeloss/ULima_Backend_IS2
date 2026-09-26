@@ -1,5 +1,5 @@
 import { cellsOf, inputValueByName, trsOf, type ParseResult } from "./html.js";
-import type { AsistenciaCurso } from "../portal-sync.types.js";
+import type { AsistenciaCurso, AsistenciaIdentificada } from "../portal-sync.types.js";
 
 /**
  * RS-BE-15 — panel Asistencia del Aula Virtual, vista del alumno
@@ -29,13 +29,22 @@ const MARCA_SI = /^s[ií]$/i;
 
 const aNumero = (s: string): number => Number(s.replace(",", "."));
 
-const falla = (reason: string): ParseResult<AsistenciaCurso> => ({ ok: false, reason });
+/**
+ * `ParseResult` más la identificación verificada, que va FUERA de `data` para
+ * que `AsistenciaCurso` siga con sus cinco campos. Sale también cuando la página
+ * falla después de identificarse, porque de ese par dependen los delegados y el
+ * nombre del curso en los avisos cuando el menú no trae el código.
+ */
+export type AsistenciaResult = ParseResult<AsistenciaCurso> & { identificado?: AsistenciaIdentificada };
+
+const falla = (reason: string, identificado?: AsistenciaIdentificada): AsistenciaResult =>
+  identificado ? { ok: false, reason, identificado } : { ok: false, reason };
 
 export const parseAsistenciaCurso = (
   html: string,
   aulaEsperada: string,
   alumnoEsperado: string,
-): ParseResult<AsistenciaCurso> => {
+): AsistenciaResult => {
   // ── Identificación. `inputValueByName` ancla el nombre COMPLETO: la página
   // trae `prm_sCoSecc` junto a `prm_sCoSeccAcd`, y un `includes` los confunde.
   const courseCode = inputValueByName(html, "prm_sCoCurs");
@@ -57,6 +66,8 @@ export const parseAsistenciaCurso = (
     // Sin imprimir ninguno de los dos códigos: el recibido sería de un tercero.
     return falla("la página declara un código de alumno distinto del autenticado");
   }
+  // Desde acá el par es la identificación verificada, y todo fallo lo lleva.
+  const identificado: AsistenciaIdentificada = { courseCode, sectionCode };
 
   const filas = trsOf(html).map(cellsOf);
 
@@ -65,7 +76,7 @@ export const parseAsistenciaCurso = (
   const hayCabecera = filas.some(
     (c) => c.length === 9 && CABECERA.every((etq, i) => sinAcentos(c[i * 2]) === etq),
   );
-  if (!hayCabecera) return falla("la tabla de sesiones no tiene la cabecera esperada");
+  if (!hayCabecera) return falla("la tabla de sesiones no tiene la cabecera esperada", identificado);
 
   // ── Agregados: filas de 5 celdas con ":" al medio. Se busca sobre el texto ya
   // normalizado por `clean`, nunca sobre el crudo: el JSP emite
@@ -81,23 +92,23 @@ export const parseAsistenciaCurso = (
     const valor = c[4];
     if (etq.startsWith("total horas programadas")) {
       vistos++;
-      if (!NUM.test(valor)) return falla("un total de asistencia no es un número");
+      if (!NUM.test(valor)) return falla("un total de asistencia no es un número", identificado);
       total = aNumero(valor);
     } else if (etq.startsWith("total horas asistidas")) {
       vistos++;
-      if (!NUM.test(valor)) return falla("un total de asistencia no es un número");
+      if (!NUM.test(valor)) return falla("un total de asistencia no es un número", identificado);
       asistidas = aNumero(valor);
     } else if (etq.startsWith("total inasistencias")) {
       vistos++;
       const m = INASISTENCIAS.exec(valor);
       // Jamás asumir cero: nadie ha visto todavía este bloque con faltas reales.
-      if (!m) return falla("el bloque de inasistencias tiene un formato desconocido");
+      if (!m) return falla("el bloque de inasistencias tiene un formato desconocido", identificado);
       ausentes = aNumero(m[1]);
       // El porcentaje se lee para validar la forma de la celda y se descarta.
     }
   }
   if (vistos !== 3 || total === null || asistidas === null || ausentes === null) {
-    return falla(`faltan los totales de asistencia (${vistos} de 3)`);
+    return falla(`faltan los totales de asistencia (${vistos} de 3)`, identificado);
   }
 
   // ── Checksum con las filas por sesión, que después se tiran. Vale bajo las
@@ -114,12 +125,13 @@ export const parseAsistenciaCurso = (
     }
     const eps = 0.001;
     if (asistidas < sumSi - eps || asistidas > sumTodas + eps) {
-      return falla("los totales no cuadran con las sesiones listadas");
+      return falla("los totales no cuadran con las sesiones listadas", identificado);
     }
   }
 
   return {
     ok: true,
     data: { courseCode, sectionCode, totalHours: total, attendedHours: asistidas, absentHours: ausentes },
+    identificado,
   };
 };
