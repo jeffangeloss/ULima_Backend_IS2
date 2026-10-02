@@ -50,6 +50,8 @@ export const config = {
   syllabus: {
     baseUrl: env.SYLLABUS_BASE_URL,
   },
+  /** RF-EST-1. Con true se apagan el registro con miUlima y todo /portal-sync. */
+  modoEstatico: env.MODO_ESTATICO,
 } as const;
 
 export type AppConfig = typeof config;

@@ -3340,7 +3340,7 @@ exige token.
 | **Allowlist de hosts salientes** | `PORTAL_BASE_URL` fijada a `webaloe.ulima.edu.pe` y `SYLLABUS_BASE_URL` fijada a `cactus.ulima.edu.pe`, con **predicados separados**; violarlas **impide el arranque** | [`src/config/env.ts`](src/config/env.ts) `:4-30,79,88` |
 | **Parámetros salientes** | Lo único interpolado en una URL del portal son tres valores, los tres con regex anclada: COCICLO `^\d{5}$`, código de curso `^\d{4,6}$`, aula `^\d{4,8}$` (`assertAula`) | [`src/services/portal.client.ts`](src/services/portal.client.ts) `:29-34,188,235` |
 | **Validación Zod en la frontera** | `validateJson` → `400 INVALID_JSON_BODY` / `400 INVALID_REQUEST_BODY` con `error.flatten()`; `validateQuery` → `400 INVALID_QUERY_PARAMS`; `validateParams` → `400 INVALID_ROUTE_PARAMS`. Ningún handler recibe datos sin parsear | [`src/shared/middleware/validate-dto.ts`](src/shared/middleware/validate-dto.ts) `:5-34` |
-| **Validación de entorno** | 23 variables en un `envSchema` de Zod; las 3 obligatorias son `DATABASE_URL`, `JWT_SECRET` y `COHERE_API_KEY`. Fallo → `process.exit(1)` en el arranque | `env.ts:32-97`. Detalle en [Configuración y entorno](#-configuración-y-entorno) |
+| **Validación de entorno** | 24 variables en un `envSchema` de Zod; las 3 obligatorias son `DATABASE_URL`, `JWT_SECRET` y `COHERE_API_KEY`. Fallo → `process.exit(1)` en el arranque | `env.ts:32-97`. Detalle en [Configuración y entorno](#-configuración-y-entorno) |
 | **Errores** | Envelope uniforme `{ error: { code, message, details } }`; cualquier excepción no-`HttpError` sale como `500 INTERNAL_SERVER_ERROR` genérico. **Nunca se filtra un stack trace ni el mensaje original** | [`src/shared/middleware/error-handler.ts`](src/shared/middleware/error-handler.ts) `:4-29` |
 
 #### Detalle: la devolución de cupo de portal-sync
@@ -6654,7 +6654,7 @@ con nueve secciones —`db`, `cloudinary`, `auth`, `email`, `firebase`, `server`
 Las únicas excepciones son `src/server.ts` (para las variables que inyecta Vercel) y el tooling de
 `src/db/`.
 
-### Las 23 variables validadas
+### Las 24 variables validadas
 
 **Solo tres son obligatorias**, y las tres sin valor por defecto. Todas las demás arrancan con lo
 que ves en la columna «Por defecto».
@@ -6684,6 +6684,7 @@ que ves en la columna «Por defecto».
 | `PORTAL_TIMEOUT_MS` | No | `8000` | Timeout de cada petición saliente al portal. Al agotarse ⇒ `504 PORTAL_TIMEOUT` |
 | `PORTAL_REFRESH_BUDGET_MS` | No | `60000` | Presupuesto de tiempo de `POST /portal-sync/refresh`, en ms (RS-BE-50). **Un valor fuera de 20 000 a 65 000 impide el arranque**, en vez de caer al default, porque de él depende el plazo de la app. Un `PORTAL_TIMEOUT_MS` mayor que 30 500 lo deja bajo 20 000 y también lo impide |
 | `SYLLABUS_BASE_URL` | No | `https://cactus.ulima.edu.pe` | Base Domino de sílabos. Allowlist **propia y separada** de la del portal, a propósito |
+| `MODO_ESTATICO` | No | `false` | Interruptor de la versión estática 2.0.0. Solo acepta `true` o `false`, y cualquier otro valor impide el arranque. Con `true` el backend no consulta a la Universidad de Lima (ver [Modo estático](#modo-estático)) |
 
 > **1 · Por qué las dos allowlists están separadas.** El comentario de
 > [`src/config/env.ts:17-21`](src/config/env.ts) lo explica: si fueran una sola variable aceptando
@@ -6736,7 +6737,7 @@ que ves en la columna «Por defecto».
 
 ### `.env` de ejemplo
 
-El repositorio trae [`.env.example`](.env.example) con las 23 variables de `src/config/env.ts`, en
+El repositorio trae [`.env.example`](.env.example) con las 24 variables de `src/config/env.ts`, en
 el mismo orden, cada una con su descripción, si es obligatoria y un valor de ejemplo inofensivo. Se
 copia a `.env` y se completa a mano (ver [Puesta en marcha local](#puesta-en-marcha-local)). Solo
 `DATABASE_URL` tiene que ser auténtica. **Todos los valores de la plantilla son placeholders.**
@@ -6749,6 +6750,25 @@ versión 1.1.0 el archivo no existía, porque el patrón `.env*` de `.gitignore`
 > ⚠️ El repositorio es **público**. `.env`, `.env.local` y cualquier `backup_*.sql` están cubiertos
 > por `.gitignore` y verificados como no versionados, pero eso los deja a un `git add -f` de
 > distancia. No pegues aquí el host de Neon, ni claves de Firebase, ni códigos de alumno reales.
+
+### Modo estático
+
+Desde la versión 2.0.0 el backend tiene el interruptor `MODO_ESTATICO`, que apaga todo lo que
+consulta a la Universidad de Lima sin borrar su código. Todo el tráfico hacia la Universidad sale de
+[`portal.client.ts`](src/services/portal.client.ts) y solo lo disparan a mano `POST /auth/register`,
+`POST /portal-sync/import` y `POST /portal-sync/refresh`, de modo que el interruptor cierra esas tres
+rutas. La spec está en [`modo-estatico.spec.md`](specs/features/modo-estatico/modo-estatico.spec.md).
+
+| Ruta | Con `MODO_ESTATICO=true` | Con `false` o sin la variable |
+|:---|:---|:---|
+| `POST /auth/register` | `503` con el código `REGISTRATION_UNAVAILABLE`, sea cual sea el cuerpo | Registro con miUlima, como antes |
+| `/portal-sync` y cualquier ruta bajo él | `503` con `{"error":{"code":"PORTAL_DESACTIVADO","message":"Esta versión de ULima++ no se conecta con la Universidad de Lima."}}`, con o sin sesión | Importación y recarga, como antes |
+| `POST /auth/login`, `POST /auth/google`, `/auth/password-reset/*` y el resto de los módulos | Igual que con `false` | Sin cambios |
+
+Para activarlo en Vercel se define `MODO_ESTATICO` con el valor `true` en Production o en Preview y se
+vuelve a desplegar, porque el valor se lee una sola vez al arrancar. Para desactivarlo se cambia a
+`false` o se borra la variable. En local basta con escribirla en `.env`. El procedimiento por entorno
+está en [`docs/devops.md`](docs/devops.md).
 
 ### Cómo se valida al arrancar
 
@@ -7000,7 +7020,7 @@ falló. En local devuelve `{ commit: "local", ref: null, deployment: null }`.
 
 ### Variables que deben existir en el proyecto Vercel
 
-De las 23 variables del `envSchema`, solo **3 son obligatorias sin default**. Las demás tienen
+De las 24 variables del `envSchema`, solo **3 son obligatorias sin default**. Las demás tienen
 default, pero varias tienen un default que **no sirve en producción**.
 
 | Variable | ¿Debe existir en Vercel? | Qué pasa si falta |
@@ -7025,6 +7045,7 @@ default, pero varias tienen un default que **no sirve en producción**.
 | `PORTAL_TIMEOUT_MS` | Opcional | Default `8000` ms por petición saliente al portal |
 | `PORTAL_REFRESH_BUDGET_MS` | Opcional | Default `60000` ms para `POST /portal-sync/refresh`. Fuera de 20 000 a 65 000 **impide el arranque** |
 | `SYLLABUS_BASE_URL` | Opcional | Default `https://cactus.ulima.edu.pe`. Allowlist **propia y separada** de la del portal |
+| `MODO_ESTATICO` | Opcional | Default `false`. En Production y en Preview (`develop`) de la versión 2.0.0 vale `true`. Solo acepta `true` o `false` |
 | `PORT` | ❌ No | Irrelevante en serverless: no hay listener |
 | `VERCEL_GIT_COMMIT_SHA` · `VERCEL_GIT_COMMIT_REF` · `VERCEL_DEPLOYMENT_ID` | Inyectadas por Vercel | Sin ellas `/version` devuelve `"local"` / `null` / `null` |
 

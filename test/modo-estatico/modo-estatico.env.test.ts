@@ -30,7 +30,7 @@ describe("MODO_ESTATICO en el esquema de entorno (RF-EST-1)", () => {
     expect(envSchema.safeParse({ ...base, MODO_ESTATICO: valor }).success).toBe(false);
   });
 
-  test("config.modoEstatico sigue a env y, sin la variable en la suite, vale false", () => {
-    expect(config.modoEstatico).toBe(false);
+  test("config.modoEstatico expone el valor con el que arrancó el proceso", () => {
+    expect(config.modoEstatico).toBe(process.env.MODO_ESTATICO === "true");
   });
 });

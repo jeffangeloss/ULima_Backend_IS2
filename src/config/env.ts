@@ -121,6 +121,11 @@ export const envSchema = z.object({
   // cactus.ulima.edu.pe; cualquier otro valor es rechazado (anti-SSRF).
   SYLLABUS_BASE_URL: z.string().url().optional().default("https://cactus.ulima.edu.pe")
     .refine(isAllowedSyllabusBaseUrl, "SYLLABUS_BASE_URL debe apuntar a cactus.ulima.edu.pe"),
+  // RF-EST-1. Modo estático: con "true" el backend no consulta a la Universidad de Lima. El
+  // registro responde 503 REGISTRATION_UNAVAILABLE y todo /portal-sync responde 503
+  // PORTAL_DESACTIVADO. Solo acepta "true" o "false" (por defecto "false"): cualquier otro
+  // valor detiene el arranque, para que un error de tipeo no deje el portal encendido.
+  MODO_ESTATICO: z.enum(["true", "false"]).optional().default("false").transform((v) => v === "true"),
 }).superRefine((e, ctx) => {
   // RS-BE-50. Con un PORTAL_TIMEOUT_MS mayor que 30 500 el presupuesto efectivo
   // queda bajo 20 000 y la recarga no alcanzaría a leer nada.
