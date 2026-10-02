@@ -4,7 +4,8 @@
  *
  * Importa el repositorio real del chatbot de `src/modules/chatbot/index.ts`, le sustituye la
  * ejecución en la base por una función que solo anota la consulta, y escribe en la salida
- * estándar una línea JSON con los parámetros de `getAlerts` y si lleva el filtro. No toca la base.
+ * estándar una línea JSON con los parámetros de `getAlerts` y si lleva el filtro. La consulta del
+ * lector a `app_setting` pasa por esa misma función, no devuelve filas y rige `MODO_ESTATICO`.
  */
 import { PgDialect } from "drizzle-orm/pg-core";
 
