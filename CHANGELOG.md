@@ -2,9 +2,9 @@
 
 Todos los cambios notables del backend de ULima++ se documentan en este archivo.
 
-El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/). El workflow `release.yml` toma de aquí las notas de cada GitHub Release, así que el encabezado de cada versión tiene que ser exactamente `## [X.Y.Z] - AAAA-MM-DD`.
+El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/). El workflow `release.yml` toma de aquí las notas de cada GitHub Release, así que el encabezado de cada versión tiene que ser exactamente `## [X.Y.Z] - AAAA-MM-DD`. Por la misma razón no se agregan al final del archivo definiciones de enlace como `[X.Y.Z]: url`, porque el `awk` de `release.yml` lee la sección más antigua hasta el final del archivo y las incluiría en sus notas.
 
-## [1.1.0] - 2026-10-01
+## [1.1.0] - 2026-10-02
 
 Esta versión no cambia el comportamiento de la API. Agrega la CI, la publicación automática de versiones y los archivos que dejan versionados los entornos de pruebas y de producción.
 
@@ -12,14 +12,15 @@ Esta versión no cambia el comportamiento de la API. Agrega la CI, la publicaci�
 
 - `develop` como rama de integración. Las ramas de trabajo (`feat/*`, `fix/*`, `docs/*`, `chore/*`, `test/*` y `refactor/*`) salen de `develop` y entran a él por PR, y `main` solo recibe PR de `develop` o de `hotfix/*`.
 - CI en `.github/workflows/ci.yml`. El job `pruebas` instala con `bun install --frozen-lockfile`, compila con `bun run build` y corre `bun test` con un servicio `postgres:17`, de modo que las cinco pruebas `*.postgres.test.ts` se ejecutan en cada PR y en cada push a `develop` y `main`. El job `flujo` rechaza todo PR a `main` cuya rama de origen no sea `develop` ni `hotfix/*`.
-- Publicación automática en `.github/workflows/release.yml`. Cuando llega a `main` un `package.json` con una versión sin tag, crea el tag `vX.Y.Z` y un GitHub Release con la sección correspondiente de este archivo.
-- `.env.example` con las 23 variables de `src/config/env.ts`, cada una con su descripción y ningún valor real.
+- Publicación automática en `.github/workflows/release.yml`. Cuando llega a `main` un `package.json` con una versión sin tag, crea el tag `vX.Y.Z` y un GitHub Release con la sección correspondiente de este archivo. Las ejecuciones corren una por una, en un grupo de concurrencia `release` que no cancela la que está en curso.
+- `.env.example` con las 23 variables de `src/config/env.ts`, cada una con su descripción y ningún valor real, y la prueba `test/devops/env-example.test.ts`, que falla si sus claves difieren de las del esquema o si sus valores de ejemplo no pasan la validación.
 - `.bun-version` con Bun 1.4.2, la versión que usan la CI y las instalaciones locales.
 - `docs/devops.md` con las ramas, la publicación de versiones, el hotfix, los entornos (incluida la región `iad1` que fija `vercel.json`), las migraciones y la CI.
 
 ### Cambiado
 
 - `package.json` pasa de la versión `0.1.0` a la `1.1.0`.
+- El README describe la CI, `.env.example`, el flujo de ramas con `develop` y los entornos, y remite a `docs/devops.md` en lugar de repetirlo.
 
 ### Corregido
 
@@ -27,7 +28,7 @@ Esta versión no cambia el comportamiento de la API. Agrega la CI, la publicaci�
 
 ## [1.0.0] - 2026-10-01
 
-Primera versión etiquetada. Marca el estado de producción al 2026-10-01, que es el commit `9b5a1f2` de `main` (merge del PR #12). Antes de esta versión el repositorio no tenía tags, y el `package.json` de ese commit decía `0.1.0`. El tag `v1.0.0` marca ese estado sin modificar el archivo, que pasa a `1.1.0` en la versión siguiente. El resumen sale del README y de los PR fusionados #5 a #12.
+Primera versión etiquetada. Marca el estado de producción al 2026-10-01, que es el commit `9b5a1f2` de `main` (merge del PR #12). Antes de esta versión el repositorio no tenía tags, y el `package.json` de ese commit decía `0.1.0`. El tag `v1.0.0` marca ese estado sin modificar el archivo, que pasa a `1.1.0` en la versión siguiente. El resumen sale del README y de los PR fusionados #1 a #12.
 
 ### Añadido
 
