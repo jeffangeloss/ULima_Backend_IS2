@@ -1,6 +1,6 @@
 {
   "name": "ulima-backend",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "description": "Backend oficial de ULima++ - API REST para app universitaria Flutter",
   "main": "dist/server.js",
   "type": "module",
