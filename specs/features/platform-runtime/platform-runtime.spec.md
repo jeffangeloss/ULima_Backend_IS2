@@ -104,6 +104,11 @@ No cambia reglas de negocio, modulos funcionales, base de datos, autenticacion n
 - No existe `maxDuration` a nivel raiz del archivo: el esquema oficial solo lo acepta dentro de `functions.<glob>`. Y Vercel **no documenta** con que glob se identifica la funcion que genera el preset Hono; si el glob no coincide, la entrada se ignora **en silencio**, sin error. O sea que declararlo mal se ve igual que no declararlo.
 - Referencia de dimensionamiento, por si alguna vez hay que declararlo: el endpoint mas lento es `POST /portal-sync/import`. Medido contra el portal real el 2026-09-02, con el backend corriendo en Lima: **40.7 s** la primera importacion y **47.7 s** la segunda. La segunda hizo menos trabajo (todo updates, cero creates) y tardo mas, o sea que domina la latencia por viaje y no el computo. De esos tiempos, ~17 s son RTT a Neon desde Lima y desaparecen al correr en `iad1`. Si alguna vez se declara un numero, se calcula sobre una medicion **desde la funcion desplegada**, nunca desde una corrida local.
 
+### BR-PLATFORM-12: Plantilla de variables de entorno
+
+- `.env.example` lista exactamente las variables del esquema de `src/config/env.ts`, sin valores reales.
+  `[@test] ../../../test/devops/env-example.test.ts` (las claves de la plantilla coinciden con las del esquema, sin repetirse y en su orden, y sus valores de ejemplo pasan el esquema)
+
 ## Implementation Plan
 
 ### src/server.ts

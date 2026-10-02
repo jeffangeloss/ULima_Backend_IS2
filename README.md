@@ -38,6 +38,7 @@
 | **Specs** | **18 features** especificadas antes de implementarse, en `specs/features/` |
 | **Contrato REST** | 600 líneas en [`docs/specs/api-contracts.md`](docs/specs/api-contracts.md) |
 | **Historia** | 253 commits · del 2026-05-13 al 2026-09-06 |
+| **Versiones y CI** | Tags `vX.Y.Z` con su GitHub Release y su [`CHANGELOG.md`](CHANGELOG.md) · CI con GitHub Actions · ramas, entornos y publicación en [`docs/devops.md`](docs/devops.md) |
 
 ---
 
@@ -186,7 +187,7 @@ Lo que define la arquitectura no es el framework sino **dónde se decide cada co
 
 | Capa | Elección | Versión declarada | Versión instalada |
 |:---|:---|:---|:---|
-| Runtime | **Bun** (canónico) · Node solo vía adapter | — | — |
+| Runtime | **Bun** (canónico) · Node solo vía adapter | `1.4.2` en [`.bun-version`](.bun-version) | 1.4.2 |
 | Framework HTTP | **Hono** | `^4.6.0` | **4.12.19** |
 | Adapter Node | `@hono/node-server` | `^2.0.4` | 2.0.4 |
 | ORM / capa SQL | **Drizzle ORM** sobre driver `postgres-js` | `^0.45.2` | 0.45.2 |
@@ -3339,7 +3340,7 @@ exige token.
 | **Allowlist de hosts salientes** | `PORTAL_BASE_URL` fijada a `webaloe.ulima.edu.pe` y `SYLLABUS_BASE_URL` fijada a `cactus.ulima.edu.pe`, con **predicados separados**; violarlas **impide el arranque** | [`src/config/env.ts`](src/config/env.ts) `:4-30,79,88` |
 | **Parámetros salientes** | Lo único interpolado en una URL del portal son tres valores, los tres con regex anclada: COCICLO `^\d{5}$`, código de curso `^\d{4,6}$`, aula `^\d{4,8}$` (`assertAula`) | [`src/services/portal.client.ts`](src/services/portal.client.ts) `:29-34,188,235` |
 | **Validación Zod en la frontera** | `validateJson` → `400 INVALID_JSON_BODY` / `400 INVALID_REQUEST_BODY` con `error.flatten()`; `validateQuery` → `400 INVALID_QUERY_PARAMS`; `validateParams` → `400 INVALID_ROUTE_PARAMS`. Ningún handler recibe datos sin parsear | [`src/shared/middleware/validate-dto.ts`](src/shared/middleware/validate-dto.ts) `:5-34` |
-| **Validación de entorno** | 19 variables en un `envSchema` de Zod; las 3 obligatorias son `DATABASE_URL`, `JWT_SECRET` y `COHERE_API_KEY`. Fallo → `process.exit(1)` en el arranque | `env.ts:32-97`. Detalle en [Configuración y entorno](#-configuración-y-entorno) |
+| **Validación de entorno** | 23 variables en un `envSchema` de Zod; las 3 obligatorias son `DATABASE_URL`, `JWT_SECRET` y `COHERE_API_KEY`. Fallo → `process.exit(1)` en el arranque | `env.ts:32-97`. Detalle en [Configuración y entorno](#-configuración-y-entorno) |
 | **Errores** | Envelope uniforme `{ error: { code, message, details } }`; cualquier excepción no-`HttpError` sale como `500 INTERNAL_SERVER_ERROR` genérico. **Nunca se filtra un stack trace ni el mensaje original** | [`src/shared/middleware/error-handler.ts`](src/shared/middleware/error-handler.ts) `:4-29` |
 
 #### Detalle: la devolución de cupo de portal-sync
@@ -6329,8 +6330,11 @@ backend al 2026-09-04. El detalle de la estrategia está en
 ## 🧪 Pruebas y calidad
 
 **74 archivos de prueba, 14 464 líneas, ~1 028 casos, 24 carpetas, 6 autores.** Todo bajo
-[`test/`](test/), todo versionado, todo con el mismo runner. Ninguna prueba toca PostgreSQL,
-Neon ni la red: la suite corre entera sin credenciales.
+[`test/`](test/), todo versionado, todo con el mismo runner. Salvo cinco archivos
+`*.postgres.test.ts`, ninguna prueba toca PostgreSQL, Neon ni la red. Esos cinco se saltan solos
+sin `TEST_DATABASE_URL`, así que la suite corre entera sin credenciales. Cuando la variable existe,
+exigen un Postgres local y una base vacía, y trabajan dentro de una transacción que se deshace. La
+CI los corre contra un servicio `postgres:17` (ver [`docs/devops.md`](docs/devops.md)).
 
 | Métrica | Valor |
 |:---|---:|
@@ -6343,7 +6347,7 @@ Neon ni la red: la suite corre entera sin credenciales.
 | Configuraciones de mutación | 6 |
 | Archivos de `src/` importados por algún test | 82 de 184 (44,6 %) |
 | Archivos de `src/` bajo mutación | 8 de 184 (4,3 %) |
-| Pipeline de integración continua | **ninguno** — `.github/` no existe |
+| Pipeline de integración continua | **GitHub Actions** — [`ci.yml`](.github/workflows/ci.yml) compila y corre `bun test` con `postgres:17` en cada PR y en cada push a `develop` y `main` |
 
 > **1 · El conteo de casos es aproximado a propósito.** Los ~1 028 salen de contar el patrón
 > `^\s*(it|test)\s*\(` sobre los 74 archivos, no de una corrida del runner. Un `test.each` o un
@@ -6402,7 +6406,8 @@ flowchart TD
   D -->|"La REGLA vive dentro del SQL"| P4["bun sqlite en memoria, marcadores traducidos a signos de interrogacion"]
   D -->|"El modulo abre Postgres o Cohere al evaluarse"| P5["mock.module + import dinamico"]
   D -->|"HTTP del portal miUlima"| P6["fetch doble con router por URL, metodo y sesion"]
-  P1 & P2 & P3 & P4 & P5 & P6 --> F["Ninguna prueba toca Postgres, Neon ni la red"]
+  D -->|"El SQL contra un Postgres real"| P7["cinco archivos postgres.test.ts, solo con TEST_DATABASE_URL<br/>base local y vacia, transaccion con rollback"]
+  P1 & P2 & P3 & P4 & P5 & P6 & P7 --> F["Ninguna prueba toca Neon ni la red"]
 ```
 
 ### La convención de nombres
@@ -6418,6 +6423,10 @@ está fijado en [`specs/features/portal-sync/portal-sync.spec.md`](specs/feature
 Ata cada prueba a una historia de [Historias de usuario](#-historias-de-usuario-y-criterios-de-aceptación)
 y a una persona del [Equipo](#-equipo). Los seis alias: `jeff`, `mel`, `sam`, `julio`, `nehemias`,
 `ronald`.
+
+Hay una excepción, [`test/devops/`](test/devops/), que guarda las pruebas sobre los archivos de DevOps
+del repositorio (hoy `env-example.test.ts`, que compara `.env.example` con el esquema de `env.ts`). No
+cuelga de una historia de usuario ni de una persona, así que su carpeta no lleva ese patrón.
 
 #### Archivos — `<tema>[.<técnica>].test.ts`
 
@@ -6589,8 +6598,11 @@ dos archivos, mientras que `teacher.service.ts`, `teacher.repository.ts`, `teach
 
 Además, y con el mismo nivel de honestidad:
 
-- **No hay integración continua.** `.github/` no existe en el backend. Nada ejecuta `bun test` en un
-  push o un PR; la suite depende de que cada persona la corra a mano.
+- **La integración continua es mínima.** Desde la versión 1.1.0, [`ci.yml`](.github/workflows/ci.yml)
+  compila y corre `bun test` en cada PR y en cada push a `develop` y `main`, con un servicio
+  `postgres:17` para las pruebas `*.postgres.test.ts`. No mide cobertura, no corre la mutación y no
+  type-chequea los tests, como dicen los dos puntos siguientes. Detalle en
+  [`docs/devops.md`](docs/devops.md).
 - **No hay cobertura de líneas ni de ramas configurada.** `bunfig.toml` solo declara `preload`. La
   única métrica de calidad de pruebas es la mutación, y solo sobre 8 de 184 archivos.
 - **El build no type-chequea los tests.** [`tsconfig.json:23`](tsconfig.json) incluye únicamente
@@ -6642,7 +6654,7 @@ con nueve secciones —`db`, `cloudinary`, `auth`, `email`, `firebase`, `server`
 Las únicas excepciones son `src/server.ts` (para las variables que inyecta Vercel) y el tooling de
 `src/db/`.
 
-### Las 22 variables validadas
+### Las 23 variables validadas
 
 **Solo tres son obligatorias**, y las tres sin valor por defecto. Todas las demás arrancan con lo
 que ves en la columna «Por defecto».
@@ -6670,6 +6682,7 @@ que ves en la columna «Por defecto».
 | `CHATBOT_RATE_LIMIT` | No | `20` | Preguntas por alumno por hora en `POST /chatbot/sessions/:id/ask`. Fallback a 20 ante parseo inválido |
 | `PORTAL_BASE_URL` | No | `https://webaloe.ulima.edu.pe` | Base de miUlima. Lleva un `.refine()` con **allowlist de host fija**: cualquier otro host impide el arranque |
 | `PORTAL_TIMEOUT_MS` | No | `8000` | Timeout de cada petición saliente al portal. Al agotarse ⇒ `504 PORTAL_TIMEOUT` |
+| `PORTAL_REFRESH_BUDGET_MS` | No | `60000` | Presupuesto de tiempo de `POST /portal-sync/refresh`, en ms (RS-BE-50). **Un valor fuera de 20 000 a 65 000 impide el arranque**, en vez de caer al default, porque de él depende el plazo de la app. Un `PORTAL_TIMEOUT_MS` mayor que 30 500 lo deja bajo 20 000 y también lo impide |
 | `SYLLABUS_BASE_URL` | No | `https://cactus.ulima.edu.pe` | Base Domino de sílabos. Allowlist **propia y separada** de la del portal, a propósito |
 
 > **1 · Por qué las dos allowlists están separadas.** El comentario de
@@ -6723,44 +6736,15 @@ que ves en la columna «Por defecto».
 
 ### `.env` de ejemplo
 
-No existe `.env.example` en el repositorio, y además `.gitignore` impide que exista: la negación
-`!.env.example` de la línea 10 queda anulada por el patrón `.env*` de la línea 60. Este bloque
-cumple esa función. **Todos los valores son placeholders.**
+El repositorio trae [`.env.example`](.env.example) con las 23 variables de `src/config/env.ts`, en
+el mismo orden, cada una con su descripción, si es obligatoria y un valor de ejemplo inofensivo. Se
+copia a `.env` y se completa a mano (ver [Puesta en marcha local](#puesta-en-marcha-local)). Solo
+`DATABASE_URL` tiene que ser auténtica. **Todos los valores de la plantilla son placeholders.**
 
-```env
-# ── Obligatorias. Sin las tres, el proceso no arranca ────────────────────────
-DATABASE_URL=postgresql://USUARIO:CONTRASENA@HOST_DE_LA_BASE:5432/NOMBRE_BD?sslmode=require
-JWT_SECRET=cadena-local-de-al-menos-8-caracteres
-COHERE_API_KEY=clave-de-cohere-o-cualquier-cadena-en-local
-
-# ── Servidor ────────────────────────────────────────────────────────────────
-NODE_ENV=development
-PORT=3000
-JWT_EXPIRES_IN=86400
-# Vacío o ausente ⇒ CORS abierto (*). Defínelo en producción.
-CORS_ORIGINS=http://localhost:3000,https://TU-FRONTEND
-
-# ── Correo de restablecimiento (Resend) ─────────────────────────────────────
-# Vacío + NODE_ENV distinto de production ⇒ el OTP se imprime con [DEV ONLY]
-RESEND_API_KEY=
-RESEND_FROM=ULima+ <notificaciones@TU-DOMINIO-VERIFICADO>
-RESEND_REPLY_TO=
-PASSWORD_RESET_MAX_PER_HOUR=3
-
-# ── Chat (Firebase Admin). Vacías ⇒ el chat no se inicializa, el resto sí ───
-FIREBASE_PROJECT_ID=
-FIREBASE_CLIENT_EMAIL=
-FIREBASE_PRIVATE_KEY=
-FIREBASE_DATABASE_URL=
-
-# ── Chatbot ─────────────────────────────────────────────────────────────────
-CHATBOT_RATE_LIMIT=20
-
-# ── Portal miUlima y sílabos. Los defaults ya son correctos ─────────────────
-PORTAL_BASE_URL=https://webaloe.ulima.edu.pe
-PORTAL_TIMEOUT_MS=8000
-SYLLABUS_BASE_URL=https://cactus.ulima.edu.pe
-```
+La prueba [`test/devops/env-example.test.ts`](test/devops/env-example.test.ts) falla si las claves de
+la plantilla dejan de coincidir con las del esquema, o si sus valores dejan de pasarlo. Hasta la
+versión 1.1.0 el archivo no existía, porque el patrón `.env*` de `.gitignore` anulaba la negación
+`!.env.example` de la línea 10. Ahora la negación va después de ese patrón (`.gitignore:62`).
 
 > ⚠️ El repositorio es **público**. `.env`, `.env.local` y cualquier `backup_*.sql` están cubiertos
 > por `.gitignore` y verificados como no versionados, pero eso los deja a un `git add -f` de
@@ -6830,11 +6814,13 @@ existe, con datos, y estos comandos escriben sobre ella. [`README.md`](README.md
 ### Puesta en marcha local
 
 ```bash
-# 1. Dependencias. Bun es el gestor canónico: hay un solo lockfile, bun.lock
+# 1. Dependencias. Bun es el gestor canónico: hay un solo lockfile, bun.lock.
+#    Instala la versión de .bun-version (1.4.2), la misma que usa la CI
 bun install
 
-# 2. Escribe el .env A MANO. Copia el bloque de arriba y rellena DATABASE_URL.
-#    Las otras dos obligatorias pueden ser cualquier cosa en local.
+# 2. Copia la plantilla y rellena DATABASE_URL. Las otras dos obligatorias
+#    pueden ser cualquier cosa en local
+cp .env.example .env
 $EDITOR .env
 
 # 3. Arranca en modo watch (puerto 3000 por defecto)
@@ -6858,7 +6844,7 @@ bun test
 > `FIREBASE_CLIENT_EMAIL` se valida como correo, `FIREBASE_DATABASE_URL` como URL y `NODE_ENV` es un
 > enum cerrado, y `[SENSITIVE]` no pasa ninguna de las tres. El proceso muere en
 > `env.ts:96` con un error de validación que apunta a variables que ni siquiera necesitas.
-> Escribe el `.env` a mano: **solo `DATABASE_URL` tiene que ser auténtica**. `JWT_SECRET` puede ser
+> Parte de [`.env.example`](.env.example), porque **solo `DATABASE_URL` tiene que ser auténtica**. `JWT_SECRET` puede ser
 > cualquier cadena de 8 o más caracteres —el backend local firma y verifica sus propios tokens, y
 > las contraseñas viven hasheadas en la base, así que el login funciona igual— y `COHERE_API_KEY`
 > cualquier cadena no vacía si no vas a tocar el chatbot.
@@ -6885,8 +6871,13 @@ Para producción, región, `maxDuration` y el resto del despliegue, ver
 ## 🚀 Despliegue
 
 El backend vive en **Vercel** como una única función serverless, desplegada por la integración
-Vercel–GitHub. No hay GitHub Actions en este repositorio: `ls .github` devuelve *"No such file
-or directory"*. El único workflow del proyecto está en el repo del frontend y compila el APK.
+Vercel–GitHub, que despliega `main` como producción y cada otra rama como un *Preview*. Desde la
+versión 1.1.0 el repositorio también tiene dos workflows de GitHub Actions. [`ci.yml`](.github/workflows/ci.yml)
+compila y corre `bun test` con un servicio `postgres:17` en cada PR y en cada push a `develop` y
+`main`, y rechaza los PR a `main` que no vengan de `develop` ni de `hotfix/*`.
+[`release.yml`](.github/workflows/release.yml) crea el tag `vX.Y.Z` y el GitHub Release cuando llega
+a `main` una versión de `package.json` sin tag. Ninguno despliega, y el APK se compila en el repo del
+frontend. Las ramas, los entornos y cómo se publica una versión están en [`docs/devops.md`](docs/devops.md).
 
 **Producción: <https://u-lima-backend-is-2-one.vercel.app>** — verificado vivo el 2026-09-07.
 
@@ -6895,6 +6886,10 @@ or directory"*. El único workflow del proyecto está en el repo del frontend y 
 > no falla con un error claro: falla con lo que sea que Vercel responda a un proyecto retirado.
 > Hasta este README, el repositorio **no documentaba la URL de producción en ningún archivo**
 > (`grep -rn 'vercel.app'` sobre `*.md`, `*.ts` y `*.json` devolvía cero resultados).
+
+**Pruebas: <https://u-lima-backend-is-2-git-develop-jeffangeloss-projects.vercel.app>**, el *Preview*
+de `develop`, con su propia rama de Neon. Responde desde el primer despliegue de `develop`; cómo leer
+el estado de sus despliegues está en [`docs/devops.md`](docs/devops.md).
 
 ### Configuración de Vercel
 
@@ -7005,7 +7000,7 @@ falló. En local devuelve `{ commit: "local", ref: null, deployment: null }`.
 
 ### Variables que deben existir en el proyecto Vercel
 
-De las 19 variables del `envSchema`, solo **3 son obligatorias sin default**. Las demás tienen
+De las 23 variables del `envSchema`, solo **3 son obligatorias sin default**. Las demás tienen
 default, pero varias tienen un default que **no sirve en producción**.
 
 | Variable | ¿Debe existir en Vercel? | Qué pasa si falta |
@@ -7022,14 +7017,20 @@ default, pero varias tienen un default que **no sirve en producción**.
 | `FIREBASE_CLIENT_EMAIL` | 🟡 Solo para chat | Ídem |
 | `FIREBASE_PRIVATE_KEY` | 🟡 Solo para chat | Ídem. Viaja con `\n` literales; `firebase.service.ts:116` los normaliza |
 | `FIREBASE_DATABASE_URL` | 🟡 Solo para chat | Sin ella no hay Realtime Database donde escribir mensajes |
+| `CLOUDINARY_CLOUD_NAME` · `CLOUDINARY_API_KEY` · `CLOUDINARY_API_SECRET` | 🟡 Solo para fotos de perfil | Con las tres vacías la función queda apagada (`503 AVATAR_DISABLED`) y todos se ven con iniciales. Van juntas |
 | `JWT_EXPIRES_IN` | Opcional | Default `86400` s (24 h). Se devuelve al cliente en `expiresIn` |
 | `PASSWORD_RESET_MAX_PER_HOUR` | Opcional | Default `3` OTP por usuario por hora |
 | `CHATBOT_RATE_LIMIT` | Opcional | Default `20` preguntas por alumno por hora |
 | `PORTAL_BASE_URL` | Opcional | Default `https://webaloe.ulima.edu.pe`. **Con allowlist**: cualquier otro host impide el arranque |
 | `PORTAL_TIMEOUT_MS` | Opcional | Default `8000` ms por petición saliente al portal |
+| `PORTAL_REFRESH_BUDGET_MS` | Opcional | Default `60000` ms para `POST /portal-sync/refresh`. Fuera de 20 000 a 65 000 **impide el arranque** |
 | `SYLLABUS_BASE_URL` | Opcional | Default `https://cactus.ulima.edu.pe`. Allowlist **propia y separada** de la del portal |
 | `PORT` | ❌ No | Irrelevante en serverless: no hay listener |
 | `VERCEL_GIT_COMMIT_SHA` · `VERCEL_GIT_COMMIT_REF` · `VERCEL_DEPLOYMENT_ID` | Inyectadas por Vercel | Sin ellas `/version` devuelve `"local"` / `null` / `null` |
+
+`DATABASE_URL` tiene dos valores en Vercel, uno para Production (la base actual) y otro para Preview
+(la rama `develop` de Neon, que hace de base de pruebas). El dueño lo cambia en los paneles de Neon y
+de Vercel, porque la URL lleva contraseña. Más en [`docs/devops.md`](docs/devops.md).
 
 Ninguna de las variables de siembra (`STUDENT_PASSWORD`, `PROF_PASSWORD`, `JP_PASSWORD`,
 `STUDENT_CODE`, …) debe existir en Vercel: los seeds están excluidos del build y se corren a mano.
@@ -7052,9 +7053,12 @@ Es la única dependencia del `package.json` declarada **sin caret**:
 > `jose` convive con el mixto CJS/ESM del entorno serverless. Aplicado en el commit
 > `c67c9c8 fix(chat): downgrade firebase-admin to v12.1.0 to fix Vercel ESM requirement issue`.
 
-> **4 · El riesgo que queda.** No hay entorno espejo. Si alguien sube `firebase-admin ^14` —y con
-> él `jose@6` al `bun.lock`—, **producción se cae y queda caída**, sin una prueba local que lo
-> anticipe: en desarrollo con Bun el mismo grafo de dependencias funciona. La regla está escrita
+> **4 · El riesgo que queda.** Ninguna prueba local lo anticipa, pero ya hay un entorno espejo, que es
+> el *Preview* de `develop` con su propia rama de Neon (ver [`docs/devops.md`](docs/devops.md)). Ahí se
+> despliega la subida antes de que llegue a `main`, y `GET /health` falla si el arranque se cae. Si
+> alguien sube `firebase-admin ^14` (y con él `jose@6` al `bun.lock`) y lo fusiona a `main` sin mirar
+> ese Preview, **producción se cae y queda caída**, porque en desarrollo con Bun el mismo grafo de
+> dependencias funciona. La regla está escrita
 > en [`KNOWLEDGE.md`](KNOWLEDGE.md)`:144-147`, en
 > [`specs/features/chat/chat.spec.md`](specs/features/chat/chat.spec.md)`:58` y en
 > [`docs/specs/api-contracts.md`](docs/specs/api-contracts.md)`:558`. Falta en `CONTRIBUTING`.
@@ -7069,16 +7073,21 @@ flowchart TD
 
     subgraph gh["GitHub"]
         MAIN["push a main<br/>jeffangeloss/ULima_Backend_IS2"]
+        DEV["push a develop<br/>o a una rama de trabajo"]
+        CI["ci.yml<br/>build y bun test con postgres:17"]
+        REL["release.yml<br/>tag vX.Y.Z y GitHub Release"]
     end
 
     subgraph vercel["Vercel · region iad1 · Fluid compute · plan Hobby"]
         BUILD["bun install<br/>bun run build = tsc<br/>excluye src/db/seed"]
         FN["Funcion serverless<br/>preset hono · export default app<br/>sin maxDuration → 300 s"]
         DIAG["GET /health y GET /version<br/>publicos · commit · ref · deployment"]
+        PREV["Preview<br/>misma funcion con la base de pruebas"]
     end
 
     subgraph datos["Persistencia"]
         NEON[("Neon PostgreSQL<br/>us-east-1 · 34 tablas<br/>Drizzle sobre postgres-js")]
+        NEONT[("Neon · rama develop<br/>base de pruebas")]
     end
 
     subgraph ext["Servicios externos"]
@@ -7091,9 +7100,14 @@ flowchart TD
     end
 
     MAIN --> BUILD --> FN
+    MAIN --> REL
+    MAIN -.-> CI
+    DEV -.-> CI
+    DEV --> PREV
     FN --> DIAG
     APP -->|"HTTPS · Authorization Bearer JWT"| FN
     FN -->|"SQL en una sola transaccion"| NEON
+    PREV -->|"SQL en una sola transaccion"| NEONT
     FN --> GOOG
     FN --> RESEND
     FN --> FB
@@ -7201,9 +7215,11 @@ flowchart TD
     O --> P["Skills work-review y spec-verification"]
     P --> Q{"Spec · contrato · implementacion coinciden"}
     Q -- "No" --> E
-    Q -- "Si" --> R["Commit tipo scope en rama feat o fix"]
-    R --> S["Pull Request y merge a main"]
-    S --> T["Deploy automatico en Vercel iad1"]
+    Q -- "Si" --> R["Commit tipo scope en una rama de trabajo que sale de develop"]
+    R --> S["Pull Request a develop con pruebas en verde"]
+    S --> T["Preview de Vercel con la base de pruebas"]
+    T --> U["PR de version develop a main · release.yml crea el tag"]
+    U --> V["Deploy automatico en Vercel iad1"]
 ```
 
 ### La regla de `targets`
@@ -7262,7 +7278,8 @@ Cuando cierra una historia de usuario, la HU va en el scope:
 
 ### Convención de ramas
 
-Hay **dos épocas**, y el corte coincide con la auditoría de deuda técnica.
+Hay **tres épocas**. El primer corte coincide con la auditoría de deuda técnica y el segundo con la
+llegada de `develop` en la versión 1.1.0.
 
 **Época 1 (mayo → julio 2026): una rama de larga vida por persona.** `jeff`, `mel`, `sam`,
 `nehemias`, `Ronald`, `Julito`, `aUreLi0`. Cada integrante sincronizaba `main` hacia su rama con
@@ -7284,6 +7301,21 @@ Cuando una feature cruza los dos repos, el tronco del nombre se repite y el sufi
 `feat/portal-sync-backend` ↔ `feat/portal-sync-frontend`, `feat/asistencia-honesta` ↔
 `feat/asistencia-honesta-fe`. Y cuando el nombre es **idéntico** en ambos repos significa cambio
 coordinado simultáneo: `feat/delegados-portal` y `fix/malla-completados` existen igual en los dos.
+
+**Época 3 (desde octubre de 2026): `develop` integra y `main` publica.** Las ramas de trabajo salen de
+`develop` y vuelven a `develop` por PR. A `main` solo entran el PR de versión desde `develop` y los PR
+desde `hotfix/*`, y el job `flujo` de la CI rechaza cualquier otro origen.
+
+| Rama | Sale de | Entra a | Semántica |
+|:---|:---|:---|:---|
+| `main` | `develop` (versión) o `hotfix/*` | — | Producción. Cada versión lleva un tag `vX.Y.Z` y un GitHub Release |
+| `develop` | `main`, al crearla | `main` por PR de versión | Integración. Su *Preview* es el entorno de pruebas |
+| `feat/`, `fix/`, `chore/` | `develop` | `develop` por PR | Los mismos significados de la época 2 |
+| `docs/`, `test/`, `refactor/` | `develop` | `develop` por PR | Documentación, pruebas y refactor sin cambio de comportamiento |
+| `hotfix/` | `main` | `main` por PR, y después `main` vuelve a `develop` | Corrección urgente de producción |
+
+El detalle, con los entornos, cómo se publica una versión y las reglas de rama, está en
+[`docs/devops.md`](docs/devops.md).
 
 ---
 
@@ -7415,10 +7447,10 @@ lo haga:
 | `DEUDA_TECNICA.md:134` | Lista scripts ad-hoc `apply.cjs`, `check-db.js`, `test-db.cjs` | Ninguno existe hoy |
 | `specs/features/auth/auth.spec.md:123` | `RESEND_FROM` usa un local-part `no-reply` | `env.ts:51-53` usa `notificaciones@…` y **prohíbe explícitamente** `no-reply` por ser señal de spam |
 | `README.md:89-100` y `GET /` (`server.ts:33-44`) | Tabulan 9 y listan 10 módulos | **15 módulos** registrados en `src/modules/index.ts:19-33` |
-| `README.md:127-132` | Documenta 4 variables de entorno | **19** en el `envSchema` |
+| `README.md:127-132` | Documenta 4 variables de entorno | **23** en el `envSchema` |
 | `MIGRATIONS.md:8` | *"La tabla `__drizzle_migrations` no existe en la BD"* | El mismo archivo, `:97-99`, describe migraciones aplicadas con `db:migrate` y un sellado manual en esa tabla. Sección histórica sin actualizar |
 | 21 rutas `[@test]` de las specs, 43 apariciones | Apuntan al layout plano `test/<archivo>.test.ts` (16) o a subcarpetas que ya no existen: `test/chatbot/`, `test/services/`, `test/shared/` (5) | Los archivos existen, pero bajo `test/HU##_<alias>/`: el commit `aeea9ae` movió 11 tests el 2026-07-14 y **las specs nunca se actualizaron**. Al día: `portal-sync`, `delegados-portal` y `schedule` |
-| `specs/features/platform-runtime/…:15` | Declara `.env.example` como `target` | El archivo **no existe** y `.gitignore:60` (`.env*`) anula la negación `!.env.example` de la línea 10. Nadie puede saber qué variables setear |
+| `specs/features/platform-runtime/…:15` | Declara `.env.example` como `target` | **Ya existe** desde la versión 1.1.0. La negación `!.env.example` pasó a `.gitignore:62`, después del patrón `.env*`, y la plantilla lista las 23 variables de `env.ts` |
 
 ### Datos personales reales en un repositorio público
 
@@ -7522,6 +7554,8 @@ HU26 y HU27. Algunas se prueban solo en el frontend; otras no se prueban.
 | [`KNOWLEDGE.md`](KNOWLEDGE.md) | Reglas de dominio y las 6 *Decisiones No Negociables*. También la trampa de `firebase-admin` (`:144-147`) |
 | [`AGENTS.md`](AGENTS.md) | El flujo obligatorio de 10 pasos, las reglas de arquitectura y los comandos de base de datos restringidos |
 | [`MIGRATIONS.md`](MIGRATIONS.md) | El protocolo de migraciones: SQL aditivo numerado, `db:push` prohibido siempre, una sola persona aplica, con backup previo y evidencia |
+| [`docs/devops.md`](docs/devops.md) | Las ramas (`main`, `develop`, `hotfix/*`), cómo publicar una versión, los entornos de pruebas y producción, las migraciones con dos bases y la CI con sus reglas de rama |
+| [`CHANGELOG.md`](CHANGELOG.md) | El registro de cambios por versión, en formato Keep a Changelog. `release.yml` toma de aquí las notas de cada GitHub Release |
 | [`DEUDA_TECNICA.md`](DEUDA_TECNICA.md) | El informe completo de la auditoría de junio de 2026: 128 ítems, 11 críticos, con ubicación exacta y hoja de ruta |
 | [`docs/backend/architecture.md`](docs/backend/architecture.md) | La arquitectura en capas `routes → controller → service → repository → db` y las reglas de dependencia entre ellas |
 
