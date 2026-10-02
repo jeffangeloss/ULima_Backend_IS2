@@ -77,7 +77,7 @@ La primera línea es el estado más reciente. `success` indica un despliegue lis
 
 ## Modo estático
 
-`MODO_ESTATICO` es una variable de entorno que acepta `true` o `false` y vale `false` si falta. Con `true`, `POST /auth/register` responde `503` con el código `REGISTRATION_UNAVAILABLE` y toda ruta bajo `/portal-sync` responde `503` con el código `PORTAL_DESACTIVADO`, y el resto de la API responde igual que con `false`. Con cualquier otro valor el backend no arranca. El código del portal no se borra, queda apagado detrás de la variable.
+`MODO_ESTATICO` es una variable de entorno que acepta `true` o `false` y vale `false` si falta. Con `true`, `POST /auth/register` responde `503` con el código `REGISTRATION_UNAVAILABLE` y toda ruta bajo `/portal-sync` responde `503` con el código `PORTAL_DESACTIVADO`, y el resto de la API responde igual que con `false`, salvo el campo `silaboUrl` de `GET /grades/me/courses`, que solo entrega enlaces de Drive y vale `null` para cualquier otro. Con cualquier otro valor el backend no arranca. El código del portal no se borra, queda apagado detrás de la variable.
 
 El valor se lee una sola vez al arrancar, así que cada cambio exige un despliegue nuevo.
 

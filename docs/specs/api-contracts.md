@@ -226,6 +226,8 @@ Notas:
 
 Devuelve cursos + evaluaciones del sílabo con sus pesos, para la calculadora del alumno.
 
+- **Modo estático (versión 2.0.0)**: con `MODO_ESTATICO=true`, `silaboUrl` solo entrega enlaces de Drive y vale `null` para cualquier otra URL guardada (por ejemplo las de `cactus.ulima.edu.pe` que dejó la importación). Con `false` o sin la variable no cambia. Detalle en `specs/features/modo-estatico/modo-estatico.spec.md` (RF-EST-7).
+
 - **Auth**: Bearer token, rol `student|delegate|subdelegate`
 - **Response** `200 OK`:
   ```json

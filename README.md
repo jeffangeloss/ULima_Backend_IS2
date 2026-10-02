@@ -6763,6 +6763,7 @@ rutas. La spec está en [`modo-estatico.spec.md`](specs/features/modo-estatico/m
 |:---|:---|:---|
 | `POST /auth/register` | `503` con el código `REGISTRATION_UNAVAILABLE`, sea cual sea el cuerpo | Registro con miUlima, como antes |
 | `/portal-sync` y cualquier ruta bajo él | `503` con `{"error":{"code":"PORTAL_DESACTIVADO","message":"Esta versión de ULima++ no se conecta con la Universidad de Lima."}}`, con o sin sesión | Importación y recarga, como antes |
+| `GET /grades/me/courses` | Igual que con `false`, salvo `silaboUrl`, que vale `null` si la URL guardada no es de Drive | `silaboUrl` tal como está guardado |
 | `POST /auth/login`, `POST /auth/google`, `/auth/password-reset/*` y el resto de los módulos | Igual que con `false` | Sin cambios |
 
 Para activarlo en Vercel se define `MODO_ESTATICO` con el valor `true` en Production o en Preview y se
