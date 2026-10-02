@@ -13,7 +13,7 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
 
 ## Principios Globales
 
-- Todas las rutas, salvo `GET /`, `GET /health`, `POST /auth/login`, `POST /auth/google`, `POST /auth/password-reset/request`, `POST /auth/password-reset/verify` y `POST /auth/password-reset/confirm`, usan `Authorization: Bearer <token>`. Este requisito está **enforced** por `authMiddleware` en cada módulo (incluidos `course-detail`, `grades` y `section-management`).
+- Todas las rutas, salvo `GET /`, `GET /health`, `GET /config`, `POST /auth/login`, `POST /auth/google`, `POST /auth/password-reset/request`, `POST /auth/password-reset/verify` y `POST /auth/password-reset/confirm`, usan `Authorization: Bearer <token>`. Este requisito está **enforced** por `authMiddleware` en cada módulo (incluidos `course-detail`, `grades` y `section-management`).
 - El usuario autenticado es estudiante **o docente** (HU18).
 - Roles permitidos: `student`, `delegate`, `subdelegate`, `teacher`.
 - `teacher` es el rol técnico compartido por profesor y jefe de práctica (JP); su etiqueta se deriva de `section.teacher_id` vs `section.jp_id`. El JWT docente lleva `teacherId` en vez de `studentId`.
@@ -43,6 +43,9 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
   - Response: metadata básica del backend y módulos disponibles.
 - `GET /health`
   - Response: `{ "status": "ok", "timestamp": "ISO-8601 string" }`
+- `GET /config`
+  - Pública, sin `Authorization`. Response `200` con `{ "modoEstatico": true }` o `{ "modoEstatico": false }` y la cabecera `Cache-Control: no-store`.
+  - El valor sale del lector del modo de la spec `interruptor-remoto` (RF-IRM-2 y RF-IRM-4), el mismo que aplican `POST /auth/register`, `/portal-sync`, `GET /grades/me/courses` y el chatbot. `HEAD`, `POST`, `PUT`, `PATCH` y `DELETE` responden `404`.
 
 ## Auth
 
