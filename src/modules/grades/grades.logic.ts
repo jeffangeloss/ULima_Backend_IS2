@@ -17,3 +17,19 @@ export function calcularPromedioPonderado(notas: NotaInput[]): number {
 export function sumaDePesos(notas: NotaInput[]): number {
   return notas.reduce((sum, n) => sum + n.peso, 0);
 }
+
+const HOSTS_DE_DRIVE = new Set(["drive.google.com", "drive.usercontent.google.com", "docs.google.com"]);
+
+/**
+ * RF-EST-7. Los mismos tres hosts que acepta `SilaboLink.tryParse` en la app. Una URL de
+ * cactus u otra cualquiera no cuenta como enlace de Drive.
+ */
+export function esUrlDeDrive(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url.trim());
+    return (u.protocol === "https:" || u.protocol === "http:") && HOSTS_DE_DRIVE.has(u.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}

@@ -75,6 +75,23 @@ gh api "repos/jeffangeloss/ULima_Backend_IS2/deployments/$id/statuses" --jq '.[]
 
 La primera línea es el estado más reciente. `success` indica un despliegue listo, y `failure` o `error` indican un despliegue fallido. Si la segunda orden no devuelve ningún identificador, `develop` todavía no tiene ese despliegue. La puesta en marcha local completa está en la sección «Configuración y entorno» del README.
 
+## Modo estático
+
+`MODO_ESTATICO` es una variable de entorno que acepta `true` o `false` y vale `false` si falta. Con `true`, `POST /auth/register` responde `503` con el código `REGISTRATION_UNAVAILABLE` y toda ruta bajo `/portal-sync` responde `503` con el código `PORTAL_DESACTIVADO`, y el resto de la API responde igual que con `false`, salvo el campo `silaboUrl` de `GET /grades/me/courses`, que solo entrega enlaces de Drive y vale `null` para cualquier otro. Con cualquier otro valor el backend no arranca. El código del portal no se borra, queda apagado detrás de la variable.
+
+El valor se lee una sola vez al arrancar, así que cada cambio exige un despliegue nuevo.
+
+1. En el panel de Vercel, en Settings y Environment Variables, se agrega `MODO_ESTATICO` con el valor `true` y se marca el entorno que corresponde, Production o Preview. Para la prueba previa a la publicación se marca solo Preview, que sirve `develop`.
+2. Se vuelve a desplegar el entorno, porque Vercel no recarga las variables en un despliegue que ya existe.
+3. Se comprueban las dos rutas con `curl`. Con el modo activo, la primera orden devuelve `503` y el código `PORTAL_DESACTIVADO`, y la segunda devuelve `503` y el código `REGISTRATION_UNAVAILABLE`.
+
+```bash
+curl -s -i https://<direccion-del-entorno>/portal-sync/status
+curl -s -i -X POST https://<direccion-del-entorno>/auth/register -H 'Content-Type: application/json' -d '{}'
+```
+
+Para volver al comportamiento anterior se cambia el valor a `false`, o se borra la variable, y se vuelve a desplegar. La respuesta de `/health`, del login y del resto de los módulos no cambia con ninguno de los dos valores. En local basta con escribir `MODO_ESTATICO=true` en `.env`.
+
 ## Migraciones
 
 Las reglas de fondo están en `MIGRATIONS.md` y en `AGENTS.md`. Cada migración es un archivo `drizzle/000N_nombre.sql`, aditivo e idempotente, escrito a mano dentro del PR que lo necesita. `bun run db:push` está prohibido siempre. `db:generate`, `db:migrate` y `db:seed` no se ejecutan sin aprobación explícita. Mientras el journal de `drizzle/meta/_journal.json` siga en la `0009`, las migraciones nuevas se aplican con `db:apply` y no con `db:migrate`.

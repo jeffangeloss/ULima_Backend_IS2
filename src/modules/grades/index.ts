@@ -1,3 +1,4 @@
+import { config } from "../../config/app-config.js";
 import { db } from "../../db/index.js";
 import { eventBus } from "../../events/index.js";
 import { GradesController } from "./grades.controller.js";
@@ -6,7 +7,7 @@ import { createGradesRoutes } from "./grades.routes.js";
 import { GradesService } from "./grades.service.js";
 
 const gradesRepository = new GradesRepository(db);
-const gradesService = new GradesService(gradesRepository, eventBus);
+const gradesService = new GradesService(gradesRepository, eventBus, { modoEstatico: config.modoEstatico });
 const gradesController = new GradesController(gradesService);
 
 export const gradesRoutes = createGradesRoutes(gradesController);

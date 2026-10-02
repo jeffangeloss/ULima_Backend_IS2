@@ -11,9 +11,16 @@ import {
 } from "./auth.schemas.js";
 import { authMiddleware } from "../../shared/middleware/auth-middleware.js";
 import { registerConcurrencyLimit, registerRateLimit } from "../../shared/middleware/rate-limit.js";
+import { HttpError } from "../../shared/errors/http-error.js";
 import type { AppRole } from "./auth.types.js";
 
-export const createAuthRoutes = (controller: AuthController) => {
+export type AuthRoutesOptions = {
+  /** RF-EST-2. Con true, `POST /auth/register` responde 503 REGISTRATION_UNAVAILABLE antes de
+   *  validar el cuerpo y antes de los limitadores, sin llegar al controlador. */
+  registroCerrado?: boolean;
+};
+
+export const createAuthRoutes = (controller: AuthController, opciones: AuthRoutesOptions = {}) => {
   const app = new Hono<{ Variables: { userId: number; role: AppRole } }>();
 
   app.post("/login", async (c) => {
@@ -36,10 +43,19 @@ export const createAuthRoutes = (controller: AuthController) => {
   //   2. `registerConcurrencyLimit` (global, sin clave) acota cuántas
   //      secuencias de login contra miUlima quedan colgadas a la vez, que es
   //      lo que un contador por clave no puede acotar.
-  app.post("/register", registerRateLimit, registerConcurrencyLimit, async (c) => {
-    const body = await validateJson(c, registerSchema);
-    return c.json(await controller.register(body), 201);
-  });
+  if (opciones.registroCerrado) {
+    // RF-EST-2. Modo estático: el registro depende de miUlima y está apagado. Va antes de los
+    // limitadores y de la validación para que quien insista siga viendo el mismo código y no
+    // un 400 o un 429.
+    app.post("/register", () => {
+      throw new HttpError(503, "El registro no está disponible.", "REGISTRATION_UNAVAILABLE");
+    });
+  } else {
+    app.post("/register", registerRateLimit, registerConcurrencyLimit, async (c) => {
+      const body = await validateJson(c, registerSchema);
+      return c.json(await controller.register(body), 201);
+    });
+  }
 
   app.post("/password-reset/request", async (c) => {
     const body = await validateJson(c, passwordResetRequestSchema);

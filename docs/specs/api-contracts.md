@@ -59,6 +59,7 @@ Contrato REST local del backend ULima++. Mantener alineado manualmente con `ULim
 - `POST /auth/register` (público) — alta de cuenta para un alumno que todavía no existe en la base, autenticando contra miUlima en el mismo acto. Ver `specs/features/registro/registro.spec.md`.
   - Request: `{ "code": "string", "portalPassword": "string", "passcode": "string", "password": "string", "consent"?: true }`. `code`: `^\d{6,10}$`. `portalPassword`/`passcode` son credenciales de **miUlima** (se usan para el login y se descartan, nunca se persisten ni se registran en logs). `password` es la contraseña nueva de ULima++. `consent` es opcional y booleano (RS-BE-29, `specs/features/academic-record/academic-record.spec.md`): con `true` la importación que corre dentro del registro guarda la copia del récord académico, la foto académica y el resumen por ciclo, igual que `POST /portal-sync/import`; sin el campo el registro funciona como hoy y no guarda ninguno de los tres. Un valor no booleano responde `400`.
   - Response `201`: el mismo cuerpo que `POST /auth/login` (`token`, `tokenType`, `expiresIn`, `user`) más `summary` y `warnings`, el resumen y los avisos de la importación del ciclo (mismo shape que `summary` y `warnings` de `POST /portal-sync/import`, ver sección Portal Sync).
+  - Con `MODO_ESTATICO=true` (versión 2.0.0, `specs/features/modo-estatico/modo-estatico.spec.md`) responde `503` con el código `REGISTRATION_UNAVAILABLE` antes de validar el cuerpo y sin consultar a miUlima. Con `false` o sin la variable no cambia.
   - El `token` es el que **re-firma la importación** con el cargo vigente releído de la BD, no uno emitido por el registro: un alumno que la importación reconoce como delegado recibe un token de delegado, y `user.role` dice lo mismo que el JWT. Solo si la importación no re-firma (`token: null`) el registro firma uno propio de `student`.
   - La identidad la certifica **el portal**, no el `code` del body: si difieren, gana el del portal. Si el portal no reporta matrícula en el ciclo activo, no se crea ninguna cuenta (todo o nada).
   - Errores: `503 REGISTRATION_UNAVAILABLE` (el registro no está cableado), `409 USER_ALREADY_EXISTS` (ya hay cuenta con ese código; se comprueba con el del body antes de tocar el portal y otra vez con el que certifica el portal, dentro de la transacción, antes del INSERT), `429 RATE_LIMITED` (se pasó el límite de tasa del endpoint, ver abajo), `401 PORTAL_AUTH_FAILED` (miUlima rechazó credenciales o passcode, y solo eso), `403 NOT_ENROLLED` (autenticó pero sin matrícula en el ciclo activo), `422 PORTAL_IDENTITY_UNVERIFIABLE` (consolidado de matrícula no legible), `502 PORTAL_UNAVAILABLE` (el portal no respondió), `504 PORTAL_TIMEOUT` (el portal no respondió a tiempo; código propio y no `401`, para no mandar a la persona a cambiar su contraseña universitaria por un timeout).
@@ -224,6 +225,8 @@ Notas:
 ### GET /grades/me/courses
 
 Devuelve cursos + evaluaciones del sílabo con sus pesos, para la calculadora del alumno.
+
+- **Modo estático (versión 2.0.0)**: con `MODO_ESTATICO=true`, `silaboUrl` solo entrega enlaces de Drive y vale `null` para cualquier otra URL guardada (por ejemplo las de `cactus.ulima.edu.pe` que dejó la importación). Con `false` o sin la variable no cambia. Detalle en `specs/features/modo-estatico/modo-estatico.spec.md` (RF-EST-7).
 
 - **Auth**: Bearer token, rol `student|delegate|subdelegate`
 - **Response** `200 OK`:
@@ -644,6 +647,8 @@ Inteligencia artificial conversacional (Cohere) integrada como asistente académ
 ## Portal Sync (carga de ciclo desde miUlima) — Implementado
 
 Importa los datos oficiales del alumno desde el portal miUlima usando la **sesión del portal que el alumno abrió en un WebView de la app**. El backend SÍ recibe la contraseña y el código TOTP en la variante `credentials` (decisión del owner, 2026-09-02): los usa para el login contra miUlima y los descarta, sin registrarlos ni persistirlos. Ver `specs/features/portal-sync/portal-sync.spec.md`.
+
+> **Modo estático (versión 2.0.0).** Con `MODO_ESTATICO=true` toda ruta bajo `/portal-sync`, con cualquier método y con o sin sesión, responde `503` con `{"error":{"code":"PORTAL_DESACTIVADO","message":"Esta versión de ULima++ no se conecta con la Universidad de Lima."}}` y no ejecuta su lógica. Con `false` o sin la variable, todo lo que sigue rige tal cual. Detalle en `specs/features/modo-estatico/modo-estatico.spec.md`.
 
 Alumno (`requireRole(student|delegate|subdelegate)`, `studentId` del JWT; el código del alumno se lee de `app_user` por `userId`, no del JWT):
 

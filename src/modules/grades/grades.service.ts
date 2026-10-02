@@ -1,6 +1,6 @@
 import type { EventBus } from "../../events/index.js";
 import type { GradesRepository } from "./grades.repository.js";
-import { calcularPromedioPonderado, sumaDePesos } from "./grades.logic.js";
+import { calcularPromedioPonderado, esUrlDeDrive, sumaDePesos } from "./grades.logic.js";
 import { construirVistaUlima } from "./grades-ulima.logic.js";
 import type {
   NotaInput,
@@ -15,6 +15,8 @@ export class GradesService {
   constructor(
     readonly repository: GradesRepository,
     readonly events: EventBus,
+    /** RF-EST-7. Con `modoEstatico` solo se publican enlaces de sílabo de Drive. */
+    private readonly opciones: { modoEstatico?: boolean } = {},
   ) {}
 
   async getCoursesAndSyllabi(code?: string) {
@@ -30,7 +32,7 @@ export class GradesService {
           id: courseId,
           nombre: row.course_name,
           ciclo: row.period_code,
-          silaboUrl: row.syllabus_url ?? null,
+          silaboUrl: this.opciones.modoEstatico && !esUrlDeDrive(row.syllabus_url) ? null : (row.syllabus_url ?? null),
           secciones: [],
         });
       }
