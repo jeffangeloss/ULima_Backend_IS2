@@ -11,6 +11,7 @@ mock.module("../../src/db/index.js", () => ({ db: {} }));
 
 const { createAuthRoutes } = await import("../../src/modules/auth/auth.routes.js");
 const { errorHandler } = await import("../../src/shared/middleware/error-handler.js");
+const { modoFijo } = await import("../../src/modules/app-setting/modo-estatico.lector.js");
 
 import type { AuthController } from "../../src/modules/auth/auth.controller.js";
 
@@ -24,7 +25,12 @@ const montar = (opciones?: { registroCerrado?: boolean }) => {
   } as unknown as AuthController;
   const app = new Hono();
   app.onError(errorHandler);
-  app.route("/auth", createAuthRoutes(controller, opciones));
+  // RF-IRM-5. La ruta recibe un lector del modo, y esta suite fija su valor al montar.
+  const registroCerrado = opciones?.registroCerrado;
+  app.route(
+    "/auth",
+    createAuthRoutes(controller, registroCerrado === undefined ? undefined : { registroCerrado: modoFijo(registroCerrado) }),
+  );
   return { app, llamadas };
 };
 
