@@ -77,20 +77,26 @@ La primera línea es el estado más reciente. `success` indica un despliegue lis
 
 ## Modo estático
 
-`MODO_ESTATICO` es una variable de entorno que acepta `true` o `false` y vale `false` si falta. Con `true`, `POST /auth/register` responde `503` con el código `REGISTRATION_UNAVAILABLE` y toda ruta bajo `/portal-sync` responde `503` con el código `PORTAL_DESACTIVADO`, y el resto de la API responde igual que con `false`, salvo el campo `silaboUrl` de `GET /grades/me/courses`, que solo entrega enlaces de Drive y vale `null` para cualquier otro. Con cualquier otro valor el backend no arranca. El código del portal no se borra, queda apagado detrás de la variable.
+Desde la 2.1.0 el modo lo decide la fila única de la tabla `app_setting` (`id = 1`), en su columna `static_mode`. Con `true` el backend corre en modo estático. `POST /auth/register` responde `503` con el código `REGISTRATION_UNAVAILABLE`, toda ruta bajo `/portal-sync` responde `503` con el código `PORTAL_DESACTIVADO`, el campo `silaboUrl` de `GET /grades/me/courses` solo entrega enlaces de Drive y el contexto del chatbot no lleva alertas de inasistencias. Con `false` esas rutas responden como antes de la 2.0.0, y el resto de la API no cambia con ninguno de los dos valores. El código del portal no se borra.
 
-El valor se lee una sola vez al arrancar, así que cada cambio exige un despliegue nuevo.
+Cada instancia del backend recuerda el valor 10 s, así que un cambio de la fila rige en unos 10 s sin redesplegar. Si la base no responde en 5 s o la fila no existe, rige el último valor que esa instancia leyó y, si no leyó ninguno, la variable `MODO_ESTATICO`. La variable acepta `true` o `false`, vale `false` si falta, detiene el arranque con cualquier otro valor y se lee una sola vez al arrancar, así que cambiarla sí exige un despliegue nuevo. En Production y en Preview vale `true`.
 
-1. En el panel de Vercel, en Settings y Environment Variables, se agrega `MODO_ESTATICO` con el valor `true` y se marca el entorno que corresponde, Production o Preview. Para la prueba previa a la publicación se marca solo Preview, que sirve `develop`.
-2. Se vuelve a desplegar el entorno, porque Vercel no recarga las variables en un despliegue que ya existe.
-3. Se comprueban las dos rutas con `curl`. Con el modo activo, la primera orden devuelve `503` y el código `PORTAL_DESACTIVADO`, y la segunda devuelve `503` y el código `REGISTRATION_UNAVAILABLE`.
+1. En la consola de Neon, dentro del proyecto de ULima++, se elige la rama de producción o la rama `develop`, que es la base del Preview de `develop`. Los Preview de las ramas `feat/*` usan la base de producción, así que comparten su fila.
+2. En Tables se abre `app_setting`, se cambia la celda `static_mode` a `true` para la versión estática o a `false` para la dinámica, y se guarda. En el editor SQL la orden equivalente es la de abajo.
+3. Pasados 10 s se comprueba el modo sin token. `GET /config` devuelve `{"modoEstatico":true}` o `{"modoEstatico":false}`, y `GET /portal-sync/status` devuelve `503` con `PORTAL_DESACTIVADO` en modo estático y `401` en dinámico.
 
-```bash
-curl -s -i https://<direccion-del-entorno>/portal-sync/status
-curl -s -i -X POST https://<direccion-del-entorno>/auth/register -H 'Content-Type: application/json' -d '{}'
+```sql
+UPDATE app_setting SET static_mode = false, updated_at = now() WHERE id = 1;
 ```
 
-Para volver al comportamiento anterior se cambia el valor a `false`, o se borra la variable, y se vuelve a desplegar. La respuesta de `/health`, del login y del resto de los módulos no cambia con ninguno de los dos valores. En local basta con escribir `MODO_ESTATICO=true` en `.env`.
+```bash
+curl -s -i https://<direccion-del-entorno>/config
+curl -s -i https://<direccion-del-entorno>/portal-sync/status
+```
+
+Las APK 2.1.0 toman el modo de `GET /config` al abrirse y al volver a primer plano. La tabla la crea `drizzle/0016_app_setting.sql` con la fila en `true`, y se aplica como cualquier migración (sección siguiente). Mientras un entorno no la tenga, la consulta falla y rige la variable, así que desplegar el código antes que la migración no cambia ninguna respuesta. En local la fila se cambia igual en la base de `DATABASE_URL`, y sin la tabla basta con escribir `MODO_ESTATICO=true` en `.env`.
+
+Con la fila en `false` y `MODO_ESTATICO=true` en Vercel, una instancia fría que no puede leer `app_setting` en 5 s responde `/config` con su respaldo (`true`) y lo recuerda 10 s, así que una APK 2.1.0 puede pasar un rato a estático. Si producción va a quedar en dinámico por tiempo largo, conviene poner también `MODO_ESTATICO=false` en Vercel y redesplegar.
 
 ## Migraciones
 

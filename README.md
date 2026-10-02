@@ -31,7 +31,7 @@
 | **Stack** | Bun · TypeScript 5 · Hono 4 · Drizzle ORM · PostgreSQL · Zod · JWT · bcryptjs |
 | **API en producción** | https://u-lima-backend-is-2-one.vercel.app — salud en [`/health`](https://u-lima-backend-is-2-one.vercel.app/health), commit desplegado en [`/version`](https://u-lima-backend-is-2-one.vercel.app/version) |
 | **Frontend** | [ULima_Frontend_IS2](https://github.com/jeffangeloss/ULima_Frontend_IS2) — app Flutter |
-| **Superficie de API** | **17 módulos** · **70 endpoints**: **67 rutas** declaradas en los 16 archivos `*.routes.ts` más 3 de servicio en la raíz (`/`, `/health`, `/version`) · **7** no exigen token |
+| **Superficie de API** | **18 módulos** · **71 endpoints**: **68 rutas** declaradas en los 17 archivos `*.routes.ts` más 3 de servicio en la raíz (`/`, `/health`, `/version`) · **8** no exigen token |
 | **Modelo de datos** | **38 tablas** en `src/db/schema/schema.ts` · 13 archivos de migración |
 | **Código** | 16 795 líneas TypeScript en 184 archivos bajo `src/` |
 | **Verificación** | **74 suites** · 16 429 líneas de prueba · *mutation testing* con Stryker, una configuración por persona |
@@ -205,7 +205,7 @@ flowchart TD
     FL["App Flutter · ApiClient"] --> CORS["cors — server.ts L16-23"]
     CORS --> LOG["logger — server.ts L24"]
     LOG --> RAIZ{"¿ruta raíz?"}
-    RAIZ -->|"sí"| SALUD["GET / · GET /health · GET /version<br/>los 3 únicos endpoints sin JWT"]
+    RAIZ -->|"sí"| SALUD["GET / · GET /health · GET /version<br/>las 3 rutas de servicio, sin JWT"]
     RAIZ -->|"no"| REG["registerModules — modules/index.ts L18-34"]
     REG --> SUB["Sub-app Hono del prefijo<br/>15 módulos montados con app.route"]
     SUB --> MW["authMiddleware + requireRole<br/>montados POR MÓDULO, nunca global"]
@@ -243,7 +243,7 @@ Todo el arranque de la aplicación cabe en un archivo. Este es su contenido, en 
 | 8 | `registerModules(app)` | `server.ts:63` | Monta las 16 sub-apps, en el orden de [`src/modules/index.ts`](src/modules/index.ts):20-35. |
 | 9 | `export default app` | `server.ts:65` | Entrypoint serverless. **No arranca ningún listener.** |
 
-> **1 · No hay middleware global de autenticación.** La cadena global tiene exactamente dos eslabones: `cors` y `logger`. `authMiddleware` y `requireRole` se montan **dentro de cada `*.routes.ts`**, con `app.use("*", ...)` cuando el módulo entero es homogéneo o ruta por ruta cuando no lo es (`auth`, `official-grades`, `schedule` y `advising/student` lo hacen por ruta). La consecuencia es literal: `GET /`, `GET /health` y `GET /version` son los únicos endpoints del backend sin JWT, y lo son porque están declarados **antes** de `registerModules(app)`.
+> **1 · No hay middleware global de autenticación.** La cadena global tiene exactamente dos eslabones: `cors` y `logger`. `authMiddleware` y `requireRole` se montan **dentro de cada `*.routes.ts`**, con `app.use("*", ...)` cuando el módulo entero es homogéneo o ruta por ruta cuando no lo es (`auth`, `official-grades`, `schedule` y `advising/student` lo hacen por ruta). La consecuencia es literal. Una ruta cuyo router no monta `authMiddleware` no exige JWT, y así quedan `GET /`, `GET /health` y `GET /version`, declaradas **antes** de `registerModules(app)`, las rutas públicas de `auth` y `GET /config`, que informa el modo estático desde la 2.1.0.
 
 > **2 · Tampoco hay rate-limit global.** Los cuatro limitadores (`chatbotRateLimit`, `portalSyncRateLimit`, `registerRateLimit` y `registerConcurrencyLimit`) se montan en tres rutas concretas: `POST /chatbot/sessions/:id/ask`, `POST /portal-sync/import` y `POST /auth/register`. Ningún otro endpoint tiene límite de tasa.
 
@@ -3318,10 +3318,10 @@ por módulo:
 | `networking` | `use("*")` | `STUDENT_ROLES` + `teacher` | `networking.routes.ts:19-20` |
 | `portal-sync` | `use("*")` | `STUDENT_ROLES` | `portal-sync.routes.ts:9-10` |
 
-**Rutas públicas —las únicas siete:** `GET /` ([`src/server.ts`](src/server.ts) `:28`), `GET /health` (`:48`),
-`GET /version` (`:54`), `POST /auth/login`, `POST /auth/google`,
+**Rutas públicas —las únicas ocho:** `GET /` ([`src/server.ts`](src/server.ts) `:28`), `GET /health` (`:48`),
+`GET /version` (`:54`), `GET /config` ([`public-config.routes.ts`](src/modules/public-config/public-config.routes.ts)), `POST /auth/login`, `POST /auth/google`,
 `POST /auth/password-reset/request` y `POST /auth/password-reset/confirm`. El contrato escrito
-([`docs/specs/api-contracts.md`](docs/specs/api-contracts.md)`:16`) enumera solo **seis** y
+([`docs/specs/api-contracts.md`](docs/specs/api-contracts.md)`:16`) enumera solo **siete** y
 **omite `GET /version`**: es la divergencia 20 de
 [El contrato documentado vs. el código](#el-contrato-documentado-vs-el-código). Todo lo demás
 exige token.
@@ -6684,7 +6684,7 @@ que ves en la columna «Por defecto».
 | `PORTAL_TIMEOUT_MS` | No | `8000` | Timeout de cada petición saliente al portal. Al agotarse ⇒ `504 PORTAL_TIMEOUT` |
 | `PORTAL_REFRESH_BUDGET_MS` | No | `60000` | Presupuesto de tiempo de `POST /portal-sync/refresh`, en ms (RS-BE-50). **Un valor fuera de 20 000 a 65 000 impide el arranque**, en vez de caer al default, porque de él depende el plazo de la app. Un `PORTAL_TIMEOUT_MS` mayor que 30 500 lo deja bajo 20 000 y también lo impide |
 | `SYLLABUS_BASE_URL` | No | `https://cactus.ulima.edu.pe` | Base Domino de sílabos. Allowlist **propia y separada** de la del portal, a propósito |
-| `MODO_ESTATICO` | No | `false` | Interruptor de la versión estática 2.0.0. Solo acepta `true` o `false`, y cualquier otro valor impide el arranque. Con `true` el backend no consulta a la Universidad de Lima (ver [Modo estático](#modo-estático)) |
+| `MODO_ESTATICO` | No | `false` | Respaldo del interruptor remoto desde la 2.1.0. Rige solo cuando el backend no puede leer la fila de `app_setting` y no leyó ninguna antes. Solo acepta `true` o `false`, y cualquier otro valor impide el arranque (ver [Modo estático](#modo-estático)) |
 
 > **1 · Por qué las dos allowlists están separadas.** El comentario de
 > [`src/config/env.ts:17-21`](src/config/env.ts) lo explica: si fueran una sola variable aceptando
@@ -6753,24 +6753,31 @@ versión 1.1.0 el archivo no existía, porque el patrón `.env*` de `.gitignore`
 
 ### Modo estático
 
-Desde la versión 2.0.0 el backend tiene el interruptor `MODO_ESTATICO`, que apaga todo lo que
-consulta a la Universidad de Lima sin borrar su código. Todo el tráfico hacia la Universidad sale de
+Desde la versión 2.0.0 el backend tiene un modo estático, que apaga todo lo que consulta a la
+Universidad de Lima sin borrar su código. Todo el tráfico hacia la Universidad sale de
 [`portal.client.ts`](src/services/portal.client.ts) y solo lo disparan a mano `POST /auth/register`,
-`POST /portal-sync/import` y `POST /portal-sync/refresh`, de modo que el interruptor cierra esas tres
-rutas. La spec está en [`modo-estatico.spec.md`](specs/features/modo-estatico/modo-estatico.spec.md).
+`POST /portal-sync/import` y `POST /portal-sync/refresh`, de modo que el modo cierra esas tres
+rutas. Las specs están en [`modo-estatico.spec.md`](specs/features/modo-estatico/modo-estatico.spec.md)
+y en [`interruptor-remoto.spec.md`](specs/features/interruptor-remoto/interruptor-remoto.spec.md).
 
-| Ruta | Con `MODO_ESTATICO=true` | Con `false` o sin la variable |
+| Ruta | En modo estático | En modo dinámico |
 |:---|:---|:---|
 | `POST /auth/register` | `503` con el código `REGISTRATION_UNAVAILABLE`, sea cual sea el cuerpo | Registro con miUlima, como antes |
 | `/portal-sync` y cualquier ruta bajo él | `503` con `{"error":{"code":"PORTAL_DESACTIVADO","message":"Esta versión de ULima++ no se conecta con la Universidad de Lima."}}`, con o sin sesión | Importación y recarga, como antes |
-| `GET /grades/me/courses` | Igual que con `false`, salvo `silaboUrl`, que vale `null` si la URL guardada no es de Drive | `silaboUrl` tal como está guardado |
-| `POST /chatbot/sessions/:id/ask` | Igual que con `false`, salvo que el contexto enviado a Cohere no lleva alertas de inasistencias | Contexto con todas las alertas |
-| `POST /auth/login`, `POST /auth/google`, `/auth/password-reset/*` y el resto de los módulos | Igual que con `false` | Sin cambios |
+| `GET /grades/me/courses` | Igual que en dinámico, salvo `silaboUrl`, que vale `null` si la URL guardada no es de Drive | `silaboUrl` tal como está guardado |
+| `POST /chatbot/sessions/:id/ask` | Igual que en dinámico, salvo que el contexto enviado a Cohere no lleva alertas de inasistencias | Contexto con todas las alertas |
+| `GET /config` | `{"modoEstatico":true}`, sin token y con `Cache-Control: no-store` | `{"modoEstatico":false}` |
+| `POST /auth/login`, `POST /auth/google`, `/auth/password-reset/*` y el resto de los módulos | Igual que en dinámico | Sin cambios |
 
-Para activarlo en Vercel se define `MODO_ESTATICO` con el valor `true` en Production o en Preview y se
-vuelve a desplegar, porque el valor se lee una sola vez al arrancar. Para desactivarlo se cambia a
-`false` o se borra la variable. En local basta con escribirla en `.env`. El procedimiento por entorno
-está en [`docs/devops.md`](docs/devops.md).
+Desde la 2.1.0 el modo lo decide la fila única de la tabla `app_setting` (migración
+[`0016_app_setting.sql`](drizzle/0016_app_setting.sql)). Con `static_mode` en `true` rige el modo
+estático y con `false` el dinámico. La fila se edita en la consola de Neon o con
+`UPDATE app_setting SET static_mode = false, updated_at = now() WHERE id = 1;`, y cada instancia la
+vuelve a leer a más tardar 10 s después, sin redesplegar. Si la base no responde en 5 s o la fila no
+existe, rige el último valor que la instancia leyó y, si no leyó ninguno, la variable
+`MODO_ESTATICO`, que es el respaldo y solo cambia con un despliegue nuevo. Las APK 2.1.0 toman el
+modo de `GET /config` al abrirse y al volver a primer plano. El procedimiento por entorno está en
+[`docs/devops.md`](docs/devops.md).
 
 ### Cómo se valida al arrancar
 
@@ -7047,7 +7054,7 @@ default, pero varias tienen un default que **no sirve en producción**.
 | `PORTAL_TIMEOUT_MS` | Opcional | Default `8000` ms por petición saliente al portal |
 | `PORTAL_REFRESH_BUDGET_MS` | Opcional | Default `60000` ms para `POST /portal-sync/refresh`. Fuera de 20 000 a 65 000 **impide el arranque** |
 | `SYLLABUS_BASE_URL` | Opcional | Default `https://cactus.ulima.edu.pe`. Allowlist **propia y separada** de la del portal |
-| `MODO_ESTATICO` | Opcional | Default `false`. En Production y en Preview (`develop`) de la versión 2.0.0 vale `true`. Solo acepta `true` o `false` |
+| `MODO_ESTATICO` | Opcional | Default `false`. Desde la 2.1.0 es el respaldo del interruptor remoto, la fila de `app_setting`. En Production y en Preview (`develop`) vale `true`. Solo acepta `true` o `false` |
 | `PORT` | ❌ No | Irrelevante en serverless: no hay listener |
 | `VERCEL_GIT_COMMIT_SHA` · `VERCEL_GIT_COMMIT_REF` · `VERCEL_DEPLOYMENT_ID` | Inyectadas por Vercel | Sin ellas `/version` devuelve `"local"` / `null` / `null` |
 

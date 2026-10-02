@@ -21,7 +21,7 @@
 
 Roles: **A** = alumno (`student`/`delegate`/`subdelegate`) · **D** = docente (`teacher`) · **Del** = delegado/subdelegado · **P** = público · **Auth** = solo autenticado.
 
-**Públicos:** `GET /` (metadata — **lista desactualizada**), `GET /health`, `GET /version`.
+**Públicos:** `GET /` (metadata — **lista desactualizada**), `GET /health`, `GET /version`, `GET /config` (modo estático, desde la 2.1.0).
 
 | Módulo (prefijo) | Endpoints | Rol |
 |---|---|---|
