@@ -20,8 +20,23 @@ const toMessageRow = (r: Record<string, unknown>): ChatbotMessageRow => ({
   createdAt: new Date(r.created_at as string),
 });
 
+/**
+ * Prefijo del título de las alertas de riesgo de asistencia que escribe `attendance-risk`.
+ * `alert` solo tiene `type` y `title`, y esas alertas comparten `type = 'academic_risk'` con
+ * las de riesgo de notas, así que el título es el único discriminador. Es el mismo prefijo
+ * que descarta el front en modo estático (`lib/services/alert_service.dart`).
+ */
+export const PREFIJO_ALERTA_INASISTENCIAS = "Alerta de inasistencias - ";
+
 export class ChatbotRepository {
-  constructor(readonly database: typeof db) {}
+  constructor(
+    readonly database: typeof db,
+    /**
+     * RF-EST-8. Con `modoEstatico` el contexto del chatbot no incluye el riesgo de asistencia,
+     * porque la versión estática lo oculta en toda pantalla donde aparezca.
+     */
+    private readonly opciones: { modoEstatico?: boolean } = {},
+  ) {}
 
   async createSession(studentId: number): Promise<ChatbotSessionRow> {
     const rows = await this.database.execute(sql`
@@ -284,11 +299,17 @@ export class ChatbotRepository {
   }
 
   async getAlerts(studentId: number): Promise<AlertData[]> {
+    // RF-EST-8: el filtro va en la consulta, antes del LIMIT, para que las 20 alertas del
+    // contexto sean todas visibles y no 20 menos las que se descartan después.
+    const sinInasistencias = this.opciones.modoEstatico
+      ? sql`AND NOT starts_with(a.title, ${PREFIJO_ALERTA_INASISTENCIAS})`
+      : sql``;
     const rows = await this.database.execute(sql`
       SELECT a.type, a.title, a.message, a.is_read, a.created_at
       FROM alert a
       JOIN student st ON st.id = a.student_id
       WHERE st.id = ${studentId}
+      ${sinInasistencias}
       ORDER BY a.created_at DESC
       LIMIT 20
     `) as unknown as AlertData[];

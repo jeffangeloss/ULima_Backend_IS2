@@ -4,6 +4,27 @@ Todos los cambios notables del backend de ULima++ se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/). El workflow `release.yml` toma de aquí las notas de cada GitHub Release, así que el encabezado de cada versión tiene que ser exactamente `## [X.Y.Z] - AAAA-MM-DD`. Por la misma razón no se agregan al final del archivo definiciones de enlace como `[X.Y.Z]: url`, porque el `awk` de `release.yml` lee la sección más antigua hasta el final del archivo y las incluiría en sus notas.
 
+## [2.0.0] - 2026-10-02
+
+Esta versión retira funcionalidades de forma controlada, porque con `MODO_ESTATICO=true` el backend deja de consultar a la Universidad de Lima. Con la variable en `false` o ausente el comportamiento es el de la 1.1.0.
+
+### Añadido
+
+- Variable de entorno `MODO_ESTATICO`, que acepta `true` o `false`, vale `false` por defecto y detiene el arranque con cualquier otro valor. Está documentada en `.env.example`, en `docs/devops.md` y en la sección «Modo estático» del README.
+- Con `MODO_ESTATICO=true`, `POST /auth/register` responde `503` con el código `REGISTRATION_UNAVAILABLE`, el mismo que las APK instaladas ya traducen a «El registro no está disponible por ahora», y toda ruta bajo `/portal-sync` responde `503` con el código `PORTAL_DESACTIVADO`. Ninguna petición llega a `PortalClient`, y el login con código, el login con Google, la recuperación de contraseña y las rutas que solo leen la base responden igual que antes.
+- Con `MODO_ESTATICO=true`, `silaboUrl` de `GET /grades/me/courses` vale `null` salvo que la URL guardada sea de Drive, porque la importación del portal guardó URLs de `cactus.ulima.edu.pe` y las APK 1.2.0 las abren en el navegador. La columna `syllabus.drive_file_url` no se modifica.
+- Con `MODO_ESTATICO=true`, el contexto del chatbot no incluye las alertas «Alerta de inasistencias - <curso>», porque `ChatbotRepository.getAlerts` las excluye por el prefijo del título (único discriminador, ya que comparten `type` con el riesgo de notas), y con `false` el contexto no cambia.
+- La spec `specs/features/modo-estatico/modo-estatico.spec.md` con las reglas RF-EST-1 a RF-EST-8 y las pruebas de `test/modo-estatico/`, que cubren los dos valores del interruptor, un `PortalClient` espía con cero llamadas, la regresión de login y el arranque completo de la app en cada modo.
+
+### Cambiado
+
+- `package.json` pasa de la versión `1.1.0` a la `2.0.0`.
+- `.env.example` lista 24 variables.
+
+### Sin cambios
+
+- No hay migración ni cambio de base de datos. El código del portal no se borra, queda apagado detrás del interruptor, y retirarlo se deja para una versión mayor posterior.
+
 ## [1.1.0] - 2026-10-02
 
 Esta versión no cambia el comportamiento de la API. Agrega la CI, la publicación automática de versiones y los archivos que dejan versionados los entornos de pruebas y de producción.

@@ -6,10 +6,13 @@ import { ChatbotRepository } from "./chatbot.repository.js";
 import { ChatbotService } from "./chatbot.service.js";
 import { ChatbotController } from "./chatbot.controller.js";
 import { createChatbotRoutes } from "./chatbot.routes.js";
+import { config } from "../../config/app-config.js";
+
+// RF-EST-8: el repositorio se exporta para que la sonda de las pruebas compruebe su cableado.
+export const chatbotRepository = new ChatbotRepository(db, { modoEstatico: config.modoEstatico });
 
 export const chatbotRoutes = (() => {
-  const repository = new ChatbotRepository(db);
-  const service = new ChatbotService(repository, scheduleService, readOwnTimeBlocksForAssistant);
+  const service = new ChatbotService(chatbotRepository, scheduleService, readOwnTimeBlocksForAssistant);
   const controller = new ChatbotController(service);
   return createChatbotRoutes(controller);
 })();
