@@ -4,7 +4,8 @@
  *
  * Importa la instancia real `gradesService` de `src/modules/grades/index.ts`, le sustituye la
  * consulta a la base por filas sintéticas y escribe en la salida estándar una línea JSON con
- * el `silaboUrl` de cada curso. No toca la base.
+ * el `silaboUrl` de cada curso. La consulta del lector a `app_setting` sí sale hacia la
+ * `DATABASE_URL` falsa, falla (sin servidor, sin rol o sin base) y rige `MODO_ESTATICO`.
  */
 const { gradesService } = await import("../../src/modules/grades/index.js");
 

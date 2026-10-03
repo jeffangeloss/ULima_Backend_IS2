@@ -10,6 +10,7 @@ mock.module("../../src/db/index.js", () => ({ db: {} }));
 
 const { createAuthRoutes } = await import("../../src/modules/auth/auth.routes.js");
 const { errorHandler } = await import("../../src/shared/middleware/error-handler.js");
+const { modoFijo } = await import("../../src/modules/app-setting/modo-estatico.lector.js");
 
 import type { AuthController } from "../../src/modules/auth/auth.controller.js";
 
@@ -29,7 +30,7 @@ const controller = {
 const pedir = async (cerrado: boolean) => {
   const app = new Hono();
   app.onError(errorHandler);
-  app.route("/auth", createAuthRoutes(controller, { registroCerrado: cerrado }));
+  app.route("/auth", createAuthRoutes(controller, { registroCerrado: modoFijo(cerrado) }));
   const post = async (ruta: string, cuerpo: unknown) => {
     const res = await app.request(ruta, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo),

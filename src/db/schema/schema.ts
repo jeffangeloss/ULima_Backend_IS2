@@ -917,3 +917,18 @@ export const studentSpecialtyTestResult = pgTable("student_specialty_test_result
     sql`jsonb_typeof(${t.ranking}) = 'array' and jsonb_array_length(${t.ranking}) = 4`,
   ),
 }));
+
+/**
+ * RF-IRM-1 · Interruptor remoto del modo estático, con una sola fila (`id = 1`).
+ *
+ * `static_mode` en true deja al backend y a las APK 2.1.0 en modo estático, y en false en
+ * dinámico. Se edita desde la consola de Neon y rige en unos 10 s (RF-IRM-2). La lee solo
+ * `AppSettingRepository` y ninguna ruta la escribe. Migración `drizzle/0016_app_setting.sql`.
+ */
+export const appSetting = pgTable("app_setting", {
+  id: smallint("id").primaryKey().default(1),
+  staticMode: boolean("static_mode").notNull(),
+  updatedAt: timestamp("updated_at", { mode: "date", withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  chkAppSettingSingleRow: check("chk_app_setting_single_row", sql`${t.id} = 1`),
+}));

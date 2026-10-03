@@ -1,13 +1,14 @@
-import { config } from "../../config/app-config.js";
 import { db } from "../../db/index.js";
 import { eventBus } from "../../events/index.js";
+import { modoEstatico } from "../app-setting/index.js";
 import { GradesController } from "./grades.controller.js";
 import { GradesRepository } from "./grades.repository.js";
 import { createGradesRoutes } from "./grades.routes.js";
 import { GradesService } from "./grades.service.js";
 
 const gradesRepository = new GradesRepository(db);
-const gradesService = new GradesService(gradesRepository, eventBus, { modoEstatico: config.modoEstatico });
+// RF-EST-7 y RF-IRM-3. El servicio consulta el lector del modo en cada `getCoursesAndSyllabi`.
+const gradesService = new GradesService(gradesRepository, eventBus, { modoEstatico });
 const gradesController = new GradesController(gradesService);
 
 export const gradesRoutes = createGradesRoutes(gradesController);

@@ -1,15 +1,15 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import jwt from "jsonwebtoken";
+import type { LectorDelModo } from "../../src/modules/app-setting/modo-estatico.lector.js";
 
 /**
- * RF-EST-4. Con el modo estático activo ninguna petición llega a un método de
- * `PortalClient`. El cliente es el real, envuelto en un espía que cuenta cada método
- * invocado, y su `fetch` es otro espía que contaría cualquier salida a la red. El
- * montaje repite el de producción con el interruptor en `true`: el registrador no se
- * instala en `AuthService` y `/portal-sync` pasa por `elegirRutasPortalSync`. La base es
- * falsa y solo contesta `token_version`, que es lo único que pregunta el middleware de
- * sesión.
+ * RF-EST-4 y RF-IRM-3. Con el modo estático activo ninguna petición llega a un método de
+ * `PortalClient`. El cliente es el real, envuelto en un espía que cuenta cada método invocado, y
+ * su `fetch` es otro espía que contaría cualquier salida a la red. El montaje repite el de
+ * producción. El router activo se construye y el registrador se instala siempre, y lo que corta
+ * el paso es la guarda que consulta el lector del modo en cada petición. La base es falsa y solo
+ * contesta `token_version`, que es lo único que pregunta el middleware de sesión.
  */
 mock.module("../../src/db/index.js", () => ({ db: { execute: async () => [{ token_version: 1 }] } }));
 
@@ -20,7 +20,8 @@ const { createAuthRoutes } = await import("../../src/modules/auth/auth.routes.js
 const { PortalSyncService } = await import("../../src/modules/portal-sync/portal-sync.service.js");
 const { PortalSyncController } = await import("../../src/modules/portal-sync/portal-sync.controller.js");
 const { createPortalSyncRoutes } = await import("../../src/modules/portal-sync/portal-sync.routes.js");
-const { elegirRutasPortalSync } = await import("../../src/modules/portal-sync/portal-sync-desactivado.routes.js");
+const { protegerRutasPortalSync } = await import("../../src/modules/portal-sync/portal-sync-desactivado.routes.js");
+const { modoFijo } = await import("../../src/modules/app-setting/modo-estatico.lector.js");
 const { PortalRefreshService } = await import("../../src/modules/portal-sync/refresh/refresh.service.js");
 const { PortalLoginGuard } = await import("../../src/modules/portal-sync/portal-login-guard.js");
 const { EventBus } = await import("../../src/events/index.js");
@@ -46,11 +47,14 @@ const fabricarEspia = () => {
   return { cliente, metodos, fetchEspia };
 };
 
-/** Dependencia que falla en voz alta si alguien la usa: en modo estático no se construye nada. */
+/**
+ * Dependencia que falla en voz alta si alguien la usa. El router activo se construye siempre
+ * (RF-IRM-3), pero en modo estático la guarda corta cada petición antes de que llegue a usarla.
+ */
 const prohibida = (nombre: string) =>
   new Proxy({}, { get: () => { throw new Error(`${nombre} no debía usarse en modo estático`); } });
 
-const montarComoEnProduccion = (modoEstatico: boolean) => {
+const montarComoEnProduccion = (leerModo: LectorDelModo) => {
   const { cliente, metodos, fetchEspia } = fabricarEspia();
   const authService = new AuthService(
     prohibida("AuthRepository") as never,
@@ -77,8 +81,8 @@ const montarComoEnProduccion = (modoEstatico: boolean) => {
 
   const app = new Hono();
   app.onError(errorHandler);
-  app.route("/auth", createAuthRoutes(new AuthController(authService), { registroCerrado: modoEstatico }));
-  app.route("/portal-sync", elegirRutasPortalSync(modoEstatico, rutasActivas));
+  app.route("/auth", createAuthRoutes(new AuthController(authService), { registroCerrado: leerModo }));
+  app.route("/portal-sync", protegerRutasPortalSync(leerModo, rutasActivas()));
   return { app, metodos, fetchEspia, construidos: () => serviciosConstruidos };
 };
 
@@ -95,7 +99,7 @@ describe("modo estático y PortalClient (RF-EST-4)", () => {
   });
 
   test("ninguna ruta afectada toca el cliente ni la red, con y sin sesión", async () => {
-    const { app, metodos, fetchEspia, construidos } = montarComoEnProduccion(true);
+    const { app, metodos, fetchEspia, construidos } = montarComoEnProduccion(modoFijo(true));
 
     const peticiones: Array<[string, string, Record<string, string>, unknown]> = [
       ["POST", "/auth/register", { "Content-Type": "application/json" },
@@ -118,7 +122,8 @@ describe("modo estático y PortalClient (RF-EST-4)", () => {
     expect(estados).toEqual(Array(peticiones.length).fill(503));
     expect(metodos).toEqual([]);
     expect(fetchEspia).not.toHaveBeenCalled();
-    expect(construidos()).toBe(0);
+    // RF-IRM-3. El router activo se construye una vez, como en producción, y la guarda corta antes.
+    expect(construidos()).toBe(1);
   });
 
   test("sin el registrador, AuthService.register cierra por su cuenta con REGISTRATION_UNAVAILABLE", async () => {
@@ -138,8 +143,20 @@ describe("modo estático y PortalClient (RF-EST-4)", () => {
     expect(metodos).toEqual([]);
   });
 
-  test("con el modo apagado se construye el router activo (el montaje de contraste)", () => {
-    const { construidos } = montarComoEnProduccion(false);
-    expect(construidos()).toBe(1);
+  test("RF-IRM-3: con el modo cambiando entre peticiones, el estático nunca deja pasar al cliente", async () => {
+    let estatico = true;
+    const { app, metodos, fetchEspia } = montarComoEnProduccion(async () => estatico);
+    const importar = () =>
+      app.request("/portal-sync/import", { method: "POST", headers: conSesion, body: JSON.stringify(credenciales) });
+    expect((await importar()).status).toBe(503);
+    estatico = false;
+    expect((await app.request("/portal-sync/status")).status).toBe(401);
+    expect((await app.request("/auth/register", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    })).status).toBe(400);
+    estatico = true;
+    expect((await importar()).status).toBe(503);
+    expect(metodos).toEqual([]);
+    expect(fetchEspia).not.toHaveBeenCalled();
   });
 });

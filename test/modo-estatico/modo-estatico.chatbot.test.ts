@@ -5,6 +5,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import type { db } from "../../src/db/index.js";
 import { buildContext } from "../../src/modules/chatbot/context-builder.js";
 import { ChatbotRepository, PREFIJO_ALERTA_INASISTENCIAS } from "../../src/modules/chatbot/chatbot.repository.js";
+import { modoFijo } from "../../src/modules/app-setting/modo-estatico.lector.js";
 
 /**
  * RF-EST-8. Con `MODO_ESTATICO=true`, el contexto que el chatbot arma para Cohere no incluye las
@@ -44,7 +45,10 @@ const baseFalsa = (consultas: Array<{ sql: string; params: unknown[] }>) =>
 
 const repositorio = (modoEstatico?: boolean) => {
   const consultas: Array<{ sql: string; params: unknown[] }> = [];
-  const repo = new ChatbotRepository(baseFalsa(consultas), modoEstatico === undefined ? undefined : { modoEstatico });
+  const repo = new ChatbotRepository(
+    baseFalsa(consultas),
+    modoEstatico === undefined ? undefined : { modoEstatico: modoFijo(modoEstatico) },
+  );
   return { repo, consultas };
 };
 

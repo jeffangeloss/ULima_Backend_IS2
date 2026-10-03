@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { GradesService } from "../../src/modules/grades/grades.service.js";
 import type { GradesRepository } from "../../src/modules/grades/grades.repository.js";
 import type { EventBus } from "../../src/events/index.js";
+import { modoFijo } from "../../src/modules/app-setting/modo-estatico.lector.js";
 
 /**
  * RF-EST-7 (backend). Con `MODO_ESTATICO=true`, `silaboUrl` de `GET /grades/me/courses` solo
@@ -36,7 +37,7 @@ const servicio = (modoEstatico?: boolean) =>
   new GradesService(
     { findCoursesAndAssessments: async () => filas } as unknown as GradesRepository,
     {} as EventBus,
-    modoEstatico === undefined ? undefined : { modoEstatico },
+    modoEstatico === undefined ? undefined : { modoEstatico: modoFijo(modoEstatico) },
   );
 
 const urls = async (s: GradesService) =>
@@ -66,8 +67,10 @@ describe("silaboUrl en modo estático (RF-EST-7)", () => {
 });
 
 /**
- * Cableado real: `src/modules/grades/index.ts` pasa `config.modoEstatico` al servicio. Cada
- * valor corre en un proceso propio con entorno mínimo y falso, sin tocar la base.
+ * Cableado real de RF-EST-7 y RF-IRM-3. `src/modules/grades/index.ts` pasa al servicio el lector
+ * del modo. La `DATABASE_URL` falsa no sirve, así que la consulta a `app_setting` falla (sin
+ * servidor, sin rol o sin base) y rige `MODO_ESTATICO` (RF-IRM-2). Cada valor corre en un proceso
+ * propio con entorno mínimo y falso.
  */
 const correr = (modoEstatico?: string): Record<string, string | null> => {
   const env: Record<string, string> = {
