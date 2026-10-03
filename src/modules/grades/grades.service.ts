@@ -1,6 +1,7 @@
 import type { EventBus } from "../../events/index.js";
 import type { GradesRepository } from "./grades.repository.js";
 import { calcularPromedioPonderado, esUrlDeDrive, sumaDePesos } from "./grades.logic.js";
+import type { LectorDelModo } from "../app-setting/modo-estatico.lector.js";
 import { construirVistaUlima } from "./grades-ulima.logic.js";
 import type {
   NotaInput,
@@ -15,12 +16,14 @@ export class GradesService {
   constructor(
     readonly repository: GradesRepository,
     readonly events: EventBus,
-    /** RF-EST-7. Con `modoEstatico` solo se publican enlaces de sílabo de Drive. */
-    private readonly opciones: { modoEstatico?: boolean } = {},
+    /** RF-EST-7 y RF-IRM-3. Lector del modo, consultado en cada `getCoursesAndSyllabi`. En modo
+     *  estático solo se publican enlaces de sílabo de Drive. Sin lector, se publican tal cual. */
+    private readonly opciones: { modoEstatico?: LectorDelModo } = {},
   ) {}
 
   async getCoursesAndSyllabi(code?: string) {
     const rows = await this.repository.findCoursesAndAssessments(code);
+    const soloDrive = (await this.opciones.modoEstatico?.()) ?? false;
 
     const cursos = new Map<string, any>();
     const syllabi = new Map<string, any>();
@@ -32,7 +35,7 @@ export class GradesService {
           id: courseId,
           nombre: row.course_name,
           ciclo: row.period_code,
-          silaboUrl: this.opciones.modoEstatico && !esUrlDeDrive(row.syllabus_url) ? null : (row.syllabus_url ?? null),
+          silaboUrl: soloDrive && !esUrlDeDrive(row.syllabus_url) ? null : (row.syllabus_url ?? null),
           secciones: [],
         });
       }

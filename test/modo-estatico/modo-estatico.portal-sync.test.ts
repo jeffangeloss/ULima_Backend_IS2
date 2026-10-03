@@ -2,14 +2,17 @@ import { describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
 /**
- * RF-EST-3 y RF-EST-6 sobre `/portal-sync`. La base es falsa porque el router activo
- * importa el middleware de sesión, que abre un cliente de Postgres al evaluarse.
+ * RF-EST-3, RF-EST-6 y RF-IRM-3 sobre `/portal-sync`. La guarda consulta el lector del modo en
+ * cada petición; aquí el lector es fijo, porque el cambio entre peticiones lo prueba
+ * `test/interruptor-remoto/interruptor-remoto.rutas.test.ts`. La base es falsa porque el router
+ * activo importa el middleware de sesión, que abre un cliente de Postgres al evaluarse.
  */
 mock.module("../../src/db/index.js", () => ({ db: {} }));
 
-const { createPortalSyncDesactivadoRoutes, elegirRutasPortalSync } = await import(
+const { protegerRutasPortalSync } = await import(
   "../../src/modules/portal-sync/portal-sync-desactivado.routes.js"
 );
+const { modoFijo } = await import("../../src/modules/app-setting/modo-estatico.lector.js");
 const { errorHandler } = await import("../../src/shared/middleware/error-handler.js");
 
 const CUERPO_EXACTO = {
@@ -19,6 +22,17 @@ const CUERPO_EXACTO = {
   },
 };
 
+/** Rutas activas de prueba que anotan cada petición que les llega. */
+const activas = () => {
+  const alcanzadas: string[] = [];
+  const rutas = new Hono();
+  rutas.all("*", (c) => {
+    alcanzadas.push(`${c.req.method} ${c.req.path}`);
+    return c.json({ origen: "activas" });
+  });
+  return { rutas, alcanzadas };
+};
+
 const montar = (rutas: Hono) => {
   const app = new Hono();
   app.onError(errorHandler);
@@ -26,8 +40,9 @@ const montar = (rutas: Hono) => {
   return app;
 };
 
-describe("router desactivado de /portal-sync (RF-EST-3)", () => {
-  const app = montar(createPortalSyncDesactivadoRoutes());
+describe("/portal-sync en modo estático (RF-EST-3)", () => {
+  const { rutas: rutasActivas, alcanzadas } = activas();
+  const app = montar(protegerRutasPortalSync(modoFijo(true), rutasActivas));
 
   const rutas: Array<[string, string]> = [
     ["GET", "/portal-sync/status"],
@@ -60,28 +75,26 @@ describe("router desactivado de /portal-sync (RF-EST-3)", () => {
     const res = await app.request("/portal-sync/status");
     expect(await res.text()).toBe(JSON.stringify(CUERPO_EXACTO));
   });
+
+  test("ninguna de esas peticiones llega a las rutas activas", () => {
+    expect(alcanzadas).toEqual([]);
+  });
 });
 
-describe("elegirRutasPortalSync (RF-EST-3 y RF-EST-6)", () => {
-  const activas = () => {
-    const r = new Hono();
-    r.get("/status", (c) => c.json({ origen: "activas" }));
-    return r;
-  };
-
-  test("con true sirve el router desactivado y no construye el activo", async () => {
-    const construir = mock(activas);
-    const app = montar(elegirRutasPortalSync(true, construir));
+describe("protegerRutasPortalSync (RF-EST-6 y RF-IRM-3)", () => {
+  test("con true responde 503 y no llega a las rutas activas", async () => {
+    const { rutas, alcanzadas } = activas();
+    const app = montar(protegerRutasPortalSync(modoFijo(true), rutas));
     const res = await app.request("/portal-sync/status");
     expect([res.status, await res.json()]).toEqual([503, CUERPO_EXACTO]);
-    expect(construir).not.toHaveBeenCalled();
+    expect(alcanzadas).toEqual([]);
   });
 
   test("con false sirve el router activo tal cual", async () => {
-    const construir = mock(activas);
-    const app = montar(elegirRutasPortalSync(false, construir));
+    const { rutas, alcanzadas } = activas();
+    const app = montar(protegerRutasPortalSync(modoFijo(false), rutas));
     const res = await app.request("/portal-sync/status");
     expect([res.status, await res.json()]).toEqual([200, { origen: "activas" }]);
-    expect(construir).toHaveBeenCalledTimes(1);
+    expect(alcanzadas).toEqual(["GET /portal-sync/status"]);
   });
 });

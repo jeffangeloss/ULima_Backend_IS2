@@ -30,10 +30,10 @@ Todo el tráfico hacia la Universidad de Lima sale de `src/services/portal.clien
 - RF-EST-1: `src/config/env.ts` acepta `MODO_ESTATICO` con los valores `"true"` o `"false"` y por defecto `false`, la expone como booleano en `env.MODO_ESTATICO` y `config.modoEstatico`, y rechaza cualquier otro valor al arrancar. `.env.example` la documenta y `test/devops/env-example.test.ts` sigue en verde.
   `[@test] ../../../test/modo-estatico/modo-estatico.env.test.ts`
   `[@test] ../../../test/devops/env-example.test.ts`
-- RF-EST-2: Con `MODO_ESTATICO=true`, `POST /auth/register` responde `503` con el código `REGISTRATION_UNAVAILABLE`, el mismo que las APK instaladas ya traducen a «El registro no está disponible por ahora». La respuesta no depende del cuerpo ni del límite de tasa, y no se instala el registrador de alumnos en `AuthService`.
+- RF-EST-2: Con `MODO_ESTATICO=true`, `POST /auth/register` responde `503` con el código `REGISTRATION_UNAVAILABLE`, el mismo que las APK instaladas ya traducen a «El registro no está disponible por ahora». La respuesta no depende del cuerpo ni del límite de tasa, y no se instala el registrador de alumnos en `AuthService`. Enmendada por RF-IRM-3 (spec `interruptor-remoto`), que instala siempre el registrador y cierra la ruta con una guarda que consulta el modo en cada petición.
   `[@test] ../../../test/modo-estatico/modo-estatico.registro.test.ts`
   `[@test] ../../../test/modo-estatico/modo-estatico.arranque.test.ts`
-- RF-EST-3: Con `MODO_ESTATICO=true`, toda ruta bajo `/portal-sync` responde `503` con `{"error":{"code":"PORTAL_DESACTIVADO","message":"Esta versión de ULima++ no se conecta con la Universidad de Lima."}}`, para cualquier método y con o sin sesión, sin ejecutar su lógica.
+- RF-EST-3: Con `MODO_ESTATICO=true`, toda ruta bajo `/portal-sync` responde `503` con `{"error":{"code":"PORTAL_DESACTIVADO","message":"Esta versión de ULima++ no se conecta con la Universidad de Lima."}}`, para cualquier método y con o sin sesión, sin ejecutar su lógica. Enmendada por RF-IRM-3, que sirve `/portal-sync` con una guarda por petición en lugar de un router elegido al arrancar.
   `[@test] ../../../test/modo-estatico/modo-estatico.portal-sync.test.ts`
   `[@test] ../../../test/modo-estatico/modo-estatico.arranque.test.ts`
 - RF-EST-4: Con `MODO_ESTATICO=true`, ninguna petición llega a un método de `PortalClient`. Una prueba recorre las rutas afectadas con un `PortalClient` espía y comprueba cero llamadas.
@@ -72,3 +72,12 @@ Con `MODO_ESTATICO=false` nada cambia.
 - Los datos oficiales que vinieron de la ULima (récord, notas de la ULima y fecha de la última lectura) no se filtran en las rutas del backend: el diseño aprobado los oculta en el front (RF-EST-10) y deja las rutas que solo leen la base respondiendo igual (RF-EST-5). Los enlaces de sílabo sí se filtran aquí, porque RF-EST-12 solo llega con el APK nuevo y las 1.2.0 los abren en el navegador, y el riesgo de asistencia también, pero solo en el contexto del chatbot (RF-EST-8), porque el front no controla lo que el modelo dice. Las notas que lee el chatbot salen de `student_score`, que cargan los docentes y no la importación, y la malla sale de `student_course_progress`, que el diseño deja intacta, así que ninguna de las dos se filtra.
 - No hay migración ni cambio de base de datos. Las tablas del portal quedan sin uso.
 - No se borra código del portal. Retirarlo queda para una versión mayor posterior.
+
+## Enmiendas
+
+La spec `interruptor-remoto` (`specs/features/interruptor-remoto/interruptor-remoto.spec.md`, aprobada el 2026-10-02) cambia cómo se decide el modo y deja intactas las respuestas de esta spec.
+
+- El modo ya no se lee una sola vez. Lo decide la fila de `app_setting`, que el lector `modoEstatico()` de `src/modules/app-setting/index.ts` recuerda 10 s, y `config.modoEstatico` queda como su respaldo (RF-IRM-2). Reemplaza la primera decisión.
+- El registrador de alumnos se instala siempre y los servicios del portal se construyen siempre, porque ninguno hace peticiones al construirse. Una guarda por petición en `POST /auth/register` y otra en `/portal-sync` dan los 503 de RF-EST-2 y RF-EST-3 (RF-IRM-3). Reemplaza la segunda decisión, y RF-EST-4 sigue en pie.
+- `GET /grades/me/courses` y el chatbot consultan el lector en cada petición (RF-IRM-3), con las respuestas de RF-EST-7 y RF-EST-8.
+- La migración `0016` agrega la tabla `app_setting` (RF-IRM-1). Reemplaza la decisión «No hay migración ni cambio de base de datos».

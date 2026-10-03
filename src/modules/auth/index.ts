@@ -1,4 +1,4 @@
-import { config } from "../../config/app-config.js";
+import { modoEstatico } from "../app-setting/index.js";
 import { db } from "../../db/index.js";
 import { eventBus } from "../../events/index.js";
 import { AuthController } from "./auth.controller.js";
@@ -16,9 +16,9 @@ const authRepository = new AuthRepository(db);
 const authService = new AuthService(authRepository, eventBus, undefined, new PortalSyncRepository(db));
 const authController = new AuthController(authService);
 
-// RF-EST-2. En modo estático el registro queda cerrado en la ruta y, además,
-// `portal-sync/index.ts` no instala el registrador en `authService`.
-export const authRoutes = createAuthRoutes(authController, { registroCerrado: config.modoEstatico });
+// RF-EST-2 y RF-IRM-3. `POST /auth/register` consulta el lector del modo en cada petición, y el
+// registrador de alumnos lo instala siempre `portal-sync/index.ts`.
+export const authRoutes = createAuthRoutes(authController, { registroCerrado: modoEstatico });
 
 /** Se exporta la MISMA instancia (no una nueva) para que portal-sync pueda
  *  re-firmar el token del alumno que acaba de ser promovido a delegado. */

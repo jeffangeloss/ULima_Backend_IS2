@@ -4,6 +4,24 @@ Todos los cambios notables del backend de ULima++ se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto usa [Versionado Semántico](https://semver.org/lang/es/). El workflow `release.yml` toma de aquí las notas de cada GitHub Release, así que el encabezado de cada versión tiene que ser exactamente `## [X.Y.Z] - AAAA-MM-DD`. Por la misma razón no se agregan al final del archivo definiciones de enlace como `[X.Y.Z]: url`, porque el `awk` de `release.yml` lee la sección más antigua hasta el final del archivo y las incluiría en sus notas.
 
+## [2.1.0] - 2026-10-02
+
+Esta versión permite alternar entre la versión estática y la dinámica sin redesplegar. El modo lo decide una fila de la base, que se edita en la consola de Neon, y la variable `MODO_ESTATICO` queda como respaldo. Con la fila en `true` o en `false`, la API responde como la 2.0.0 con `MODO_ESTATICO=true` o `false`.
+
+### Añadido
+
+- Migración `drizzle/0016_app_setting.sql`, aditiva e idempotente, con la tabla `app_setting` de una sola fila (`id = 1`), la columna `static_mode` y la fila `(1, true)`. Se aplica con `bun run db:apply drizzle/0016_app_setting.sql`, primero en la rama `develop` de Neon y después en producción, con el permiso del dueño.
+- Lector único del modo, `modoEstatico()` de `src/modules/app-setting`, que lee la fila, la recuerda 10 s por instancia y corta la consulta a los 5 s. Si la base no responde o la fila no existe usa el último valor leído y, si no leyó ninguno, `MODO_ESTATICO`. Nunca lanza.
+- `GET /config`, pública y sin token, que responde `{"modoEstatico":<bool>}` con `Cache-Control: no-store` y el valor del mismo lector. `HEAD` y los demás métodos responden `404`. Las APK 2.1.0 la consultan al abrirse y al volver a primer plano.
+- La spec `specs/features/interruptor-remoto/interruptor-remoto.spec.md`, con las reglas RF-IRM-1 a RF-IRM-5 y las pruebas de `test/interruptor-remoto/`, entre ellas una suite `*.postgres.test.ts` que aplica la `0016` dos veces y lee la fila con el lector real.
+
+### Cambiado
+
+- `POST /auth/register`, toda ruta bajo `/portal-sync`, `silaboUrl` de `GET /grades/me/courses` y las alertas del contexto del chatbot consultan el lector en cada petición, así que un cambio de la fila rige sin reiniciar a más tardar 10 s después. Sus respuestas en cada modo son las de la 2.0.0.
+- El registrador de alumnos se instala siempre en `AuthService`, y `/portal-sync` pasa de un router elegido al arrancar a una guarda por petición. En modo estático ninguna petición llega a `PortalClient`.
+- `MODO_ESTATICO` pasa a ser el respaldo del interruptor. `.env.example`, `docs/devops.md`, el README, `docs/AUDITORIA_TECNICA.md` y `docs/specs/api-contracts.md` explican cómo se alterna.
+- `package.json` pasa de la versión `2.0.0` a la `2.1.0`.
+
 ## [2.0.0] - 2026-10-02
 
 Esta versión retira funcionalidades de forma controlada, porque con `MODO_ESTATICO=true` el backend deja de consultar a la Universidad de Lima. Con la variable en `false` o ausente el comportamiento es el de la 1.1.0.

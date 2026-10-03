@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import type { db } from "../../db/index.js";
+import type { LectorDelModo } from "../app-setting/modo-estatico.lector.js";
 import type {
   ChatbotSessionRow,
   ChatbotMessageRow,
@@ -32,10 +33,11 @@ export class ChatbotRepository {
   constructor(
     readonly database: typeof db,
     /**
-     * RF-EST-8. Con `modoEstatico` el contexto del chatbot no incluye el riesgo de asistencia,
-     * porque la versión estática lo oculta en toda pantalla donde aparezca.
+     * RF-EST-8 y RF-IRM-3. Lector del modo, consultado en cada `getAlerts`. En modo estático el
+     * contexto del chatbot no incluye el riesgo de asistencia, porque la versión estática lo oculta
+     * en toda pantalla donde aparezca.
      */
-    private readonly opciones: { modoEstatico?: boolean } = {},
+    private readonly opciones: { modoEstatico?: LectorDelModo } = {},
   ) {}
 
   async createSession(studentId: number): Promise<ChatbotSessionRow> {
@@ -301,7 +303,7 @@ export class ChatbotRepository {
   async getAlerts(studentId: number): Promise<AlertData[]> {
     // RF-EST-8: el filtro va en la consulta, antes del LIMIT, para que las 20 alertas del
     // contexto sean todas visibles y no 20 menos las que se descartan después.
-    const sinInasistencias = this.opciones.modoEstatico
+    const sinInasistencias = (await this.opciones.modoEstatico?.())
       ? sql`AND NOT starts_with(a.title, ${PREFIJO_ALERTA_INASISTENCIAS})`
       : sql``;
     const rows = await this.database.execute(sql`

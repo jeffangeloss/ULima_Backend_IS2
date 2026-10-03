@@ -5,9 +5,10 @@
  *
  * Carga `src/server.ts` completo (el mismo que sirve Vercel), hace las peticiones que
  * llegan en el argumento 2 como JSON y escribe en la salida estándar una línea JSON con
- * el estado y el cuerpo de cada una. Todas las peticiones elegidas se resuelven sin
- * tocar la base: o las corta un validador o el middleware de sesión, o las apaga el
- * modo estático.
+ * el estado, la cabecera Cache-Control y el cuerpo de cada una. La `DATABASE_URL` del entorno
+ * falso no sirve, así que la consulta del lector del modo a `app_setting` falla (sin servidor,
+ * sin rol o sin base) y rige `MODO_ESTATICO` (RF-IRM-2). Las demás peticiones elegidas no llegan
+ * a la base, porque las corta un validador, el middleware de sesión o el modo estático.
  */
 type Peticion = { metodo: string; ruta: string; cuerpo?: unknown };
 
@@ -21,7 +22,12 @@ for (const p of peticiones) {
     headers: { "Content-Type": "application/json" },
     body: p.cuerpo === undefined ? undefined : JSON.stringify(p.cuerpo),
   });
-  resultados.push({ ...p, estado: res.status, cuerpo: await res.json().catch(() => null) });
+  resultados.push({
+    ...p,
+    estado: res.status,
+    cacheControl: res.headers.get("cache-control"),
+    cuerpo: await res.json().catch(() => null),
+  });
 }
 console.log("RESULTADOS=" + JSON.stringify(resultados));
 process.exit(0);
